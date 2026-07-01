@@ -3,7 +3,7 @@
  * 检查租户身份、用户角色以及资源权限
  */
 
-import { RoleManager } from '@/services/RoleManager';
+import { RoleManager } from '../services/RoleManager';
 
 export class AuthMiddleware {
   private roleManager: RoleManager;
@@ -61,20 +61,32 @@ export class AuthMiddleware {
 
       // 7️⃣ 前往实际业务逻辑（这里仅转发请求给 Supabase）
       const targetUrl = `${this.supabaseUrl}/rest/v1/${resource}?tenant_id=eq.${tenantId}`;
+
+      // Build headers safely for Node.js environment
+      const headersObj: Record<string, string> = {};
+      headersObj['apikey'] = this.supabaseAnonKey;
+      headersObj['Authorization'] = `Bearer ${this.supabaseAnonKey}`;
+
+      // Convert headers to object safely (no entries() on Headers in Node.js)
+      request.headers.forEach((value, key) => {
+        headersObj[key] = value;
+      });
+
       const supabaseResp = await fetch(targetUrl, {
         method: request.method,
-        headers: {
-          apikey: this.supabaseAnonKey,
-          Authorization: `Bearer ${this.supabaseAnonKey}`,
-          ...Object.fromEntries(request.headers.entries())
-        }
+        headers: headersObj
       });
 
       // 8️⃣ 返回后端响应
       const responseText = await supabaseResp.text();
+      const respHeaders: Record<string, string> = {};
+      supabaseResp.headers.forEach((value, key) => {
+        respHeaders[key] = value;
+      });
+
       return new Response(responseText, {
         status: supabaseResp.status,
-        headers: supabaseResp.headers
+        headers: respHeaders
       });
     } catch (err) {
       console.error('AuthMiddleware error:', err);

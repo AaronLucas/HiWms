@@ -1,6 +1,8 @@
 // Configuration for workflow scheduling
 // This would normally be stored in a database or configuration file
 
+// Configuration for workflow scheduling
+// This would normally be stored in a database or configuration file
 export interface WorkflowConfig {
   id: string;
   name: string;

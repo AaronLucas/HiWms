@@ -58,9 +58,14 @@ export class AuthMiddleware {
             });
             // 8️⃣ 返回后端响应
             const responseText = await supabaseResp.text();
+            // Create safe headers copy to avoid TypeScript errors
+            const headersObj = {};
+            supabaseResp.headers.forEach((value, key) => {
+                headersObj[key] = value;
+            });
             return new Response(responseText, {
                 status: supabaseResp.status,
-                headers: supabaseResp.headers
+                headers: headersObj
             });
         }
         catch (err) {

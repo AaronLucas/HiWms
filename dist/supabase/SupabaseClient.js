@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 /**
  * Supabase client wrapper
  * Provides client instance with proper error handling and tenant context
@@ -5,8 +6,8 @@
 export class SupabaseClient {
     constructor(tenantId) {
         this.tenantId = null;
-        this.tenantId = tenantId;
-        this.client = supabase.createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+        this.tenantId = tenantId ?? null;
+        this.client = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
     }
     /**
      * Execute a query with tenant_id filtering automatically applied

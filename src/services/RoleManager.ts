@@ -1,3 +1,5 @@
+import { Role, Permission, RolePermission, UserRole } from '../models/rbac';
+
 export class RoleManager {
   constructor(private supabase: any) {}
 

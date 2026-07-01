@@ -1,14 +1,16 @@
+import { createClient, SupabaseClient as SupabaseJsClient, PostgrestError } from '@supabase/supabase-js';
+
 /**
  * Supabase client wrapper
  * Provides client instance with proper error handling and tenant context
  */
 export class SupabaseClient {
-  private client: any;
+  private client: SupabaseJsClient;
   private tenantId: string | null = null;
 
   constructor(tenantId?: string) {
-    this.tenantId = tenantId;
-    this.client = supabase.createClient(
+    this.tenantId = null;
+    this.client = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_ANON_KEY!
     );
@@ -31,9 +33,10 @@ export class SupabaseClient {
 
       // Apply the provided query function to extend the query
       return await queryFunction(query);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Supabase query error:', error);
-      throw new Error(`Supabase query failed for table ${tableName}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Supabase query failed for table ${tableName}: ${message}`);
     }
   }
 
@@ -42,7 +45,7 @@ export class SupabaseClient {
    */
   async upsert<T = any>(tableName: string, records: T[], tenantId: string): Promise<T[]> {
     try {
-      const query = this.client.from(tableName).upsert(records, { onConflict: 'tenant_id' });
+      const query = this.client.from(tableName).upsert(records as any, { onConflict: 'tenant_id' });
 
       if (tenantId) {
         query.eq('tenant_id', tenantId);
@@ -51,9 +54,10 @@ export class SupabaseClient {
       const { data, error } = await query.select('*');
       if (error) throw error;
       return data || [];
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Supabase upsert error:', error);
-      throw new Error(`Supabase upsert failed on table ${tableName}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Supabase upsert failed on table ${tableName}: ${message}`);
     }
   }
 
@@ -72,9 +76,10 @@ export class SupabaseClient {
 
       const { error } = await query;
       if (error) throw error;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Supabase delete error:', error);
-      throw new Error(`Supabase delete failed on table ${tableName}: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Supabase delete failed on table ${tableName}: ${message}`);
     }
   }
 
@@ -86,9 +91,10 @@ export class SupabaseClient {
       const response = await this.client.rpc(functionName, params);
       if (response.error) throw new Error(response.error.message);
       return response.data as T;
-    } catch (error) {
-      console.error(`RPC call ${functionName} failed: ${error.message}`);
-      throw new Error(`RPC call failed: ${error.message}`);
+    } catch (error: unknown) {
+      console.error(`RPC call ${functionName} failed:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`RPC call failed: ${message}`);
     }
   }
 }

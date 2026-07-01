@@ -1,3 +1,4 @@
+import { WorkflowContext } from './types';
 export declare class TaskManager {
     private taskRegistry;
     /**
@@ -13,5 +14,5 @@ export declare class TaskManager {
     /**
      * Execute a task with retry logic
      */
-    executeTask(taskId: string, context: any, ...args: any[]): Promise<string>;
+    executeTask(taskId: string, context: WorkflowContext, ...args: any[]): Promise<string>;
 }

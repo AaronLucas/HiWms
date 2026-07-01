@@ -8,12 +8,11 @@ export class TaskManager {
      * Register a new task with retry configuration support
      */
     registerTask(taskId, executeFn, metadata) {
-        this.taskRegistry.set(taskId, async () => {
+        this.taskRegistry.set(taskId, async (executeFn) => {
             const task = this.taskRegistry.get(taskId);
             if (!task)
                 throw new Error(`Task ${taskId} not found`);
-            // Task execution with enhanced retry logic
-            return task();
+            return await task();
         });
     }
     /**
@@ -24,15 +23,14 @@ export class TaskManager {
         if (!task)
             throw new Error(`Task ${taskId} not found`);
         try {
-            return await task(...args);
+            return await task()(...args);
         }
         catch (error) {
-            // Enhanced error classification
             if (!error.retryable) {
                 throw error;
             }
             // Retry logic would be implemented here in full workflow context
-            throw error; // For now, basic error propagation
+            throw error;
         }
     }
 }
