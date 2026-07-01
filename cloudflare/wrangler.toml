@@ -1,0 +1,18 @@
+name = "wms-cache-worker"
+compatibility_date = "2024-10-01"
+compatibility_flags = []
+
+# Bindings
+[[kv_namespaces]]
+binding = "WMS_CACHE"
+id = "abcd1234-example-namespace-id"
+
+# Variables (available in the worker)
+[vars]
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_ANON_KEY = "your-anon-key"
+
+# Build settings
+[build]
+format = "modules"
+```

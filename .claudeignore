@@ -1,0 +1,46 @@
+*.md
+*.pdf
+*.zip
+*.tar.gz
+
+
+# 构建产物
+dist/
+build/
+out/
+
+# 依赖
+node_modules/
+
+# Supabase 本地缓存
+supabase/.temp/
+supabase/.branches/
+supabase/.logs/
+
+# 测试产物
+coverage/
+
+# 大文件
+*.log
+*.csv
+*.sqlite
+*.db
+
+# 文档（如果你不希望全部加载）
+*.md
+!管理.md   # 保留 Claude 自动生成的管理文件
+
+# 图片等大资源
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.webp
+
+# IDE 配置
+.vscode/
+.idea/
+
+# TS 编译缓存
+*.tsbuildinfo
