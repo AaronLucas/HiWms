@@ -4,10 +4,14 @@
   "description": "Project using Redux Toolkit and WMS workflows",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build": "tsc",
     "dev": "ts-node src/workflows/test-workflow.ts",
-    "workflow:test": "ts-node src/workflows/test-workflow.ts"
+    "workflow:test": "ts-node src/workflows/test-workflow.ts",
+    "lint": "tsc --noEmit",
+    "ci": "npm run lint && npm run test:coverage && npm run build"
   },
   "type": "module",
   "dependencies": {
