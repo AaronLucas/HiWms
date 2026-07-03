@@ -27,7 +27,7 @@ export class WorkflowManager {
     if (!workflow) return [];
 
     const readyTasks: string[] = [];
-    for (const [taskId, dependencies] of Object.entries(workflow.dependencies)) {
+    for (const [taskId, dependencies] of Object.entries(workflow.dependencies) as [string, string[]][]) {
       if (completedTasks.has(taskId)) continue;
       const allDepsCompleted = dependencies.every(dep => completedTasks.has(dep));
       if (allDepsCompleted) {
