@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build workflow-engine
-        run: cd workflow-engine && npm ci && npm run build
+        run: cd workflow-engine && npm install && npm run build
       - name: Run type check
         run: npx tsc --noEmit
       - name: Run tests
@@ -55,7 +55,7 @@ jobs:
           scan-type: 'fs'
           ignore-unfixed: true
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'trivv-results.sarif'
       - name: Upload Trivy scan result
         uses: github/codeql-action/upload-sarif@v3
         with:
