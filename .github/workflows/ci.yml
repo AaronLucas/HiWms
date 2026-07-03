@@ -39,7 +39,7 @@ jobs:
       - name: Run npm audit
         run: npm audit --production
       - name: Run security scan (Trivy)
-        uses: aquasecurity/trivy-action@0.25.0
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           ignore-unfixed: true
@@ -85,10 +85,10 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [build, security, lint-docs]
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     steps:
       - name: Send notification on failure
-        if: failure()
+        if: failure() && github.event_name != 'pull_request' && env.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
@@ -98,7 +98,7 @@ jobs:
           SLACK_CHANNEL: '#ci-alerts'
           SLACK_USERNAME: 'GitHub Actions'
       - name: Send notification on success
-        if: success()
+        if: success() && github.event_name != 'pull_request' && env.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
