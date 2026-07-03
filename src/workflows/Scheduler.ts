@@ -13,12 +13,15 @@ export interface WorkflowConfig {
   metadata?: Record<string, any>; // Custom metadata
 }
 
+// Re-export WorkflowManager from workflow-engine
+export { WorkflowManager } from 'wms-workflow-engine';
+
 // Workflow scheduling controller
 export class WorkflowScheduler {
   private configs: Map<string, WorkflowConfig> = new Map();
-  private workflowManager: any; // Will be injected
+  private workflowManager: InstanceType<typeof import('wms-workflow-engine').WorkflowManager>;
 
-  constructor(workflowManager: any) {
+  constructor(workflowManager: InstanceType<typeof import('wms-workflow-engine').WorkflowManager>) {
     this.workflowManager = workflowManager;
   }
 

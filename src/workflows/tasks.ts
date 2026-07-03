@@ -1,4 +1,5 @@
 import { SupabaseClient } from '../supabase/SupabaseClient';
+import { RetryableTask } from 'wms-workflow-engine';
 
 /**
  * Task executor implementations for WMS workflows
@@ -224,25 +225,12 @@ export async function processShipment(workOrderData: any): Promise<string> {
  * Helper function to run a task with retry logic
  */
 async function executeTaskWithRetry<T>(
-  taskFn: (...args: any[]) => Promise<T>,
-  args: any[] = [],
+  taskFn: () => Promise<T>,
   maxAttempts: number = 3,
   delayMs: number = 1000
 ): Promise<T> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      return await taskFn(...args);
-    } catch (error: any) {
-      if (!error.retryable || attempt === maxAttempts - 1) {
-        throw error;
-      }
-
-      const delay = delayMs * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  throw new Error('Task failed after all retry attempts');
+  const retryableTask = new RetryableTask(maxAttempts, delayMs);
+  return retryableTask.execute(taskFn);
 }
 
 // Export all task functions for use in workflow definitions
