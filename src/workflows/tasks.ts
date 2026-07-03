@@ -1,5 +1,4 @@
 import { SupabaseClient } from '../supabase/SupabaseClient';
-import { RetryableTask } from './TaskManager';
 
 /**
  * Task executor implementations for WMS workflows
@@ -159,7 +158,7 @@ export async function allocateInventoryAndCreateWorkOrder(availabilityData: any)
     woId: `WO-${Date.now()}`,
     orderId: availabilityData.orderId,
     status: 'CREATED',
-    allocatedItems: [],
+    allocatedItems: [] as Array<{ sku: string; quantity: number; location: string }>,
     createdAt: new Date().toISOString(),
     estimatedCompletion: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
   };
@@ -224,14 +223,26 @@ export async function processShipment(workOrderData: any): Promise<string> {
 /**
  * Helper function to run a task with retry logic
  */
-export async function executeTaskWithRetry<T>(
+async function executeTaskWithRetry<T>(
   taskFn: (...args: any[]) => Promise<T>,
   args: any[] = [],
   maxAttempts: number = 3,
   delayMs: number = 1000
 ): Promise<T> {
-  const retryableTask = new RetryableTask(maxAttempts, delayMs);
-  return retryableTask.execute(() => taskFn(...args));
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await taskFn(...args);
+    } catch (error: any) {
+      if (!error.retryable || attempt === maxAttempts - 1) {
+        throw error;
+      }
+
+      const delay = delayMs * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw new Error('Task failed after all retry attempts');
 }
 
 // Export all task functions for use in workflow definitions
