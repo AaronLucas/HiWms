@@ -1,4 +1,4 @@
-import { SupabaseClient } from '../supabase/SupabaseClient';
+import { SupabaseClient, createSupabaseClientFromEnv } from '../supabase/SupabaseClient';
 import { RetryableTask } from 'wms-workflow-engine';
 
 /**
@@ -7,7 +7,7 @@ import { RetryableTask } from 'wms-workflow-engine';
  */
 
 // Initialize Supabase client (in real usage, this would come from environment)
-const supabaseClient = new SupabaseClient();
+const supabaseClient = createSupabaseClientFromEnv();
 
 /**
  * Inventory Synchronization Workflow Tasks
