@@ -1,0 +1,16 @@
+*.d.ts
+*.d.ts.map
+*.js
+*.js.map
+*.tsbuildinfo
+dist/
+*.log
+*.tmp
+*.swp
+*.tmp.swp
+retry_test.js
+retry_test.js.map
+retry_test.d.ts
+retry_test.d.ts.map
+test.d.ts
+test.d.ts.map

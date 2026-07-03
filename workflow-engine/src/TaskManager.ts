@@ -32,7 +32,7 @@ export class TaskManager {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const result = await task(...args);
+        const result = await task();
         return result;
       } catch (error: any) {
         if (!error.retryable) {

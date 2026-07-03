@@ -2,13 +2,13 @@
   "name": "wms-workflow-engine",
   "version": "1.0.0",
   "description": "Enhanced workflow engine with auto-retry, circuit breaker, and type-safe workflow engine",
-  "type": "module",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "ts-node src/test-workflow.ts",
-    "test:retry": "ts-node src/simple-retry-test.ts"
+    "test": "ts-node src/test.ts",
+    "test:retry": "ts-node src/test.ts"
   },
   "keywords": [
     "workflow",
@@ -19,6 +19,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "minimatch": "^9.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.1.6"
   }
