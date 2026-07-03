@@ -101,7 +101,7 @@ jobs:
       contents: read
     steps:
       - name: Send notification on failure
-        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        if: failure()
         uses: slackapi/slack-github-action@v1.26.0
         with:
           payload: |
