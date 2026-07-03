@@ -96,12 +96,12 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [build, security, lint-docs]
-    if: always() && github.event_name != 'pull_request' && secrets.SLACK_WEBHOOK_URL != ''
+    if: always() && github.event_name != 'pull_request' && github.repository_owner == 'AaronLucas'
     permissions:
       contents: read
     steps:
       - name: Send notification on failure
-        if: failure()
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
           payload: |
