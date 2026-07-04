@@ -187,6 +187,13 @@ export class SupabaseClient {
   }
 
   /**
+   * Direct access to the underlying Supabase query builder
+   */
+  from(tableName: string): any {
+    return this.client.from(tableName);
+  }
+
+  /**
    * Build a type-safe query with automatic tenant filtering
    */
   private buildQuery(tableName: string): any {

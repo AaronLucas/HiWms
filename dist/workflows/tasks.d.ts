@@ -16,7 +16,7 @@ export declare function processShipment(workOrderData: any): Promise<string>;
 /**
  * Helper function to run a task with retry logic
  */
-export declare function executeTaskWithRetry<T>(taskFn: (...args: any[]) => Promise<T>, args?: any[], maxAttempts?: number, delayMs?: number): Promise<T>;
+declare function executeTaskWithRetry<T>(taskFn: () => Promise<T>, maxAttempts?: number, delayMs?: number): Promise<T>;
 export declare const InventoryTasks: {
     checkInventoryLevels: typeof checkInventoryLevels;
     updateInventoryRecords: typeof updateInventoryRecords;

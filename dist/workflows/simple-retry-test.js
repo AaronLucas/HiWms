@@ -49,7 +49,7 @@ async function testAutoRetry() {
         const context = workflowManager.getContext('test-retry-workflow');
         if (context) {
             console.log('\nExecution logs:');
-            context.logs.forEach(log => console.log(log));
+            context.logs.forEach((log) => console.log(log));
             console.log(`\nCompleted tasks: ${context.completedTasks.join(', ')}`);
             console.log(`Failed tasks: ${context.failedTasks.join(', ')}`);
         }

@@ -1,5 +1,5 @@
-// Configuration for workflow scheduling
-// This would normally be stored in a database or configuration file
+// Re-export WorkflowManager from workflow-engine
+export { WorkflowManager } from 'wms-workflow-engine';
 // Workflow scheduling controller
 export class WorkflowScheduler {
     constructor(workflowManager) {
@@ -22,8 +22,7 @@ export class WorkflowScheduler {
                 // Execute workflow with context
                 const workflowId = config.metadata?.workflowId ||
                     config.metadata?.workflow ||
-                    Object.keys(this.workflows).find(key => this.workflows.get(key).entryPoints.includes(config.metadata?.workflowId || '')) ||
-                    Object.keys(this.workflows)[0];
+                    'default-workflow';
                 // In a real implementation, we would schedule the execution
                 // For now, execute immediately
                 return this.workflowManager.executeWorkflow(workflowId, contextData);

@@ -8,7 +8,9 @@
   "scripts": {
     "build": "tsc",
     "test": "ts-node src/test.ts",
-    "test:retry": "ts-node src/test.ts"
+    "test:retry": "ts-node src/test.ts",
+    "lint": "tsc --noEmit",
+    "ci": "npm run lint && npm run test"
   },
   "keywords": [
     "workflow",

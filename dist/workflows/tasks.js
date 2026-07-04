@@ -1,11 +1,11 @@
-import { SupabaseClient } from '../supabase/SupabaseClient';
-import { RetryableTask } from './TaskManager';
+import { createSupabaseClientFromEnv } from '../supabase/SupabaseClient';
+import { RetryableTask } from 'wms-workflow-engine';
 /**
  * Task executor implementations for WMS workflows
  * These functions perform the actual work for each task in a workflow
  */
 // Initialize Supabase client (in real usage, this would come from environment)
-const supabaseClient = new SupabaseClient();
+const supabaseClient = createSupabaseClientFromEnv();
 /**
  * Inventory Synchronization Workflow Tasks
  */
@@ -181,9 +181,9 @@ export async function processShipment(workOrderData) {
 /**
  * Helper function to run a task with retry logic
  */
-export async function executeTaskWithRetry(taskFn, args = [], maxAttempts = 3, delayMs = 1000) {
+async function executeTaskWithRetry(taskFn, maxAttempts = 3, delayMs = 1000) {
     const retryableTask = new RetryableTask(maxAttempts, delayMs);
-    return retryableTask.execute(() => taskFn(...args));
+    return retryableTask.execute(taskFn);
 }
 // Export all task functions for use in workflow definitions
 export const InventoryTasks = {
@@ -199,3 +199,4 @@ export const OrderTasks = {
     createWorkOrder,
     processShipment
 };
+export { executeTaskWithRetry };
