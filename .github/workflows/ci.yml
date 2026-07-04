@@ -94,7 +94,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [build, security, lint-docs]
-    if: always() && github.event_name != 'pull_request' && github.repository_owner == 'AaronLucas'
+    if: false && always() && github.event_name != 'pull_request' && github.repository_owner == 'AaronLucas'
     permissions:
       contents: read
     steps:
