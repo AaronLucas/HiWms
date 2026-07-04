@@ -68,7 +68,8 @@ jobs:
         with:
           use-quiet-mode: 'yes'
           use-verbose-mode: 'no'
-          folder-path: 'README.md, docs, src, api, ARCHITECTURE.md, DB_SCHEMA.md, CLAUDE.md, API_SPEC.md'
+          folder-path: 'docs, src, api'
+          file-path: 'README.md, ARCHITECTURE.md, DB_SCHEMA.md, CLAUDE.md, API_SPEC.md'
 
   docker-build:
     runs-on: ubuntu-latest
