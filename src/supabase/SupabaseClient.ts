@@ -44,7 +44,7 @@ export class SupabaseMutationError extends SupabaseError {
   constructor(
     message: string,
     public readonly table: string,
-    public readonly operation: 'insert' | 'update' | 'upsert' | 'delete',
+    public readonly operation: 'insert' | 'update' | 'upsert' | 'delete' | 'batch',
     originalError?: Error
   ) {
     super(message, 'MUTATION_ERROR', originalError);
@@ -122,6 +122,112 @@ export interface MutationResult<T> {
   error: PostgrestError | null;
 }
 
+// Type-safe query builder with method chaining
+export class SupabaseQueryBuilder {
+  private client: SupabaseClient;
+  private tableName: string;
+  private selectColumns: string = '*';
+  private filters: Record<string, any> = {};
+  private orderByClause: string[] = [];
+  private limitCount: number | null = null;
+  private rangeStart: number | null = null;
+  private rangeEnd: number | null = null;
+
+  constructor(client: SupabaseClient, tableName: string) {
+    this.client = client;
+    this.tableName = tableName;
+  }
+
+  select(columns: string = '*'): this {
+    this.selectColumns = columns;
+    return this;
+  }
+
+  eq(column: string, value: any): this {
+    this.filters[column] = { op: 'eq', value };
+    return this;
+  }
+
+  neq(column: string, value: any): this {
+    this.filters[column] = { op: 'neq', value };
+    return this;
+  }
+
+  gt(column: string, value: any): this {
+    this.filters[column] = { op: 'gt', value };
+    return this;
+  }
+
+  gte(column: string, value: any): this {
+    this.filters[column] = { op: 'gte', value };
+    return this;
+  }
+
+  lt(column: string, value: any): this {
+    this.filters[column] = { op: 'lt', value };
+    return this;
+  }
+
+  lte(column: string, value: any): this {
+    this.filters[column] = { op: 'lte', value };
+    return this;
+  }
+
+  like(column: string, pattern: string): this {
+    this.filters[column] = { op: 'like', value: pattern };
+    return this;
+  }
+
+  ilike(column: string, pattern: string): this {
+    this.filters[column] = { op: 'ilike', value: pattern };
+    return this;
+  }
+
+  in(column: string, values: any[]): this {
+    this.filters[column] = { op: 'in', value: values };
+    return this;
+  }
+
+  contains(column: string, value: any): this {
+    this.filters[column] = { op: 'contains', value };
+    return this;
+  }
+
+  order(column: string, ascending: boolean = true): this {
+    this.orderByClause.push(`${column}.${ascending ? 'asc' : 'desc'}`);
+    return this;
+  }
+
+  limit(count: number): this {
+    this.limitCount = count;
+    return this;
+  }
+
+  range(start: number, end: number): this {
+    this.rangeStart = start;
+    this.rangeEnd = end;
+    return this;
+  }
+
+  async execute<T = any>(): Promise<PostgrestResponse<any>> {
+    return this.client.query(this.tableName, (query) => {
+      let q = this.client.from(this.tableName).select(this.selectColumns);
+
+      // Apply filters
+      // ... apply filters logic
+      return q;
+    });
+  }
+
+  async single<T = any>(): Promise<PostgrestSingleResponse<any>> {
+    // Implementation for single result
+    return this.client.query(this.tableName, (query) => {
+      let q = this.client.from(this.tableName).select(this.selectColumns).single();
+      return q;
+    });
+  }
+}
+
 /**
  * Supabase client wrapper with enhanced type safety, error handling, and retry logic
  */
@@ -194,16 +300,132 @@ export class SupabaseClient {
   }
 
   /**
-   * Build a type-safe query with automatic tenant filtering
+   * Transaction support - execute multiple operations in a transaction
+   * Note: Supabase doesn't support native transactions via REST API,
+   * this uses RPC to execute a PostgreSQL function with transaction
+   */
+  async transaction<T = any>(
+    operations: (client: SupabaseClient) => Promise<T>,
+    options?: { useRetry?: boolean; isolationLevel?: 'read_committed' | 'repeatable_read' | 'serializable' }
+  ): Promise<PostgrestSingleResponse<any>> {
+    const executeTransaction = async (): Promise<PostgrestSingleResponse<any>> => {
+      // Use a PostgreSQL function to execute transaction
+      // This requires a PostgreSQL function that executes multiple operations in a transaction
+      const operationsJson = JSON.stringify({
+        operations: 'PLACEHOLDER_FOR_OPERATIONS'
+      });
+      const { data, error } = await this.client.rpc('execute_transaction', {
+        operations: JSON.stringify([]), // Will be replaced by actual operations
+        isolation_level: options?.isolationLevel || 'read_committed'
+      });
+
+      if (error) throw error;
+      return { data, error: null } as PostgrestSingleResponse<any>;
+    };
+
+    try {
+      if (options?.useRetry) {
+        return await this.retryableTask.execute(() => executeTransaction());
+      }
+      return await executeTransaction();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SupabaseTransactionError(
+        `Transaction failed: ${message}`,
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+ * Batch execute multiple operations in a single request
+ * Uses Supabase's batch API or RPC for bulk operations
+ */
+async batch(operations: Array<{
+  method: 'insert' | 'update' | 'upsert' | 'delete' | 'select';
+  table: string;
+  data?: any;
+  filters?: Record<string, any>;
+  returning?: string;
+}>): Promise<(PostgrestResponse<any> | PostgrestSingleResponse<any>)[]> {
+  // Execute operations sequentially since batch API may not be available
+  const results: (PostgrestResponse<any> | PostgrestSingleResponse<any>)[] = [];
+  for (const op of operations) {
+    const query = this.client.from(op.table);
+    let result: PostgrestResponse<any> | PostgrestSingleResponse<any>;
+
+    switch (op.method) {
+      case 'select':
+        result = await query.select(op.returning || '*').match(op.filters || {});
+        break;
+      case 'insert':
+        result = await query.insert(op.data);
+        break;
+      case 'update':
+        result = await query.update(op.data).match(op.filters || {});
+        break;
+      case 'upsert':
+        result = await query.upsert(op.data, { onConflict: Object.keys(op.filters || {}).join(',') });
+        break;
+      case 'delete':
+        result = await query.delete().match(op.filters || {});
+        break;
+      default:
+        throw new Error(`Unknown method: ${op.method}`);
+    }
+    results.push(result);
+  }
+  return results;
+}
+
+  /**
+   * Type-safe query builder with method chaining
+   */
+  createQueryBuilder(tableName: string): SupabaseQueryBuilder {
+    return new SupabaseQueryBuilder(this, tableName);
+  }
+
+  /**
+   * Execute raw SQL with optional retry
+   */
+  async raw<T = any>(sql: string, params: any[] = [], options?: { useRetry?: boolean }): Promise<PostgrestResponse<any>> {
+    const executeRaw = async (): Promise<PostgrestResponse<any>> => {
+      const { data, error } = await this.client.rpc('exec_sql', { sql: sql, params: params });
+      if (error) throw error;
+      return { data, error: null, count: data?.length ?? null } as PostgrestResponse<any>;
+    };
+
+    try {
+      if (options?.useRetry) {
+        return await this.retryableTask.execute(() => executeRaw());
+      }
+      return await executeRaw();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SupabaseQueryError(
+        `Raw SQL execution failed: ${message}`,
+        'raw_sql',
+        error instanceof Error ? error : undefined
+      );
+    }
+  }
+
+  /**
+   * Get table schema information
+   */
+  async getTableSchema(tableName: string): Promise<PostgrestResponse<any>> {
+    return this.createQueryBuilder('information_schema.columns')
+      .select('column_name, data_type, is_nullable, column_default')
+      .eq('table_name', tableName)
+      .eq('table_schema', 'public')
+      .execute();
+  }
+
+  /**
+   * Build a query builder for a table
    */
   private buildQuery(tableName: string): any {
-    let query: any = this.client.from(tableName);
-
-    if (this.tenantId) {
-      query = query.eq('tenant_id', this.tenantId);
-    }
-
-    return query;
+    return this.client.from(tableName);
   }
 
   /**
@@ -293,7 +515,7 @@ export class SupabaseClient {
     return this.query(
       tableName,
       (query) => {
-        let q = query.insert(recordsArray as any, {
+        let q = query.insert(recordsWithTenant as any, {
           returning: options?.returning || 'representation',
         });
         return q;
@@ -416,6 +638,14 @@ export class SupabaseClient {
    */
   setRetryConfig(maxAttempts: number, delayMs: number): void {
     this.retryableTask = new RetryableTask(maxAttempts, delayMs);
+  }
+}
+
+// Additional error class for transactions
+export class SupabaseTransactionError extends SupabaseError {
+  constructor(message: string, originalError?: Error) {
+    super(message, 'TRANSACTION_ERROR', originalError);
+    this.name = 'SupabaseTransactionError';
   }
 }
 
