@@ -51,3 +51,6 @@ coverage/
 
 # Readonly directory (not for upload)
 .readonly/
+supabase/
+supabase/migrations/
+supabase/migrations/20250701101245_wms_initial_schema.sql
