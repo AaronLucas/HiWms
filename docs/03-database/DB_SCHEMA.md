@@ -210,7 +210,39 @@
 
 ---
 
-### 下一步计划
+### RLS 策略状态 (需在 Supabase Dashboard 启用)
 
-1. **进入下一个暂停节点：API 设计完成** - 已经基本完成，但需要根据新的数据库schema进行细化和调整，确保API与DB Model之间的一致性和完整性。
-2. **将在API设计完成后进一步细化API文档和接口定义**，确保系统设计的一致性和完整性。
+| 表名 | 策略名称 | 启用状态 | 说明 |
+|------|----------|----------|------|
+| tenants | `tenants_tenant_isolation` | ⏳ 待启用 | 仅 SUPER_ADMIN 可见所有 |
+| users | `users_tenant_isolation` | ⏳ 待启用 | 租户内用户可见 |
+| roles | `roles_tenant_isolation` | ⏳ 待启用 | 租户内角色可见 |
+| products | `products_tenant_isolation` | ⏳ 待启用 | 租户内商品可见 |
+| locations | `locations_tenant_isolation` | ⏳ 待启用 | 租户内库位可见 |
+| containers | `containers_tenant_isolation` | ⏳ 待启用 | 租户内容器可见 |
+| inventory | `inventory_tenant_isolation` | ⏳ 待启用 | 租户内库存可见 |
+| orders | `orders_tenant_isolation` | ⏳ 待启用 | 租户内订单可见 |
+| waves | `waves_tenant_isolation` | ⏳ 待启用 | 租户内波次可见 |
+| work_orders | `work_orders_tenant_isolation` | ⏳ 待启用 | 租户内工单可见 |
+| billing_transactions | `billing_tenant_isolation` | ⏳ 待启用 | FINANCE/ADMIN 可见 |
+
+> **⚠️ 重要**：生产环境部署前必须在 Supabase Dashboard 或通过迁移脚本启用所有 RLS 策略，并验证租户隔离生效。
+
+---
+
+### 迁移脚本对应关系
+
+| 迁移文件 | 包含表 | 状态 |
+|----------|--------|------|
+| `supabase/migrations/001_enterprise_core_schema.sql` | 1-19 核心表 | ✅ 已执行 |
+| `supabase/migrations/002_fulfillment_chain.sql` | Phase A 履约链表 (15+) | ✅ 已执行 |
+| `supabase/migrations/003_rls_policies.sql` | RLS 策略定义 | ⏳ 待创建/执行 |
+
+---
+
+### 版本记录
+
+| 版本 | 日期 | 变更内容 |
+|------|------|----------|
+| 1.0.0 | 2025-07-01 | 初始 Schema 定义 |
+| 1.1.0 | 2025-07-07 | 新增 RLS 策略状态表、迁移脚本对应关系 |
