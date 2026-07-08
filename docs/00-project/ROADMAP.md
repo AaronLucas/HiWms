@@ -18,9 +18,25 @@
 ## 阶段 1：核心后端服务实现（Supabase + Edge Functions）
 
 ### 1.1 Supabase 数据库迁移与种子数据
-- [ ] 生成迁移脚本（基于 `knowledge/rbac_schema.sql` 与 `uniWMS_Final_Full_Enterprise.sql` 的必要表）
-- [ ] 编写种子数据脚本（系统角色、基础权限、演示租户）
-- [ ] 在 Supabase Dashboard 执行迁移并验证
+- [x] 替换迁移脚本为 V2.1 统一全量脚本（`supabase/migrations/001_initial_schema.sql`）
+- [x] 同步更新 `docs/03-database/DB_SCHEMA.md` 与 V2.1 SQL 严格对齐
+- [ ] 编写种子数据脚本（系统角色、基础权限、演示租户、默认库位类型、承运商面单模板）
+- [ ] 在 Supabase Dashboard 执行迁移并验证（含 RLS、CHECK 约束、触发器、视图、RPC）
+
+### 1.2 核心业务 RPC / Edge Functions
+- [x] `fn_logic_stock_allocation`（跨箱分配：散货优先→FEFO→入库时间）
+- [x] `fn_logic_resolve_blackbox_box`（黑盒入库解析：扫箱不扫货，开箱确认 SKU）
+- [x] `fn_trg_inventory_version_manager`（乐观锁版本自增触发器）
+- [x] `fn_trg_inventory_history`（库存变动历史审计触发器）
+- [x] `check_user_permission`（RBAC 权限检查 RPC，SECURITY DEFINER）
+- [x] `fn_match_cross_dock`（直通匹配：入库单+SKU→匹配出库单，按优先级/截单时间）
+- [x] `fn_allocate_chute`（滑道分配：优先填满已用滑道、集中分拣）
+- [x] `fn_verify_weight`（重量校验：基于验货规则当前生效版本）
+- [x] `fn_get_active_billing_rule`（查询生效计费规则：规范化表优先，回退 JSONB）
+- [x] `fn_trg_enforce_product_constraints`（存储合规强校验：库位类型/冷链/危险品互斥）
+- [x] `fn_current_tenant_id`（获取当前租户 ID：优先 JWT app_metadata，回退 users 表）
+- [x] `fn_cross_dock_timeout_sweep`（直通超时自动降级 FALLBACK，可挂 pg_cron）
+- [x] `fn_purge_old_action_logs`（历史日志清理：wo_action_logs + inventory_history，可挂 pg_cron）
 
 ### 1.2 核心业务 RPC / Edge Functions
 - [ ] `fn_logic_stock_allocation`（185 件跨箱分配逻辑）
@@ -220,3 +236,17 @@
 | (新增) | `docs/07-development/DEVELOPMENT.md` | 开发命令、Docker、部署脚本、排查指南 |
 
 根目录 `CLAUDE.md` 保留核心规则、RTK 指令、暂停节点，**新增文档索引**指向 `docs/` 结构。
+
+---
+
+## V2.1 Schema 迁移执行记录 (2026-07-08)
+
+| 执行项 | 状态 | 产出 | 备注 |
+|--------|------|------|------|
+| 替换迁移脚本 | ✅ 完成 | `supabase/migrations/001_initial_schema.sql` (93KB) | 3 个历史文件 → 1 个 V2.1 统一脚本 |
+| 历史迁移备份 | ✅ 完成 | `supabase/migrations.backup.2026-07-08_07-59-27/` | 可随时回滚 |
+| DB_SCHEMA.md 同步重写 | ✅ 完成 | `docs/03-database/DB_SCHEMA.md` v2.1.0 | 38 表全覆盖、RLS/CHECK/触发器/视图/RPC 全对齐 |
+| ROADMAP 进度同步 | ✅ 完成 | 本文件 | 阶段 1.1/1.2 关键项标记完成 |
+| 执行计划文档 | ✅ 完成 | `docs/04-workflows/EXECUTION_PLAN_V21_MIGRATION.md` | 4 阶段可验证、可回滚方案 |
+
+> **后续**：创建种子数据脚本、同步 API_SPEC.md、新增 ADR 记录（P1 任务）
