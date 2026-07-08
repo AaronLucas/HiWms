@@ -47,9 +47,8 @@ coverage/
 # Readonly directory (not for upload)
 .readonly/
 
-# Supabase - track migrations only
-supabase/*
-!supabase/migrations/
+# Supabase - exclude entire supabase directory (contains sensitive config)
+supabase/
 
 # Claude local artifacts (worktrees, local settings)
 .claude/worktrees/
