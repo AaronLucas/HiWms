@@ -219,3 +219,20 @@
 - 文件上传（如产品图片）使用 Supabase Storage
 - 第三方物流接口（EDI / API）网关
 - AI 需求预测微服务（调用外部模型）
+## 核心业务 RPC（V2.1 新增）
+> 通过 PostgREST `rpc` 端点调用：`POST /rpc/<function_name>`
+
+| RPC 函数 | 参数 | 返回值 | 描述 |
+|----------|------|--------|------|
+| `fn_logic_stock_allocation` | `p_order_id uuid, p_sku_id uuid, p_needed_qty numeric` | `TABLE(source_lpn varchar, alloc_qty numeric)` | **跨箱库存分配**：散货优先 → 近效期(FEFO) → 入库时间早 |
+| `fn_logic_resolve_blackbox_box` | `p_lpn_code varchar, p_sku_id uuid, p_qty numeric, p_batch varchar` | `void` | **黑盒入库解析**：扫箱不扫货，开箱时确认 SKU/数量，置 `picking_priority=99` |
+| `fn_match_cross_dock` | `p_receipt_id uuid, p_sku_id uuid, p_qty numeric` | `TABLE(job_id uuid, outbound_order_id uuid, matched_qty numeric, staging_loc_id uuid)` | **直通匹配**：入库单+SKU→匹配出库单，按优先级/截单时间排序 |
+| `fn_allocate_chute` | `p_wave_id uuid, p_sku_id uuid` | `TABLE(chute_id uuid, chute_code varchar, allocated_qty numeric)` | **滑道分配**：优先填满已用滑道、集中分拣 |
+| `fn_verify_weight` | `p_sku_id uuid, p_actual_weight numeric` | `TABLE(passed boolean, tolerance_pct numeric, expected_min numeric, expected_max numeric, rule_id uuid)` | **重量校验**：基于验货规则当前生效版本自动判定 |
+| `fn_get_active_billing_rule` | `p_tenant_id uuid` | `TABLE(rule_id uuid, rule_name varchar, currency varchar, source varchar)` | **查询生效计费规则**：规范化表优先，回退 JSONB |
+| `check_user_permission` | `p_user_id uuid, p_resource varchar, p_action varchar, p_scope varchar` | `TABLE(has_permission boolean)` | **RBAC 权限检查**：供 AuthMiddleware 调用 |
+| `fn_current_tenant_id` | 无 | `uuid` | **获取当前租户 ID**：优先 JWT app_metadata，回退 users 表 |
+| `adjust_inventory` | `p_tenant_id uuid, p_sku varchar, p_quantity numeric, p_reason varchar` | `TABLE(id uuid, quantity numeric)` | **库存调整**：入库/出库/盘点，乐观锁保护 |
+| `fn_cross_dock_timeout_sweep` | 无 | `int` | **直通超时自动降级**：MATCHED/STAGING→FALLBACK（挂 pg_cron 每 5 分） |
+| `fn_purge_old_action_logs` | `p_days int DEFAULT 180` | `TABLE(purged_wo_logs bigint, purged_inventory_history bigint)` | **历史日志清理**：wo_action_logs + inventory_history（挂 pg_cron 每天 3 点） |
+
