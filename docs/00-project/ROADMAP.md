@@ -20,8 +20,8 @@
 ### 1.1 Supabase 数据库迁移与种子数据
 - [x] 替换迁移脚本为 V2.1 统一全量脚本（`supabase/migrations/001_initial_schema.sql`）
 - [x] 同步更新 `docs/03-database/DB_SCHEMA.md` 与 V2.1 SQL 严格对齐
-- [ ] 编写种子数据脚本（系统角色、基础权限、演示租户、默认库位类型、承运商面单模板）
-- [ ] 在 Supabase Dashboard 执行迁移并验证（含 RLS、CHECK 约束、触发器、视图、RPC）
+- [x] 编写种子数据脚本（系统角色、基础权限、演示租户、默认库位类型、承运商面单模板）
+- [x] 在 Supabase Dashboard 执行迁移并验证（含 RLS、CHECK 约束、触发器、视图、RPC）
 
 ### 1.2 核心业务 RPC / Edge Functions
 - [x] `fn_logic_stock_allocation`（跨箱分配：散货优先→FEFO→入库时间）
@@ -248,5 +248,6 @@
 | DB_SCHEMA.md 同步重写 | ✅ 完成 | `docs/03-database/DB_SCHEMA.md` v2.1.0 | 38 表全覆盖、RLS/CHECK/触发器/视图/RPC 全对齐 |
 | ROADMAP 进度同步 | ✅ 完成 | 本文件 | 阶段 1.1/1.2 关键项标记完成 |
 | 执行计划文档 | ✅ 完成 | `docs/04-workflows/EXECUTION_PLAN_V21_MIGRATION.md` | 4 阶段可验证、可回滚方案 |
+| 种子数据脚本创建与修复 | ✅ 完成 | `supabase/seed.sql` | 修复 FK 约束顺序：tenant 先于 roles 创建 |
 
 > **后续**：创建种子数据脚本、同步 API_SPEC.md、新增 ADR 记录（P1 任务）

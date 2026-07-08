@@ -49,8 +49,6 @@ coverage/
 
 # Supabase - track migrations and seed only
 supabase/*
-!supabase/migrations/
-!supabase/seed.sql
 
 # Claude local artifacts (worktrees, local settings)
 .claude/worktrees/
