@@ -38,18 +38,6 @@
 - [x] `fn_cross_dock_timeout_sweep`（直通超时自动降级 FALLBACK，可挂 pg_cron）
 - [x] `fn_purge_old_action_logs`（历史日志清理：wo_action_logs + inventory_history，可挂 pg_cron）
 
-### 1.2 核心业务 RPC / Edge Functions
-- [ ] `fn_logic_stock_allocation`（185 件跨箱分配逻辑）
-- [ ] `fn_logic_resolve_blackbox_box`（黑盒入库解析）
-- [ ] `fn_trg_inventory_version_manager`（乐观锁版本管理）
-- [ ] `fn_trg_inventory_history`（库存变动历史触发器）
-- [ ] `check_user_permission`（已在 SQL 中定义，需部署并授权）
-
-### 1.3 云函数扩展（Cloudflare Workers）
-- [ ] 扩展缓存键策略：支持 `products`、`inventory`、`orders` 等高频读表
-- [ ] 实现条件刷新：写操作后自动失效对应 KV 键
-- [ ] 添加请求速率限制（每租户每分钟 120 次）
-- [ ] 集成 Supabase Realtime 订阅转发（可选）
 
 ---
 
@@ -256,4 +244,4 @@
 | P2 任务：RPC 客户端封装 | ✅ 完成 | `src/supabase/rpc.ts` | 类型安全、自动租户注入、统一错误处理
 | P2 任务：RLS 兼容中间件 | ✅ 完成 | `src/middleware/rls.ts` | Worker/Express 通用、JWT 解析、Header 注入
 
-> **后续**：创建种子数据脚本、同步 API_SPEC.md、新增 ADR 记录（P1 任务）
+> **后续**：P1 全项完成 ✅、进入阶段 2 前端骨架与阶段 4 CI/CD
