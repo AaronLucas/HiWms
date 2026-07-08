@@ -162,6 +162,51 @@ POST   /api/work-orders/{id}/complete # 工单完成
 - 策略命名：`{table}_{action}_{role}`（`products_select_tenant_user`）
 - 使用 `auth.jwt() ->> 'tenant_id'` 获取当前租户
 
+### 5.4 命名约定补充（V2.1 Schema 对齐）
+
+#### 5.4.1 状态字段
+- 统一使用 `status` 列名，值为大写蛇形（`PENDING`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`, `EXCEPTION`）
+- **必须**加 `CHECK` 约束（`chk_{table}_status`），允许值显式列出
+- 禁止使用 `is_xxx` 布尔列代替状态机
+
+#### 5.4.2 时间戳
+- 创建时间：`created_at` (timestamptz, DEFAULT CURRENT_TIMESTAMP)
+- 更新时间：`updated_at` (timestamptz, DEFAULT CURRENT_TIMESTAMP) —— **38 表全覆盖**，由 `fn_update_updated_at()` 触发器维护
+- **故意不加 `updated_at` 的表**（纯追加审计/关联表）：
+  `inventory_history`, `wo_action_logs`, `wave_order_mapping`, `role_permissions`, `user_roles`, `permissions`, `inspection_items`, `vas_boms`, `vas_bom_items`, `shipping_documents`
+
+#### 5.4.3 乐观锁
+- 核心业务表（`inventory` 等）加 `version bigint DEFAULT 1`
+- 更新前检查：`WHERE id = $1 AND version = $2` → `version = version + 1`
+- 触发器 `trg_inventory_version_update` (BEFORE UPDATE) 自动维护
+
+#### 5.4.4 版本化设计
+- 需历史回溯的规则表（`verification_rules`, `billing_rules`）加：
+  - `effective_from` (date, NOT NULL)
+  - `effective_to` (date, NULL 表示当前生效)
+- 唯一索引保证当前生效唯一：`uq_{table}_current` WHERE `effective_to IS NULL`
+
+#### 5.4.5 UUID 固定值（Seed 数据）
+- 系统级固定 UUID：`00000000-0000-0000-0000-000000000001` 等
+- 租户级固定 UUID：`00000000-0000-0000-0000-000000000001` (Demo Tenant)
+- 角色固定 UUID：SUPER_ADMIN=...0001, ADMIN=...0002, OPERATOR=...0003, INSPECTOR=...0004, PACKER=...0005, LOADER=...0006
+
+#### 5.4.6 JSONB 结构规范
+- `billing_strategy` (tenants)：
+  ```json
+  {
+    "storage_stepped": [{min_days, max_days, rate, description, billing_cycle, prorated, min_charge, max_charge, currency, effective_date, expiry_date, escalation, discounts}],
+    "currency": "USD"
+  }
+  ```
+- `contact_info` (tenants)：`{email, phone, address}`
+- `dims` (package_specs/locations/containers)：`{length, width, height}` (cm/m)
+- `label_position` (package_specs)：`{x, y, rotation}`
+
+#### 5.4.7 触发器命名
+- `trg_{table}_{action}`：`trg_inventory_version_update`, `trg_inventory_history`, `trg_enforce_product_constraints`
+- `trg_{table}_updated_at`：统一由 DO 块批量挂载 `fn_update_updated_at()`
+
 ---
 
 ## 6. 测试规范

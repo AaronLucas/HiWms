@@ -249,5 +249,11 @@
 | ROADMAP 进度同步 | ✅ 完成 | 本文件 | 阶段 1.1/1.2 关键项标记完成 |
 | 执行计划文档 | ✅ 完成 | `docs/04-workflows/EXECUTION_PLAN_V21_MIGRATION.md` | 4 阶段可验证、可回滚方案 |
 | 种子数据脚本创建与修复 | ✅ 完成 | `supabase/seed.sql` | 修复 FK 约束顺序：tenant 先于 roles 创建 |
+| P1 任务：API_SPEC.md 同步 V2.1 RPC | ✅ 完成 | `docs/02-api/API_SPEC.md` | 10 核心 RPC 全收录
+| P1 任务：ADR 记录 (001-003) | ✅ 完成 | `docs/01-architecture/ADR/` | RLS、计费双轨、履约链路设计
+| P1 任务：CONVENTIONS.md 补充 DB 规范 | ✅ 完成 | `docs/00-project/CONVENTIONS.md` | 状态字段、时间戳、乐观锁、版本化、UUID、JSONB、触发器命名
+| P1 任务：TypeScript 类型生成 | ✅ 完成 | `src/types/database.ts` | 3182 行、38 表、10 RPC、10 视图全覆盖
+| P2 任务：RPC 客户端封装 | ✅ 完成 | `src/supabase/rpc.ts` | 类型安全、自动租户注入、统一错误处理
+| P2 任务：RLS 兼容中间件 | ✅ 完成 | `src/middleware/rls.ts` | Worker/Express 通用、JWT 解析、Header 注入
 
 > **后续**：创建种子数据脚本、同步 API_SPEC.md、新增 ADR 记录（P1 任务）
