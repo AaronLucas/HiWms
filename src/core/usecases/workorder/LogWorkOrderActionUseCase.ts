@@ -171,7 +171,9 @@ export class LogWorkOrderActionUseCase {
 
     for (const log of logs) {
       const qty = log.qty_acted || 0;
-      const hours = (log.end_at.getTime() - log.start_at.getTime()) / 3600000;
+      const startAt = log.start_at ? new Date(log.start_at).getTime() : 0;
+      const endAt = log.end_at ? new Date(log.end_at).getTime() : 0;
+      const hours = (endAt - startAt) / 3600000;
 
       totalQty += qty;
       totalHours += hours;
