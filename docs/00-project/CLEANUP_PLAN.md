@@ -85,15 +85,15 @@ npm run lint 2>&1 | grep -E "^src/" | cut -d: -f1-3 | sort -u | comm -13 lint-ba
 | 2.2.11 | src/services/ActionLogService.ts | `SupabaseClient` | 同上 | 同上 | ✅ 已执行 |
 | 2.2.12 | src/services/LoadingService.ts | 同上 | 同上 | 同上 | ✅ 已执行 |
 | 2.2.13 | src/services/ProductConstraintService.ts | 同上 | 同上 | 同上 | ✅ 已执行 |
-| 2.2.14 | src/services/ReplenishmentScheduler.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.15 | src/services/WorkOrderService.ts | 同上 | 同上 | 同上 | ⏳ |
+| 2.2.14 | src/services/ReplenishmentScheduler.ts | `SupabaseClient` | 同上 | 同上 | ⏭️ **已替代** (Phase 3.3.2 创建 UseCase 替代) |
+| 2.2.15 | src/services/WorkOrderService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.3.1 创建 UseCase 替代) |
 | 2.2.16 | src/services/BillingEngine.ts | 同上 | 同上 | 同上 | ⏳ |
 | 2.2.17 | src/services/SortingService.ts | 同上 | 同上 | 同上 | ⏳ |
 | 2.2.18 | src/services/PackingService.ts | 同上 | 同上 | 同上 | ⏳ |
 | 2.2.19 | src/services/VerificationService.ts | 同上 | 同上 | 同上 | ⏳ |
 | 2.2.20 | src/services/StockAllocationService.ts | 同上 | 同上 | 同上 | ⏳ |
 | 2.2.21 | src/services/BlackboxReceivingService.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.22 | src/workflows/tasks.ts | `SupabaseClient, createSupabaseClientFromEnv` | 同上 | **Phase 1 删除，跳过** | ⏳ |
+| 2.2.22 | src/workflows/tasks.ts | `SupabaseClient, createSupabaseClientFromEnv` | 同上 | **Phase 1 删除，跳过** | ⏭️ 已删除 |
 
 **执行模板（每个子任务）**：
 ```bash
