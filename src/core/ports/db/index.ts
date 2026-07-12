@@ -1,6 +1,18 @@
+export { IRepository } from './IRepository';
 export { IInventoryRepository } from './IInventoryRepository';
 export { IOrderRepository } from './IOrderRepository';
 export { IProductRepository } from './IProductRepository';
-export { IRepository } from './IRepository';
 export { ITenantRepository } from './ITenantRepository';
 export { IWorkOrderRepository } from './IWorkOrderRepository';
+
+// Phase 1 新增端口
+export { ILocationRepository } from './ILocationRepository';
+export { IContainerRepository } from './IContainerRepository';
+export { ILoadingTaskRepository } from './ILoadingTaskRepository';
+export { IDeviceRepository } from './IDeviceRepository';
+export { IInventoryLockRepository } from './IInventoryLockRepository';
+export { IInventoryReservationRepository } from './IInventoryReservationRepository';
+
+// Phase 1 已完成的端口
+export { IProductConstraintRepository } from './IProductConstraintRepository';
+export { IRoleRepository } from './IRoleRepository';

@@ -2,7 +2,7 @@
  * 角色仓储端口接口
  */
 import { IRepository } from './IRepository';
-import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
 
 export type RoleRow = Tables<'roles'>;
 export type RoleInsert = TablesInsert<'roles'>;
@@ -20,10 +20,20 @@ export type UserRoleRow = Tables<'user_roles'>;
 export type UserRoleInsert = TablesInsert<'user_roles'>;
 export type UserRoleUpdate = TablesUpdate<'user_roles'>;
 
-export interface IRoleRepository {
-  // Roles
-  findRoleByName(name: string): Promise<RoleRow | null>;
-  findRoleById(id: string): Promise<RoleRow | null>;
+export interface IRoleRepository extends IRepository<RoleRow, RoleInsert, RoleUpdate> {
+  /**
+   * 按名称查找角色
+   */
+  findByName(name: string): Promise<RoleRow | null>;
+
+  /**
+   * 按 ID 查找角色
+   */
+  findById(id: string): Promise<RoleRow | null>;
+
+  /**
+   * 创建角色
+   */
   createRole(data: RoleInsert): Promise<RoleRow>;
 
   // Permissions
