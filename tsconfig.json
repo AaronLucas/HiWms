@@ -13,7 +13,17 @@
     "declaration": true,
     "outDir": "./dist",
     "jsx": "preserve",
-    "noEmitOnError": false
+    "noEmitOnError": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@core/*": ["src/core/*"],
+      "@adapters/*": ["src/adapters/*"],
+      "@apps/*": ["src/apps/*"],
+      "@configs/*": ["src/configs/*"],
+      "@types/*": ["src/types/*"]
+    },
+    "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "workflow-engine"]

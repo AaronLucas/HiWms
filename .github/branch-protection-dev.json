@@ -1,0 +1,57 @@
+{
+  "branch_name": "dev",
+  "note": "此 JSON 为 GitHub Branch Protection API (PUT /repos/{owner}/{repo}/branches/{branch}/protection) 的请求体。可通过 curl 或 Postman 直接发送，或对照 GitHub 网页 UI 手动勾选。",
+  "payload": {
+    "required_status_checks": {
+      "strict": true,
+      "contexts": [
+        "ci",
+        "test",
+        "build",
+        "lint",
+        "typecheck"
+      ]
+    },
+    "enforce_admins": false,
+    "required_pull_request_reviews": {
+      "dismiss_stale_reviews": true,
+      "require_code_owner_reviews": false,
+      "required_approving_review_count": 0
+    },
+    "restrictions": null,
+    "allow_force_pushes": false,
+    "allow_deletions": false,
+    "required_linear_history": true,
+    "allow_auto_merge": true,
+    "required_conversation_resolution": true,
+    "lock_branch": false,
+    "allow_fork_syncing": true
+  },
+  "curl_example": "curl -X PUT \\\n  -H \"Authorization: Bearer <YOUR_GITHUB_TOKEN>\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  -H \"X-GitHub-Api-Version: 2022-11-28\" \\\n  https://api.github.com/repos/AaronLucas/HiWms/branches/dev/protection \\\n  -d @branch-protection-dev.json",
+  "manual_ui_mapping": {
+    "Settings → Branches → Branch protection rules → Add rule": {
+      "Branch name pattern": "dev",
+      "✅ Require a pull request before merging": {
+        "✅ Require approvals": "0 (或按需设置)",
+        "✅ Dismiss stale PR approvals when new commits are pushed": true,
+        "✅ Require review from Code Owners": false
+      },
+      "✅ Require status checks to pass before merging": {
+        "✅ Require branches to be up to date before merging": true,
+        "Status checks that are required": [
+          "ci",
+          "test",
+          "build",
+          "lint",
+          "typecheck"
+        ]
+      },
+      "✅ Require linear history": true,
+      "✅ Require conversation resolution before merging": true,
+      "✅ Allow auto-merge": true,
+      "✅ Allow force pushes": false,
+      "✅ Allow deletions": false
+    }
+  },
+  "note_on_checks": "contexts 数组中的名称必须与你的 GitHub Actions workflow job 名称完全一致。在 .github/workflows/ci.yml 中查看 jobs.<job_id>.name 或直接用 job id。"
+}

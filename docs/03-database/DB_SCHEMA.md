@@ -389,4 +389,20 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 
 ---
 
+## 13. 相关文档
+
+| 文档 | 路径 | 说明 |
+|------|------|------|
+| **架构设计** | `docs/01-architecture/ARCHITECTURE.md` | 系统架构、数据流、ADR |
+| **API 规范** | `docs/02-api/API_SPEC.md` | OpenAPI 端点、RPC、认证 |
+| **PDA 离线同步设计** | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` | 同步协议、版本向量、OT/CRDT |
+| **设备端 API 协议** | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` | REST/WebSocket 接口、同步契约 |
+| **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 本地表结构、触发器、索引、加密 |
+| **冲突解决策略矩阵** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 20 场景、算法、工作流、监控 |
+| **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | 完整契约、分片、游标、版本控制 |
+| **仓储层设计** | `docs/03-database/REPOSITORY_DESIGN.md` | 聚合根、端口、实现策略 |
+| **仓储层路线图** | `docs/03-database/REPOSITORY_ROADMAP.md` | 实施计划、里程碑 |
+
+---
+
 *本文档为单一事实来源，与 `supabase/migrations/001_initial_schema.sql` 严格同步。任何 Schema 变更需同时更新此文档与迁移脚本。*

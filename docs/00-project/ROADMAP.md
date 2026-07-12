@@ -38,18 +38,15 @@
 - [x] `fn_cross_dock_timeout_sweep`（直通超时自动降级 FALLBACK，可挂 pg_cron）
 - [x] `fn_purge_old_action_logs`（历史日志清理：wo_action_logs + inventory_history，可挂 pg_cron）
 
-### 1.2 核心业务 RPC / Edge Functions
-- [ ] `fn_logic_stock_allocation`（185 件跨箱分配逻辑）
-- [ ] `fn_logic_resolve_blackbox_box`（黑盒入库解析）
-- [ ] `fn_trg_inventory_version_manager`（乐观锁版本管理）
-- [ ] `fn_trg_inventory_history`（库存变动历史触发器）
-- [ ] `check_user_permission`（已在 SQL 中定义，需部署并授权）
 
-### 1.3 云函数扩展（Cloudflare Workers）
-- [ ] 扩展缓存键策略：支持 `products`、`inventory`、`orders` 等高频读表
-- [ ] 实现条件刷新：写操作后自动失效对应 KV 键
-- [ ] 添加请求速率限制（每租户每分钟 120 次）
-- [ ] 集成 Supabase Realtime 订阅转发（可选）
+### 1.4 PDA 离线同步核心后端（P0）
+- [ ] 实现同步队列 RPC：`fn_sync_push_operations`（批量写入、幂等去重、版本向量校验）
+- [ ] 实现冲突检测 RPC：`fn_sync_detect_conflicts`（版本向量比对、业务规则校验）
+- [ ] 实现增量拉取 RPC：`fn_sync_pull_incremental`（游标分页、多表并行）
+- [ ] 实现冲突解决 RPC：`fn_sync_resolve_conflict`（OT/CRDT/LWW/MANUAL 策略执行）
+- [ ] 部署 Device API `/sync` 端点（Express + 认证/限流/分片/重试）
+- [ ] 实现 WebSocket 推送服务：任务下发、同步触发、实时进度
+- [ ] 配置 pg_cron 定时任务：同步会话清理、游标过期清理、冲突超时升级
 
 ---
 
@@ -76,7 +73,20 @@
 | **财务计费** | 账单列表、明细、导出、对账 | 多币种、阶梯定价演示 |
 | **系统管理** | 用户/角色/权限、租户配置、审计日志 | RBAC 可视化编辑器 |
 
-### 2.3 组件库与通用逻辑
+### 2.3 PDA 离线优先前端开发（P0 - 并行 Phase 1.4）
+- [ ] PDA 端本地 SQLite 初始化（SQLCipher 加密、Schema 迁移、版本管理）
+- [ ] 同步引擎核心：队列管理、分片上传、断点续传、重试策略
+- [ ] 版本向量计算与冲突预检（本地乐观锁版本维护）
+- [ ] 冲突解决 UI：并排对比、策略选择、预览合并结果、风险提示
+- [ ] 核心作业离线流程：收货扫描→质检→上架、拣选扫码→确认数量、打包扫箱→加品→封箱→面单打印、分拣扫码→滑道分配、发货扫码→交接、盘点扫码→差异提交
+- [ ] 后台同步调度：网络感知、电量感知、优先级队列、WiFi/4G/5G 差异化策略
+- [ ] WebSocket 实时通道：任务下发、进度推送、同步触发、指令下达
+- [ ] 设备硬件集成：条码扫描枪、RFID、蓝牙打印机、GPS、相机、电量监听
+- [ ] 本地数据查询：商品/库位/库存/任务全离线检索、模糊搜索、条码反查
+- [ ] 异常/照片/签名本地缓存 + 后台异步上传 R2（预签名 URL、断点续传）
+- [ ] 多租户切换：本地数据隔离清理、全量重同步、游标重置
+
+### 2.4 组件库与通用逻辑
 - [ ] 表格、表单、模态框、下拉树、条码扫描器封装
 - [ ] 权限指令（`v-permission`）与路由守卫
 - [ ] 国际化（中/英）与主题切换
@@ -249,5 +259,11 @@
 | ROADMAP 进度同步 | ✅ 完成 | 本文件 | 阶段 1.1/1.2 关键项标记完成 |
 | 执行计划文档 | ✅ 完成 | `docs/04-workflows/EXECUTION_PLAN_V21_MIGRATION.md` | 4 阶段可验证、可回滚方案 |
 | 种子数据脚本创建与修复 | ✅ 完成 | `supabase/seed.sql` | 修复 FK 约束顺序：tenant 先于 roles 创建 |
+| P1 任务：API_SPEC.md 同步 V2.1 RPC | ✅ 完成 | `docs/02-api/API_SPEC.md` | 10 核心 RPC 全收录
+| P1 任务：ADR 记录 (001-003) | ✅ 完成 | `docs/01-architecture/ADR/` | RLS、计费双轨、履约链路设计
+| P1 任务：CONVENTIONS.md 补充 DB 规范 | ✅ 完成 | `docs/00-project/CONVENTIONS.md` | 状态字段、时间戳、乐观锁、版本化、UUID、JSONB、触发器命名
+| P1 任务：TypeScript 类型生成 | ✅ 完成 | `src/types/database.ts` | 3182 行、38 表、10 RPC、10 视图全覆盖
+| P2 任务：RPC 客户端封装 | ✅ 完成 | `src/supabase/rpc.ts` | 类型安全、自动租户注入、统一错误处理
+| P2 任务：RLS 兼容中间件 | ✅ 完成 | `src/middleware/rls.ts` | Worker/Express 通用、JWT 解析、Header 注入
 
-> **后续**：创建种子数据脚本、同步 API_SPEC.md、新增 ADR 记录（P1 任务）
+> **后续**：P1 全项完成 ✅、进入阶段 2 前端骨架与阶段 4 CI/CD
