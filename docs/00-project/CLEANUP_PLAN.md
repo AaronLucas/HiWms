@@ -125,7 +125,7 @@ git commit -m "chore(migrate): AuthMiddleware -> WmsSupabaseClient (2.2.1)"
 #### Batch 3.2（依赖 IInventoryRepository）
 | 子任务 | 源 Service | 目标 UseCase | 需注入的 Port | 状态 |
 |--------|------------|--------------|---------------|------|
-| 3.2.1 | ProductConstraintService | `src/core/usecases/inventory/ManageProductConstraintUseCase.ts` | `IProductRepository`, `IProductConstraintRepository` | ⏳ |
+| 3.2.1 | ProductConstraintService | `src/core/usecases/inventory/ManageProductConstraintUseCase.ts` | `IProductRepository`, `IProductConstraintRepository` | ✅ 已执行 |
 | 3.2.2 | StockAllocationService | `src/core/usecases/inventory/AllocateInventoryUseCase.ts` (已存在) | `IInventoryRepository` | ⏳ |
 | 3.2.3 | BlackboxReceivingService | `src/core/usecases/inbound/ResolveBlackboxUseCase.ts` (已存在) | `IInventoryRepository`, `IInboundReceiptRepository` | ⏳ |
 

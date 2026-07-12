@@ -95,12 +95,12 @@ export class ManageProductConstraintUseCase {
     }
 
     const constraint: ProductConstraint = {
-      skuId: row.sku_id,
-      requiredZoneType: row.required_zone_type,
-      hsCode: row.hs_code,
-      isDangerous: row.is_dangerous,
-      maxOutFridgeSeconds: row.max_out_fridge_seconds,
-      storageTempRange: row.storage_temp_range,
+      skuId: row.product_id,
+      requiredZoneType: row.required_zone_type as any ?? undefined,
+      hsCode: row.hs_code ?? undefined,
+      isDangerous: row.is_dangerous ?? false,
+      maxOutFridgeSeconds: row.max_out_fridge_seconds ?? undefined,
+      storageTempRange: row.storage_temp_range ?? undefined,
       expiryThresholdDays: row.expiry_threshold_days ?? 30,
       hazmatIncompatibilityTags: row.hazmat_incompatibility_tags || [],
       mustScanSn: row.must_scan_sn ?? false,
@@ -289,7 +289,7 @@ export class ManageProductConstraintUseCase {
     for (const row of rows) {
       const constraint: ProductConstraint = {
         skuId: row.product_id,
-        requiredZoneType: row.required_zone_type ?? undefined,
+        requiredZoneType: row.required_zone_type as any ?? undefined,
         hsCode: row.hs_code ?? undefined,
         isDangerous: row.is_dangerous ?? false,
         maxOutFridgeSeconds: row.max_out_fridge_seconds ?? undefined,
