@@ -56,12 +56,23 @@ npm run lint 2>&1 | grep -E "^src/" | cut -d: -f1-3 | sort -u | comm -13 lint-ba
 
 ---
 
-### Phase 2.1 & 2.3：单命令级
+## ⚠️ 阻塞关系说明（2026-07-13 新增）
 
-| 子任务 | 命令 | 前置条件 | 状态 |
-|--------|------|----------|------|
-| 2.1 | `rm -rf src/workflows/` | 无 | ✅ 已执行 |
-| 2.3 | `rm -rf src/supabase/` | **Phase 2.2 全部完成** | ⏳ 待确认 |
+> **Phase 2.3 删除 `src/supabase/` 与 Phase 4 路由迁移，必须阻塞等待 [INFRA_ALIGNMENT_PLAN](../04-workflows/INFRA_ALIGNMENT_PLAN.md) 完成。**
+>
+> **原因**：
+> - 当前 32 个表缺少 Repository 端口/实现，8 个核心 RPC 缺少 UseCase
+> - `src/supabase/` 中的 `RpcClient` 仍被多处直接调用，删除会导致编译失败
+> - Phase 4 路由层需引用完整的 UseCase，而非残缺的 Service/Repository
+>
+> **执行策略**：
+> 1. 暂停 CLEANUP_PLAN Phase 2.3、Phase 4
+> 2. 并行执行 INFRA_ALIGNMENT_PLAN Phase A→B→C→D（预估 4.5 周）
+> 3. 基础设施对齐完成后，回收 CLEANUP_PLAN 剩余阶段
+
+---
+
+### Phase 2.1 & 2.3：单命令级
 
 ---
 
