@@ -3,7 +3,7 @@
 ## 项目概览
 - **总表数**：34 个业务表 + 6 个 PDA 本地表
 - **聚合根数**：30 个
-- **已完成**：5 个
+- **已完成**：9 个（含 CLEANUP 并行提前完成 4 个）
 - **待完成**：25 个
 - **分 4 个优先级阶段实施**
 
@@ -25,6 +25,8 @@
 | 9 | `src/core/ports/db/IDeviceRepository.ts` | ⏳ 待开始 | ~70 | PDA/设备管理 |
 | 10 | `src/core/ports/db/IInventoryLockRepository.ts` | ⏳ 待开始 | ~70 | 库存悲观锁 |
 | 11 | `src/core/ports/db/IInventoryReservationRepository.ts` | ⏳ 待开始 | ~80 | 库存预留/乐观锁 |
+| 12 | `src/core/ports/db/IProductConstraintRepository.ts` | ✅ **已完成** | ~80 | 物料约束 (CLEANUP 提前完成) |
+| 13 | `src/core/ports/db/IRoleRepository.ts` | ✅ **已完成** | ~80 | 角色管理 (CLEANUP 提前完成) |
 
 ### 1.2 Supabase 实现
 | # | 文件 | 状态 | 预估行数 | 依赖 |
@@ -33,13 +35,15 @@
 | 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` | ⏳ 待开始 | ~160 | IContainerRepository |
 | 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` | ⏳ 待开始 | ~220 | IInboundReceiptRepository |
 | 4 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` | ⏳ 待开始 | ~200 | IWaveRepository |
-| 5 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ⏳ 待开始 | ~180 | ICrossDockJobRepository |
-| 6 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ⏳ 待开始 | ~180 | IPackingTaskRepository |
-| 7 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ⏳ 待开始 | ~200 | ISortingTaskRepository |
-| 8 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ⏳ 待开始 | ~160 | ILoadingTaskRepository |
-| 9 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ⏳ 待开始 | ~160 | IDeviceRepository |
-| 10 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ⏳ 待开始 | ~160 | IInventoryLockRepository |
-| 11 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ⏳ 待开始 | ~180 | IInventoryReservationRepository |
+| 3 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ⏳ 待开始 | ~180 | ICrossDockJobRepository |
+| 4 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ⏳ 待开始 | ~180 | IPackingTaskRepository |
+| 5 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ⏳ 待开始 | ~200 | ISortingTaskRepository |
+| 6 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ⏳ 待开始 | ~160 | ILoadingTaskRepository |
+| 7 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ⏳ 待开始 | ~160 | IDeviceRepository |
+| 8 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ⏳ 待开始 | ~160 | IInventoryLockRepository |
+| 9 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ⏳ 待开始 | ~180 | IInventoryReservationRepository |
+| 10 | `src/adapters/supabase/repositories/SupabaseProductConstraintRepository.ts` | ✅ **已完成** | ~180 | IProductConstraintRepository (CLEANUP 提前完成) |
+| 11 | `src/adapters/supabase/repositories/SupabaseRoleRepository.ts` | ✅ **已完成** | ~160 | IRoleRepository (CLEANUP 提前完成) |
 
 ### 1.3 索引更新
 - [ ] `src/core/ports/db/index.ts` - 导出 11 个新端口
@@ -51,7 +55,7 @@
 
 ---
 
-## Phase 3: P1 业务扩展（8个） - 次优先级
+## Phase 3: P1 业务扩展（6个） - 次优先级
 
 ### 3.1 端口定义
 | # | 文件 | 状态 | 预估行数 |
@@ -61,9 +65,8 @@
 | 3 | `src/core/ports/db/IBillingRuleRepository.ts` | ⏳ 待开始 | ~80 |
 | 4 | `src/core/ports/db/IBillingTransactionRepository.ts` | ⏳ 待开始 | ~70 |
 | 5 | `src/core/ports/db/IUserRepository.ts` | ⏳ 待开始 | ~90 |
-| 6 | `src/core/ports/db/IRoleRepository.ts` | ⏳ 待开始 | ~80 |
-| 7 | `src/core/ports/db/IAsnRepository.ts` | ⏳ 待开始 | ~90 |
-| 8 | `src/core/ports/db/IConsumableUsageRepository.ts` | ⏳ 待开始 | ~70 |
+| 6 | `src/core/ports/db/IAsnRepository.ts` | ⏳ 待开始 | ~90 |
+| 7 | `src/core/ports/db/IConsumableUsageRepository.ts` | ⏳ 待开始 | ~70 |
 
 ### 3.2 Supabase 实现
 | # | 文件 | 状态 |
@@ -73,13 +76,12 @@
 | 3 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` | ⏳ 待开始 |
 | 4 | `src/adapters/supabase/repositories/SupabaseBillingTransactionRepository.ts` | ⏳ 待开始 |
 | 5 | `src/adapters/supabase/repositories/SupabaseUserRepository.ts` | ⏳ 待开始 |
-| 6 | `src/adapters/supabase/repositories/SupabaseRoleRepository.ts` | ⏳ 待开始 |
-| 7 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ⏳ 待开始 |
-| 8 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ⏳ 待开始 |
+| 6 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ⏳ 待开始 |
+| 7 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ⏳ 待开始 |
 
 ### 3.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 8 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 8 个新实现
+- [ ] `src/core/ports/db/index.ts` - 导出 7 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 7 个新实现
 
 ---
 
@@ -143,12 +145,12 @@
 
 | 阶段 | 端口数 | 实现数 | 总文件数 | 预估代码行数 |
 |------|--------|--------|----------|-------------|
-| Phase 1 (P0 核心) | 11 | 11 | 22 | ~2,200 |
+| Phase 1 (P0 核心) | 13 | 13 | 26 | ~2,600 |
 | Phase 2 (P0 出库作业) | 8 | 8 | 16 | ~1,800 |
-| Phase 3 (P1 业务扩展) | 8 | 8 | 16 | ~1,600 |
+| Phase 3 (P1 业务扩展) | 7 | 7 | 14 | ~1,400 |
 | Phase 4 (P2 支撑域) | 6 | 6 | 12 | ~1,200 |
 | Phase 5 (PDA 同步专用) | 6 | 6 | 12 | ~1,500 |
-| **合计** | **39** | **39** | **78** | **~8,300** |
+| **合计** | **40** | **40** | **80** | **~8,500** |
 
 ---
 

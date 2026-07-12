@@ -58,7 +58,7 @@ npm run lint 2>&1 | grep -E "^src/" | cut -d: -f1-3 | sort -u | comm -13 lint-ba
 
 ## ⚠️ 阻塞关系说明（2026-07-13 新增）
 
-> **Phase 2.3 删除 `src/supabase/` 与 Phase 4 路由迁移，必须阻塞等待 [INFRA_ALIGNMENT_PLAN](../04-workflows/INFRA_ALIGNMENT_PLAN.md) 完成。**
+> **Phase 2.3 删除 `src/supabase/` 与 Phase 4 路由迁移，必须阻塞等待 [REPOSITORY_ROADMAP](../03-database/REPOSITORY_ROADMAP.md) Phase 1-2 完成。**
 >
 > **原因**：
 > - 当前 32 个表缺少 Repository 端口/实现，8 个核心 RPC 缺少 UseCase
@@ -67,7 +67,7 @@ npm run lint 2>&1 | grep -E "^src/" | cut -d: -f1-3 | sort -u | comm -13 lint-ba
 >
 > **执行策略**：
 > 1. 暂停 CLEANUP_PLAN Phase 2.3、Phase 4
-> 2. 并行执行 INFRA_ALIGNMENT_PLAN Phase A→B→C→D（预估 4.5 周）
+> 2. 优先并行执行 REPOSITORY_ROADMAP Phase 1-2（预估 2-3 周）
 > 3. 基础设施对齐完成后，回收 CLEANUP_PLAN 剩余阶段
 
 ---
@@ -191,7 +191,24 @@ git commit -m "chore(migrate): AuthMiddleware -> WmsSupabaseClient (2.2.1)"
 
 ---
 
-## 3. 执行检查清单（每子任务通用）
+## ⚠️ 与 REPOSITORY_ROADMAP 同步说明（2026-07-13 更新）
+
+> **CLEANUP_PLAN 与 REPOSITORY_ROADMAP 互为依赖，严禁单干。**
+
+| CLEANUP 产出 | REPOSITORY_ROADMAP 对应项 | 同步动作 |
+|-------------|--------------------------|----------|
+| IProductConstraintRepository (3.2.1) | Phase 1 端口表第 12 行 | ROADMAP 标记 ✅ 已完成，移至 Phase 1 表格 |
+| IRoleRepository (3.1.1) | Phase 1 端口表第 13 行 | ROADMAP 标记 ✅ 已完成，移至 Phase 1 表格 |
+| SupabaseProductConstraintRepository | Phase 1 实现表第 10 行 | ROADMAP 标记 ✅ 已完成 |
+| SupabaseRoleRepository | Phase 1 实现表第 11 行 | ROADMAP 标记 ✅ 已完成 |
+| ILoadingTaskRepository (4.3) | Phase 1 端口表第 8 行 | CLEANUP 依赖此端口，REPOSITORY 优先创建 |
+| IDeviceRepository (4.4) | Phase 1 端口表第 9 行 | CLEANUP 依赖此端口，REPOSITORY 优先创建 |
+
+> **同步原则**：CLEANUP Phase 3 UseCase 创建**严格依赖** REPOSITORY_ROADMAP Phase 1 端口就绪。REPOSITORY_ROADMAP Phase 1 端口完成前，CLEANUP Phase 3 严禁启动对应 Batch。
+
+---
+
+## 4. 版本记录
 
 > **核心原则**：基于 lint-baseline.txt 做**增量校验**，不要求全量通过。
 
