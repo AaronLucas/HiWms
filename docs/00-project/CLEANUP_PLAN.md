@@ -87,12 +87,12 @@ npm run lint 2>&1 | grep -E "^src/" | cut -d: -f1-3 | sort -u | comm -13 lint-ba
 | 2.2.13 | src/services/ProductConstraintService.ts | 同上 | 同上 | 同上 | ✅ 已执行 |
 | 2.2.14 | src/services/ReplenishmentScheduler.ts | `SupabaseClient` | 同上 | 同上 | ⏭️ **已替代** (Phase 3.3.2 创建 UseCase 替代) |
 | 2.2.15 | src/services/WorkOrderService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.3.1 创建 UseCase 替代) |
-| 2.2.16 | src/services/BillingEngine.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.17 | src/services/SortingService.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.18 | src/services/PackingService.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.19 | src/services/VerificationService.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.20 | src/services/StockAllocationService.ts | 同上 | 同上 | 同上 | ⏳ |
-| 2.2.21 | src/services/BlackboxReceivingService.ts | 同上 | 同上 | 同上 | ⏳ |
+| 2.2.16 | src/services/BillingEngine.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.5.1 CalculateBillingUseCase 已存在) |
+| 2.2.17 | src/services/SortingService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.4.1 ExecuteSortingUseCase 待创建) |
+| 2.2.18 | src/services/PackingService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.4.2 ExecutePackingUseCase 待创建) |
+| 2.2.19 | src/services/VerificationService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.4.4 ExecuteVerificationUseCase 待创建) |
+| 2.2.20 | src/services/StockAllocationService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.2.2 AllocateInventoryUseCase 已存在) |
+| 2.2.21 | src/services/BlackboxReceivingService.ts | 同上 | 同上 | 同上 | ⏭️ **已替代** (Phase 3.2.3 ResolveBlackboxUseCase 已存在) |
 | 2.2.22 | src/workflows/tasks.ts | `SupabaseClient, createSupabaseClientFromEnv` | 同上 | **Phase 1 删除，跳过** | ⏭️ 已删除 |
 
 **执行模板（每个子任务）**：
@@ -119,8 +119,8 @@ git commit -m "chore(migrate): AuthMiddleware -> WmsSupabaseClient (2.2.1)"
 #### Batch 3.1（无 Repository 依赖，纯逻辑/工具类）
 | 子任务 | 源 Service | 目标 UseCase | 需注入的 Port | 状态 |
 |--------|------------|--------------|---------------|------|
-| 3.1.1 | RoleManager | `src/core/usecases/auth/ManageRoleUseCase.ts` | `IAuthProvider`, `IRoleRepository` | ⏳ |
-| 3.1.2 | ActionLogService | `src/core/usecases/workorder/LogWorkOrderActionUseCase.ts` | `IWorkOrderRepository` | ⏳ |
+| 3.1.1 | RoleManager | `src/core/usecases/auth/ManageRoleUseCase.ts` | `IAuthProvider`, `IRoleRepository` | ✅ 已执行 |
+| 3.1.2 | ActionLogService | `src/core/usecases/workorder/LogWorkOrderActionUseCase.ts` | `IWorkOrderRepository` | ✅ 已执行 |
 
 #### Batch 3.2（依赖 IInventoryRepository）
 | 子任务 | 源 Service | 目标 UseCase | 需注入的 Port | 状态 |
