@@ -56,4 +56,17 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
     zoneTypes: string[];
     minQuantity: number;
   }): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>>;
+
+  /**
+   * 查询补货需求视图
+   */
+  getReplenishmentNeeds(tenantId?: string): Promise<Array<{
+    loc_id: string;
+    loc_code: string;
+    sku_id: string;
+    sku_code: string;
+    current_qty: number;
+    picking_max_qty: number;
+    fill_rate_pct: number;
+  }>>;
 }

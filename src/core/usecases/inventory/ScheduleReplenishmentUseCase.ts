@@ -210,13 +210,8 @@ export class ScheduleReplenishmentUseCase {
    */
   private async getReplenishmentNeeds(): Promise<ReplenishmentNeed[]> {
     // 使用 Inventory Repository 查询 v_replenishment_needs 视图
-    // 注意：视图可能不包含 tenant_id，需要通过 locations 关联过滤
-    const { data, error } = await this.inventoryRepo.getClient()
-      .from('v_replenishment_needs')
-      .select('loc_id, loc_code, sku_id, sku_code, current_qty, picking_max_qty, fill_rate_pct');
-
-    if (error) throw new Error(`查询补货需求失败: ${error.message}`);
-    return (data || []) as ReplenishmentNeed[];
+    const data = await this.inventoryRepo.getReplenishmentNeeds(this.config.tenantId);
+    return data as ReplenishmentNeed[];
   }
 
   /**
@@ -244,24 +239,25 @@ export class ScheduleReplenishmentUseCase {
 
   /**
    * 去重：检查是否已有 OPEN/ASSIGNED/IN_PROGRESS 状态的同 SKU+同目标库位补货工单
+   * 使用 pda_summary 字段中的信息进行匹配（格式: "补货: SKU_CODE → LOC_CODE (需XXX件)"）
    */
   private async deduplicate(needs: ReplenishmentNeed[]): Promise<ReplenishmentNeed[]> {
     const deduplicated: ReplenishmentNeed[] = [];
 
-    for (const need of needs) {
-      // 使用 WorkOrderRepository 查询现有工单
-      const existing = await this.workOrderRepo.findAll({
-        filters: {
-          type: 'REPLENISH',
-          status: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'],
-          tenant_id: this.config.tenantId || '',
-        },
-      });
+    // 先查出所有进行中的补货工单
+    const existing = await this.workOrderRepo.findAll({
+      filters: {
+        type: 'REPLENISH',
+        status: ['OPEN', 'ASSIGNED', 'IN_PROGRESS'],
+        tenant_id: this.config.tenantId || '',
+      },
+    });
 
-      // 检查 metadata 中是否匹配
+    for (const need of needs) {
+      // 检查 pda_summary 是否匹配
       const hasExisting = existing.some(wo =>
-        wo.metadata?.target_sku_id === need.sku_id &&
-        wo.metadata?.target_loc_id === need.loc_id
+        wo.pda_summary?.includes(`补货: ${need.sku_code}`) &&
+        wo.pda_summary?.includes(`→ ${need.loc_code}`)
       );
 
       if (!hasExisting) {
