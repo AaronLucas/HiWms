@@ -27,6 +27,10 @@ export class SupabaseWorkOrderRepository extends SupabaseBaseRepository<
     return this.findAll({ filters: { related_order_id: orderId }, orderBy: 'created_at', ascending: true });
   }
 
+  async findByParent(parentWoId: string): Promise<Tables<'work_orders'>[]> {
+    return this.findAll({ filters: { parent_wo_id: parentWoId }, orderBy: 'created_at', ascending: true });
+  }
+
   async findPendingDispatch(tenantId: string): Promise<Tables<'work_orders'>[]> {
     return this.findAll({
       filters: { tenant_id: tenantId, status: 'pending' },

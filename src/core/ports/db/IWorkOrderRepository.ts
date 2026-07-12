@@ -25,6 +25,11 @@ export interface IWorkOrderRepository extends IRepository<WorkOrderRow, WorkOrde
   findByOrder(orderId: string): Promise<WorkOrderRow[]>;
 
   /**
+   * 按父工单查找子工单
+   */
+  findByParent(parentWoId: string): Promise<WorkOrderRow[]>;
+
+  /**
    * 查找待派发工单
    */
   findPendingDispatch(tenantId: string): Promise<WorkOrderRow[]>;
