@@ -93,4 +93,40 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     if (error) throw error;
     return (data as Tables<'inventory'>[]) || [];
   }
+
+  /**
+   * 查找可用的补货源库位（有库存、符合区域类型、数量足够）
+   * 返回按数量降序排列的库位列表
+   */
+  async findAvailableSources(params: {
+    skuId: string;
+    zoneTypes: string[];
+    minQuantity: number;
+  }): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>> {
+    const { skuId, zoneTypes, minQuantity } = params;
+
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select(`
+        location_id,
+        quantity,
+        locations!inner(zone_type)
+      `)
+      .eq('product_id', skuId)
+      .gt('quantity', minQuantity - 1)
+      .in('locations.zone_type', zoneTypes)
+      .order('quantity', { ascending: false });
+
+    if (error) throw error;
+
+    return (data as Array<{
+      location_id: string;
+      quantity: number;
+      locations: { zone_type: string };
+    }> || []).map(row => ({
+      location_id: row.location_id,
+      quantity: row.quantity,
+      zone_type: row.locations.zone_type,
+    }));
+  }
 }
