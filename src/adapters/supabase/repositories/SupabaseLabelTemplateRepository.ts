@@ -35,9 +35,9 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; labelType?: string; isDefault?: boolean }
+    options?: { limit?: number; offset?: number; labelType?: string; isDefault?: boolean; isActive?: boolean }
   ): Promise<LabelTemplateRow[]> {
-    const { limit = 100, offset = 0, labelType, isDefault } = options || {};
+    const { limit = 100, offset = 0, labelType, isDefault, isActive } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
@@ -45,8 +45,9 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
       .order('template_name', { ascending: true })
       .range(offset, offset + limit - 1);
 
-    if (labelType) query = query.eq('label_type', labelType);
+    if (labelType) query = query.eq('format', labelType);
     if (isDefault !== undefined) query = query.eq('is_default', isDefault);
+    if (isActive !== undefined) query = query.eq('is_active', isActive);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -58,7 +59,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('label_type', labelType)
+      .eq('format', labelType)
       .eq('is_default', true)
       .eq('is_active', true)
       .single();
@@ -74,7 +75,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
     // Get the label_type of the template being set as default
     const { data: template } = await this.getClient()
       .from(this.tableName)
-      .select('label_type')
+      .select('format')
       .eq('id', templateId)
       .eq('tenant_id', tenantId)
       .single();
@@ -86,38 +87,37 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .update({ is_default: false })
       .eq('tenant_id', tenantId)
-      .eq('label_type', template.label_type)
+      .eq('format', template.format)
       .eq('is_default', true);
 
     // Set new default
-    await this.update(templateId, { is_default: true } as LabelTemplateUpdate);
+    await this.update(templateId, { is_default: true } as any);
   }
 
   async getStats(tenantId: string): Promise<{
     total: number;
     byType: Record<string, number>;
     defaultCount: number;
+    activeCount: number;
   }> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('label_type, is_default')
+      .select('format, is_default, is_active')
       .eq('tenant_id', tenantId);
 
     if (error) throw error;
-    const templates = data as { label_type: string; is_default: boolean }[];
+    const templates = data as { format: string; is_default: boolean; is_active: boolean }[];
 
     const byType: Record<string, number> = {};
-    let defaultCount = 0;
+    let total = 0, activeCount = 0, defaultCount = 0;
 
     for (const t of templates) {
-      byType[t.label_type] = (byType[t.label_type] || 0) + 1;
+      total++;
+      if (t.is_active) activeCount++;
       if (t.is_default) defaultCount++;
+      byType[t.format] = (byType[t.format] || 0) + 1;
     }
 
-    return {
-      total: templates.length,
-      byType,
-      defaultCount,
-    };
+    return { total, byType, defaultCount, activeCount };
   }
 }

@@ -15,7 +15,7 @@ export interface ILabelTemplateRepository extends IRepository<LabelTemplateRow, 
   findByCode(code: string, tenantId: string): Promise<LabelTemplateRow | null>;
 
   /**
-   * 按租户查找模板（分页、类型/状态过滤）
+   * 按租户查找（分页、类型/默认过滤）
    */
   findByTenant(
     tenantId: string,

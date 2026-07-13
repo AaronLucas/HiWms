@@ -1,5 +1,5 @@
 /**
- * 包装规格仓储实现
+ * Supabase 包装规格仓储实现
  */
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IPackageSpecRepository } from '@core/ports/db/IPackageSpecRepository';
@@ -88,5 +88,28 @@ export class SupabasePackageSpecRepository extends SupabaseBaseRepository<
     const { data, error } = await query;
     if (error) throw error;
     return (data as PackageSpecRow[]) || [];
+  }
+
+  async setDefault(specId: string, tenantId: string, isDefault: boolean): Promise<PackageSpecRow> {
+    if (isDefault) {
+      // Unset current default for this box_type
+      const { data: spec } = await this.getClient()
+        .from(this.tableName)
+        .select('box_type')
+        .eq('id', specId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (spec) {
+        await this.getClient()
+          .from(this.tableName)
+          .update({ is_default: false })
+          .eq('tenant_id', tenantId)
+          .eq('box_type', spec.box_type)
+          .eq('is_default', true);
+      }
+    }
+
+    return this.update(specId, { is_default: isDefault } as any);
   }
 }

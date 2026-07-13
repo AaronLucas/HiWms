@@ -37,3 +37,12 @@ export { SupabaseBillingRuleRepository } from './SupabaseBillingRuleRepository';
 export { SupabaseBillingTransactionRepository } from './SupabaseBillingTransactionRepository';
 export { SupabaseUserRepository } from './SupabaseUserRepository';
 export { SupabaseAsnRepository } from './SupabaseAsnRepository';
+export { SupabaseConsumableUsageRepository } from './SupabaseConsumableUsageRepository';
+
+// Phase 4 新增实现
+export { SupabaseQualityInspectionRepository } from './SupabaseQualityInspectionRepository';
+export { SupabaseVasBomRepository } from './SupabaseVasBomRepository';
+export { SupabaseVerificationRuleRepository } from './SupabaseVerificationRuleRepository';
+export { SupabaseLabelTemplateRepository } from './SupabaseLabelTemplateRepository';
+export { SupabaseInventoryHistoryRepository } from './SupabaseInventoryHistoryRepository';
+export { SupabasePackageSpecRepository } from './SupabasePackageSpecRepository';

@@ -37,3 +37,11 @@ export { IBillingRuleRepository } from './IBillingRuleRepository';
 export { IBillingTransactionRepository } from './IBillingTransactionRepository';
 export { IUserRepository } from './IUserRepository';
 export { IAsnRepository } from './IAsnRepository';
+
+// Phase 4 新增端口
+export { IQualityInspectionRepository } from './IQualityInspectionRepository';
+export { IVasBomRepository } from './IVasBomRepository';
+export { IVerificationRuleRepository } from './IVerificationRuleRepository';
+export { ILabelTemplateRepository } from './ILabelTemplateRepository';
+export { IInventoryHistoryRepository } from './IInventoryHistoryRepository';
+export { IPackageSpecRepository } from './IPackageSpecRepository';

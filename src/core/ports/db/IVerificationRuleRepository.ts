@@ -1,6 +1,6 @@
 /**
  * 验货规则仓储端口接口
- * 支持版本化：按 effective_from/effective_to 区间查询
+ * 支持版本化规则，历史订单按当时规则复核
  */
 import { IRepository } from './IRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';

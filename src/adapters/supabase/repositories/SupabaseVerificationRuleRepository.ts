@@ -19,13 +19,14 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   protected idColumn = 'id';
 
   async findActiveBySku(skuId: string, at: Date = new Date()): Promise<VerificationRuleRow | null> {
+    const atISO = at.toISOString();
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('sku_id', skuId)
       .eq('is_active', true)
-      .lte('effective_from', at.toISOString())
-      .or(`effective_to.is.null,effective_to.gte.${at.toISOString()}`)
+      .lte('effective_from', atISO)
+      .or(`effective_to.is.null,effective_to.gte.${atISO}`)
       .order('version', { ascending: false })
       .limit(1)
       .single();
@@ -92,8 +93,8 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
       .limit(1)
       .single();
 
-    const newVersion = (latest?.version || 0) + 1;
-    const insertData = { ...data, version: newVersion, effective_from: data.effective_from || new Date().toISOString() } as VerificationRuleInsert;
+    const nextVersion = (latest?.version || 0) + 1;
+    const insertData = { ...data, version: nextVersion, effective_from: data.effective_from || new Date().toISOString() } as VerificationRuleInsert;
 
     return this.create(insertData);
   }
@@ -110,11 +111,11 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   }> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('version, sku_id, is_active')
+      .select('sku_id, version, is_active')
       .eq('tenant_id', tenantId);
 
     if (error) throw error;
-    const rules = data as { version: number; sku_id: string; is_active: boolean }[];
+    const rules = data as { sku_id: string; version: number; is_active: boolean }[];
 
     const bySku: Record<string, number> = {};
     let totalVersions = 0, activeCount = 0, latestVersion = 0;
