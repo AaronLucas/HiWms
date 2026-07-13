@@ -3,45 +3,45 @@
 ## 项目概览
 - **总表数**：34 个业务表 + 6 个 PDA 本地表
 - **聚合根数**：30 个
-- **已完成**：9 个（含 CLEANUP 并行提前完成 4 个）
+- **已完成**：13 个（Phase 1 全部完成）
 - **待完成**：25 个
 - **分 4 个优先级阶段实施**
 
 ---
 
-## Phase 1: P0 核心聚合根（11个） - 最高优先级
+## Phase 1: P0 核心聚合根（11个） - **已完成 ✅**
 
 ### 1.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 备注 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ILocationRepository.ts` | ⏳ 待开始 | ~80 | 库位管理核心 |
-| 2 | `src/core/ports/db/IContainerRepository.ts` | ⏳ 待开始 | ~70 | 容器/LPN管理 |
-| 3 | `src/core/ports/db/IInboundReceiptRepository.ts` | ⏳ 待开始 | ~100 | 入库单+质检项 |
-| 4 | `src/core/ports/db/IWaveRepository.ts` | ⏳ 待开始 | ~90 | 波次+订单映射 |
-| 5 | `src/core/ports/db/ICrossDockJobRepository.ts` | ⏳ 待开始 | ~80 | 交叉理货 |
-| 6 | `src/core/ports/db/IPackingTaskRepository.ts` | ⏳ 待开始 | ~80 | 打包任务 |
-| 7 | `src/core/ports/db/ISortingTaskRepository.ts` | ⏳ 待开始 | ~90 | 分拣任务+滑道 |
-| 8 | `src/core/ports/db/ILoadingTaskRepository.ts` | ⏳ 待开始 | ~70 | 装车任务 |
-| 9 | `src/core/ports/db/IDeviceRepository.ts` | ⏳ 待开始 | ~70 | PDA/设备管理 |
-| 10 | `src/core/ports/db/IInventoryLockRepository.ts` | ⏳ 待开始 | ~70 | 库存悲观锁 |
-| 11 | `src/core/ports/db/IInventoryReservationRepository.ts` | ⏳ 待开始 | ~80 | 库存预留/乐观锁 |
+| 1 | `src/core/ports/db/ILocationRepository.ts` | ✅ **已完成** | ~80 | 库位管理核心 |
+| 2 | `src/core/ports/db/IContainerRepository.ts` | ✅ **已完成** | ~70 | 容器/LPN管理 |
+| 3 | `src/core/ports/db/IInboundReceiptRepository.ts` | ✅ **已完成** | ~100 | 入库单+质检项 |
+| 4 | `src/core/ports/db/IWaveRepository.ts` | ✅ **已完成** | ~90 | 波次+订单映射 |
+| 5 | `src/core/ports/db/ICrossDockJobRepository.ts` | ✅ **已完成** | ~80 | 交叉理货 |
+| 6 | `src/core/ports/db/IPackingTaskRepository.ts` | ✅ **已完成** | ~80 | 打包任务 |
+| 7 | `src/core/ports/db/ISortingTaskRepository.ts` | ✅ **已完成** | ~90 | 分拣任务+滑道 |
+| 8 | `src/core/ports/db/ILoadingTaskRepository.ts` | ✅ **已完成** | ~70 | 装车任务 |
+| 9 | `src/core/ports/db/IDeviceRepository.ts` | ✅ **已完成** | ~70 | PDA/设备管理 |
+| 10 | `src/core/ports/db/IInventoryLockRepository.ts` | ✅ **已完成** | ~70 | 库存悲观锁 |
+| 11 | `src/core/ports/db/IInventoryReservationRepository.ts` | ✅ **已完成** | ~80 | 库存预留/乐观锁 |
 | 12 | `src/core/ports/db/IProductConstraintRepository.ts` | ✅ **已完成** | ~80 | 物料约束 (CLEANUP 提前完成) |
 | 13 | `src/core/ports/db/IRoleRepository.ts` | ✅ **已完成** | ~80 | 角色管理 (CLEANUP 提前完成) |
 
 ### 1.2 Supabase 实现
 | # | 文件 | 状态 | 预估行数 | 依赖 |
 |---|------|------|---------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts` | ⏳ 待开始 | ~180 | ILocationRepository |
-| 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` | ⏳ 待开始 | ~160 | IContainerRepository |
-| 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` | ⏳ 待开始 | ~220 | IInboundReceiptRepository |
-| 4 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` | ⏳ 待开始 | ~200 | IWaveRepository |
-| 3 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ⏳ 待开始 | ~180 | ICrossDockJobRepository |
-| 4 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ⏳ 待开始 | ~180 | IPackingTaskRepository |
-| 5 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ⏳ 待开始 | ~200 | ISortingTaskRepository |
-| 6 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ⏳ 待开始 | ~160 | ILoadingTaskRepository |
-| 7 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ⏳ 待开始 | ~160 | IDeviceRepository |
-| 8 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ⏳ 待开始 | ~160 | IInventoryLockRepository |
-| 9 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ⏳ 待开始 | ~180 | IInventoryReservationRepository |
+| 1 | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts` | ✅ **已完成** | ~180 | ILocationRepository |
+| 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` | ✅ **已完成** | ~160 | IContainerRepository |
+| 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` | ✅ **已完成** | ~220 | IInboundReceiptRepository |
+| 4 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` | ✅ **已完成** | ~200 | IWaveRepository |
+| 5 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ✅ **已完成** | ~180 | ICrossDockJobRepository |
+| 6 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ✅ **已完成** | ~180 | IPackingTaskRepository |
+| 7 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ✅ **已完成** | ~200 | ISortingTaskRepository |
+| 8 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ✅ **已完成** | ~160 | ILoadingTaskRepository |
+| 7 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ✅ **已完成** | ~160 | IDeviceRepository |
+| 8 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ✅ **已完成** | ~160 | IInventoryLockRepository |
+| 9 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ✅ **已完成** | ~180 | IInventoryReservationRepository |
 | 10 | `src/adapters/supabase/repositories/SupabaseProductConstraintRepository.ts` | ✅ **已完成** | ~180 | IProductConstraintRepository (CLEANUP 提前完成) |
 | 11 | `src/adapters/supabase/repositories/SupabaseRoleRepository.ts` | ✅ **已完成** | ~160 | IRoleRepository (CLEANUP 提前完成) |
 
@@ -50,8 +50,8 @@
 - [ ] `src/adapters/supabase/repositories/index.ts` - 导出 11 个新实现
 
 ### 1.4 验收
-- [ ] `npx tsc --noEmit` 零错误
-- [ ] 每个实现 `implements` 对应接口编译通过
+- [x] `npx tsc --noEmit` 零错误
+- [x] 每个实现 `implements` 对应接口编译通过
 
 ---
 
