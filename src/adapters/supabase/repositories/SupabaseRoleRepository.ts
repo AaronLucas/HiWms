@@ -14,11 +14,21 @@ export class SupabaseRoleRepository extends SupabaseBaseRepository<
   protected tableName = 'roles';
   protected idColumn = 'id';
 
-  async findRoleByName(name: string): Promise<RoleRow | null> {
-    return this.findById(name); // name is the id for roles
+  async findByName(name: string): Promise<RoleRow | null> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('name', name)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data as RoleRow;
   }
 
-  async findRoleById(id: string): Promise<RoleRow | null> {
+  async findById(id: string): Promise<RoleRow | null> {
     return this.findById(id);
   }
 

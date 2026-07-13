@@ -127,7 +127,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   async updateStatus(receiptId: string, status: string, receivedAt?: string): Promise<InboundReceiptRow> {
     const updateData: Partial<InboundReceiptUpdate> = { status };
     if (receivedAt) updateData.received_at = receivedAt;
-    if (status === 'completed') updateData.completed_at = new Date().toISOString();
+    if (status === 'completed') updateData.received_at = new Date().toISOString();
     return this.update(receiptId, updateData as InboundReceiptUpdate);
   }
 
@@ -136,17 +136,17 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   }
 
   async createInspectionItems(items: InspectionItemInsert[]): Promise<InspectionItemRow[]> {
-    const { data, error } = await this.getClient()
+    const { data: insertedData, error } = await this.getClient()
       .from('inspection_items')
       .insert(items as any)
       .select();
 
     if (error) throw error;
-    return (data as InspectionItemRow[]) || [];
+    return (insertedData as InspectionItemRow[]) || [];
   }
 
   async updateInspectionItem(itemId: string, data: Partial<InspectionItemUpdate>): Promise<InspectionItemRow> {
-    const { data, error } = await this.getClient()
+    const { data: updatedData, error } = await this.getClient()
       .from('inspection_items')
       .update(data as any)
       .eq('id', itemId)
@@ -154,7 +154,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .single();
 
     if (error) throw error;
-    return data as InspectionItemRow;
+    return updatedData as InspectionItemRow;
   }
 
   async getInspectionSummary(receiptId: string): Promise<{

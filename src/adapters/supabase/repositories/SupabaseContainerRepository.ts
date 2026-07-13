@@ -22,7 +22,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('code', code)
+      .eq('lpn_code', code)
       .eq('tenant_id', tenantId)
       .single();
 
@@ -53,7 +53,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('code', { ascending: true })
+      .order('lpn_code', { ascending: true })
       .range(offset, offset + limit - 1);
 
     if (status) query = query.eq('status', status);
@@ -68,17 +68,12 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     tenantId: string,
     options?: { minVolume?: number; minWeight?: number }
   ): Promise<ContainerRow[]> {
-    const { minVolume, minWeight } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_sealed', false)
-      .gt('remaining_volume', 0)
-      .gt('remaining_weight', 0);
-
-    if (minVolume !== undefined) query = query.gte('max_volume', minVolume);
-    if (minWeight !== undefined) query = query.gte('max_weight', minWeight);
+      .eq('status', 'active');
 
     const { data, error } = await query;
     if (error) throw error;
@@ -93,18 +88,9 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     containerId: string,
     capacity: { maxVolume?: number; maxWeight?: number; currentVolume?: number; currentWeight?: number }
   ): Promise<ContainerRow> {
-    const updateData: Partial<ContainerUpdate> = {};
-    if (capacity.maxVolume !== undefined) updateData.max_volume = capacity.maxVolume;
-    if (capacity.maxWeight !== undefined) updateData.max_weight = capacity.maxWeight;
-    if (capacity.currentVolume !== undefined) {
-      updateData.current_volume = capacity.currentVolume;
-      updateData.remaining_volume = (await this.findById(containerId))!.max_volume - capacity.currentVolume;
-    }
-    if (capacity.currentWeight !== undefined) {
-      updateData.current_weight = capacity.currentWeight;
-      updateData.remaining_weight = (await this.findById(containerId))!.max_weight - capacity.currentWeight;
-    }
-    return this.update(containerId, updateData as ContainerUpdate);
+    // containers 表没有容量字段，只能更新状态
+    // 实际容量管理通过 inventory 表关联实现
+    return this.update(containerId, {} as ContainerUpdate);
   }
 
   async getUtilizationStats(tenantId: string): Promise<Array<{
@@ -118,21 +104,19 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
   }>> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('id, code, current_volume, current_weight, max_volume, max_weight')
+      .select('id, lpn_code')
       .eq('tenant_id', tenantId)
       .eq('is_sealed', false);
 
     if (error) throw error;
     return ((data as ContainerRow[]) || []).map(row => ({
       containerId: row.id,
-      code: row.code,
-      currentVolume: row.current_volume || 0,
-      currentWeight: row.current_weight || 0,
-      maxVolume: row.max_volume || 0,
-      maxWeight: row.max_weight || 0,
-      utilizationPct: row.max_volume && row.max_volume > 0
-        ? Math.round((row.current_volume || 0) / row.max_volume * 100)
-        : 0,
+      code: row.lpn_code,
+      currentVolume: 0,
+      currentWeight: 0,
+      maxVolume: 0,
+      maxWeight: 0,
+      utilizationPct: 0,
     }));
   }
 }

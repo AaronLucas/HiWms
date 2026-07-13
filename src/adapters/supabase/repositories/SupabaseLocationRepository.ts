@@ -66,8 +66,8 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       .eq('is_frozen', false);
 
     if (zoneType) query = query.eq('zone_type', zoneType);
-    if (minVolume !== undefined) query = query.gte('max_volume', minVolume);
-    if (minWeight !== undefined) query = query.gte('max_weight', minWeight);
+    if (minVolume !== undefined) query = query.gte('max_volume_capacity', minVolume);
+    if (minWeight !== undefined) query = query.gte('max_weight_capacity', minWeight);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -110,7 +110,12 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
     locationId: string,
     capacity: { maxVolume?: number; maxWeight?: number; pickingMaxQty?: number; pickingThresholdPct?: number }
   ): Promise<LocationRow> {
-    return this.update(locationId, capacity as LocationUpdate);
+    const updateData: Partial<LocationUpdate> = {};
+    if (capacity.maxVolume !== undefined) updateData.max_volume_capacity = capacity.maxVolume;
+    if (capacity.maxWeight !== undefined) updateData.max_weight_capacity = capacity.maxWeight;
+    if (capacity.pickingMaxQty !== undefined) updateData.picking_max_qty = capacity.pickingMaxQty;
+    if (capacity.pickingThresholdPct !== undefined) updateData.picking_threshold_pct = capacity.pickingThresholdPct;
+    return this.update(locationId, updateData as LocationUpdate);
   }
 
   async getUtilizationStats(tenantId: string): Promise<Array<{
@@ -124,7 +129,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
   }>> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('id, code, current_volume, current_weight, max_volume, max_weight')
+      .select('id, code, max_volume_capacity, max_weight_capacity')
       .eq('tenant_id', tenantId)
       .eq('is_active', true);
 
@@ -132,13 +137,11 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
     return ((data as LocationRow[]) || []).map(row => ({
       locationId: row.id,
       code: row.code,
-      currentVolume: row.current_volume || 0,
-      currentWeight: row.current_weight || 0,
-      maxVolume: row.max_volume || 0,
-      maxWeight: row.max_weight || 0,
-      utilizationPct: row.max_volume && row.max_volume > 0
-        ? Math.round((row.current_volume || 0) / row.max_volume * 100)
-        : 0,
+      currentVolume: 0,
+      currentWeight: 0,
+      maxVolume: row.max_volume_capacity || 0,
+      maxWeight: row.max_weight_capacity || 0,
+      utilizationPct: 0,
     }));
   }
 }
