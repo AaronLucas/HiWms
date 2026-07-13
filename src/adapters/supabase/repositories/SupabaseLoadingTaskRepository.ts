@@ -67,7 +67,14 @@ export class SupabaseLoadingTaskRepository extends SupabaseBaseRepository<
     return (data as LoadingTaskRow[]) || [];
   }
 
-  async updateStatus(loadingTaskId: string, status: string): Promise<LoadingTaskRow> {
-    return this.update(loadingTaskId, { status } as LoadingTaskUpdate);
+  async updateStatus(loadingTaskId: string, status: string, extra?: { startedAt?: string; completedAt?: string; actualWeight?: number; actualVolume?: number; sealNumber?: string; exceptionReason?: string }): Promise<LoadingTaskRow> {
+    const updateData: Partial<LoadingTaskUpdate> = { status };
+    if (extra?.startedAt) updateData.started_at = extra.startedAt;
+    if (extra?.completedAt) updateData.completed_at = extra.completedAt;
+    if (extra?.actualWeight !== undefined) updateData.actual_weight = extra.actualWeight;
+    if (extra?.actualVolume !== undefined) updateData.actual_volume = extra.actualVolume;
+    if (extra?.sealNumber) updateData.seal_number = extra.sealNumber;
+    if (extra?.exceptionReason) updateData.exception_reason = extra.exceptionReason;
+    return this.update(loadingTaskId, updateData as LoadingTaskUpdate);
   }
 }

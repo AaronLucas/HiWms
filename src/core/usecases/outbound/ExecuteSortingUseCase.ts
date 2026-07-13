@@ -219,9 +219,9 @@ export class ExecuteLoadingUseCase {
         }
         await this.loadingTaskRepo.updateStatus(input.taskId, 'completed', {
           completedAt: new Date().toISOString(),
-          actual_weight: input.data.actualWeight,
-          actual_volume: input.data.actualVolume,
-          seal_number: input.data.sealNumber,
+          actualWeight: input.data.actualWeight,
+          actualVolume: input.data.actualVolume,
+          sealNumber: input.data.sealNumber,
         });
         return { success: true, taskId: input.taskId, status: 'completed', message: 'Loading completed and sealed' };
 
