@@ -1,7 +1,8 @@
 /**
  * 创建订单用例
  */
-import { IOrderRepository } from '../../core/ports/db/IOrderRepository';
+import { IOrderRepository } from '@core/ports/db/IOrderRepository';
+import { IStockAllocationRpc } from '@core/ports/rpc/IStockAllocationRpc';
 
 export interface CreateOrderInput {
   tenantId: string;
@@ -46,9 +47,6 @@ export class CreateOrderUseCase {
  * 订单分配用例
  * 协调库存分配 RPC
  */
-import { IStockAllocationRpc } from '../../core/ports/rpc/IStockAllocationRpc';
-import { IOrderRepository } from '../../core/ports/db/IOrderRepository';
-
 export interface AllocateOrderInput {
   orderId: string;
   tenantId: string;
@@ -76,7 +74,7 @@ export class AllocateOrderUseCase {
     for (const line of orderWithLines.lines) {
       const allocations = await this.stockAllocationRpc.allocate({
         p_order_id: input.orderId,
-        p_sku_id: line.product_id,
+        p_sku_id: line.product_id ?? '',
         p_needed_qty: line.qty,
       });
       allAllocations.push(...allocations);

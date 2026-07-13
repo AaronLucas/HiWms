@@ -2,8 +2,8 @@
  * 库存分配用例
  * 封装 fn_logic_stock_allocation RPC 调用
  */
-import { IStockAllocationRpc } from '../../core/ports/rpc/IStockAllocationRpc';
-import { IInventoryRepository } from '../../core/ports/db/IInventoryRepository';
+import { IStockAllocationRpc } from '@core/ports/rpc/IStockAllocationRpc';
+import { IInventoryRepository } from '@core/ports/db/IInventoryRepository';
 
 export interface AllocateInventoryInput {
   orderId: string;

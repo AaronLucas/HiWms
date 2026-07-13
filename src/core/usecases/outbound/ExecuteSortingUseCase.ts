@@ -63,8 +63,8 @@ export class ExecuteSortingUseCase {
     if (task.chute_id) {
       const chute = await this.sortingChuteRepo.updateCurrentQty(task.chute_id, newSortedQty);
       // 查找下一个可用滑道
-      const nextChute = await this.sortingChuteRepo.findAvailable(input.tenantId, task.wave_id, { minCapacity: 1 });
-      if (nextChute) nextChuteId = nextChute.id;
+      const nextChutes = await this.sortingChuteRepo.findAvailable(input.tenantId, task.wave_id ?? undefined, { minCapacity: 1 });
+      if (nextChutes.length > 0) nextChuteId = nextChutes[0].id;
     }
 
     // 7. 检查是否完成

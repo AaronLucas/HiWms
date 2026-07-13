@@ -32,5 +32,5 @@ export interface ILoadingTaskRepository extends IRepository<LoadingTaskRow, Load
   /**
    * 更新装车任务状态
    */
-  updateStatus(loadingTaskId: string, status: string): Promise<LoadingTaskRow>;
+  updateStatus(loadingTaskId: string, status: string, extra?: { startedAt?: string; completedAt?: string; actualWeight?: number; actualVolume?: number; sealNumber?: string; exceptionReason?: string }): Promise<LoadingTaskRow>;
 }

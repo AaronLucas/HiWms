@@ -2,7 +2,7 @@
  * 计算存储费用用例
  * 封装 fn_get_active_billing_rule RPC
  */
-import { IBillingRuleRpc } from '../../core/ports/rpc/IBillingRuleRpc';
+import { IBillingRuleRpc } from '@core/ports/rpc/IBillingRuleRpc';
 
 export interface CalculateStorageFeeInput {
   tenantId: string;

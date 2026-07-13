@@ -37,7 +37,7 @@ export class GenerateWaveUseCase {
  * 交叉理货匹配用例
  * 封装 fn_match_cross_dock RPC
  */
-import { ICrossDockRpc } from '../../core/ports/rpc/ICrossDockRpc';
+import { ICrossDockRpc } from '@core/ports/rpc/ICrossDockRpc';
 
 export interface MatchCrossDockInput {
   receiptId: string;
@@ -73,7 +73,7 @@ export class MatchCrossDockUseCase {
  * 滑道分配用例
  * 封装 fn_allocate_chute RPC
  */
-import { IChuteAllocationRpc } from '../../core/ports/rpc/IChuteAllocationRpc';
+import { IChuteAllocationRpc } from '@core/ports/rpc/IChuteAllocationRpc';
 
 export interface AllocateChuteInput {
   waveId: string;
