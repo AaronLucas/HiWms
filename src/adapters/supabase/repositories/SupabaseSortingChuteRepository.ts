@@ -1,5 +1,5 @@
 /**
- * 滑道仓储实现
+ * Supabase 滑道仓储实现
  */
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ISortingChuteRepository } from '@core/ports/db/ISortingChuteRepository';

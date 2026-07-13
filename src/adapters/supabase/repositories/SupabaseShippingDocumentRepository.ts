@@ -1,5 +1,5 @@
 /**
- * 发货单据仓储实现
+ * Supabase 发货单据仓储实现
  */
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IShippingDocumentRepository } from '@core/ports/db/IShippingDocumentRepository';
@@ -35,18 +35,18 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; docType?: string; status?: string }
+    options?: { limit?: number; offset?: number; status?: string; carrier?: string }
   ): Promise<ShippingDocumentRow[]> {
-    const { limit = 100, offset = 0, docType, status } = options || {};
+    const { limit = 100, offset = 0, status, carrier } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('issued_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (docType) query = query.eq('doc_type', docType);
     if (status) query = query.eq('status', status);
+    if (carrier) query = query.ilike('doc_type', `%${carrier}%`);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -64,40 +64,64 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
     return (data as ShippingDocumentRow[]) || [];
   }
 
-  async updateStatus(docId: string, status: string, issuedAt?: string): Promise<ShippingDocumentRow> {
+  async findPendingPrint(tenantId: string): Promise<ShippingDocumentRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending_print')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return (data as ShippingDocumentRow[]) || [];
+  }
+
+  async findPendingShip(tenantId: string): Promise<ShippingDocumentRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending_ship')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return (data as ShippingDocumentRow[]) || [];
+  }
+
+  async updateStatus(docId: string, status: string, extra?: { trackingNo?: string; shippedAt?: string }): Promise<ShippingDocumentRow> {
     const updateData: Partial<ShippingDocumentUpdate> = { status };
-    if (issuedAt) updateData.issued_at = issuedAt;
-    if (status === 'shipped') updateData.issued_at = new Date().toISOString();
+    if (extra?.trackingNo) updateData.file_url = extra.trackingNo;
+    if (extra?.shippedAt) updateData.issued_at = extra.shippedAt;
+    else if (status === 'shipped') updateData.issued_at = new Date().toISOString();
     return this.update(docId, updateData as ShippingDocumentUpdate);
   }
 
   async getStats(tenantId: string, startDate: string, endDate: string): Promise<{
     totalDocs: number;
-    byType: Record<string, number>;
-    byStatus: Record<string, number>;
+    shipped: number;
+    pending: number;
+    byCarrier: Record<string, number>;
   }> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('doc_type, status')
+      .select('status, doc_type')
       .eq('tenant_id', tenantId)
       .gte('created_at', startDate)
       .lte('created_at', endDate);
 
     if (error) throw error;
-    const docs = data as { doc_type: string; status: string }[];
+    const docs = data as { status: string; doc_type: string }[];
 
-    const byType: Record<string, number> = {};
-    const byStatus: Record<string, number> = {};
+    let totalDocs = 0, shipped = 0, pending = 0;
+    const byCarrier: Record<string, number> = {};
 
     for (const d of docs) {
-      byType[d.doc_type] = (byType[d.doc_type] || 0) + 1;
-      byStatus[d.status] = (byStatus[d.status] || 0) + 1;
+      totalDocs++;
+      if (d.status === 'shipped') shipped++;
+      else if (d.status === 'pending') pending++;
+      byCarrier[d.doc_type] = (byCarrier[d.doc_type] || 0) + 1;
     }
 
-    return {
-      totalDocs: docs.length,
-      byType,
-      byStatus,
-    };
+    return { totalDocs, shipped, pending, byCarrier };
   }
 }

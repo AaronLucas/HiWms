@@ -86,8 +86,8 @@
 - [ ] `src/adapters/supabase/repositories/index.ts` - 导出 8 个新实现
 
 ### 2.4 验收
-- [ ] `npx tsc --noEmit` 零错误
-- [ ] 每个实现 `implements` 对应接口编译通过
+- [x] `npx tsc --noEmit` 零错误
+- [x] 每个实现 `implements` 对应接口编译通过
 
 ---
 

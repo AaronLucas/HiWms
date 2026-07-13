@@ -39,9 +39,9 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; inspectionType?: string }
+    options?: { limit?: number; offset?: number; status?: string; result?: string; orderId?: string; waveId?: string }
   ): Promise<QualityInspectionRow[]> {
-    const { limit = 100, offset = 0, status, inspectionType } = options || {};
+    const { limit = 100, offset = 0, status, result, orderId, waveId } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
@@ -50,7 +50,9 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .range(offset, offset + limit - 1);
 
     if (status) query = query.eq('status', status);
-    if (inspectionType) query = query.eq('inspection_type', inspectionType);
+    if (result) query = query.eq('result', result);
+    if (orderId) query = query.eq('order_id', orderId);
+    if (waveId) query = query.eq('wave_id', waveId);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -110,6 +112,38 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     return (data as QualityInspectionRow[]) || [];
   }
 
+  async findPending(tenantId: string): Promise<QualityInspectionRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return (data as QualityInspectionRow[]) || [];
+  }
+
+  async findDiscrepancy(tenantId: string): Promise<QualityInspectionRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('result', 'discrepancy')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data as QualityInspectionRow[]) || [];
+  }
+
+  async updateResult(inspectionId: string, result: string, details?: any): Promise<QualityInspectionRow> {
+    const updateData: Partial<QualityInspectionUpdate> = {
+      result,
+      discrepancy_details: details || null
+    };
+    return this.update(inspectionId, updateData as QualityInspectionUpdate);
+  }
+
   async updateStatus(inspectionId: string, status: string, completedAt?: string): Promise<QualityInspectionRow> {
     const updateData: Partial<QualityInspectionUpdate> = { status };
     if (completedAt) updateData.completed_at = completedAt;
@@ -118,17 +152,17 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async createInspectionItems(items: InspectionItemInsert[]): Promise<InspectionItemRow[]> {
-    const { data, error } = await this.getClient()
+    const { data: insertedData, error } = await this.getClient()
       .from('inspection_items')
       .insert(items as any)
       .select();
 
     if (error) throw error;
-    return (data as InspectionItemRow[]) || [];
+    return (insertedData as InspectionItemRow[]) || [];
   }
 
   async updateInspectionItem(itemId: string, data: Partial<InspectionItemUpdate>): Promise<InspectionItemRow> {
-    const { data, error } = await this.getClient()
+    const { data: updatedData, error } = await this.getClient()
       .from('inspection_items')
       .update(data as any)
       .eq('id', itemId)
@@ -136,7 +170,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .single();
 
     if (error) throw error;
-    return data as InspectionItemRow;
+    return updatedData as InspectionItemRow;
   }
 
   async getInspectionSummary(inspectionId: string): Promise<{
@@ -170,13 +204,13 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }>> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('inspector_id, status, started_at, completed_at')
+      .select('inspector_id, result, status, started_at, completed_at')
       .eq('tenant_id', tenantId)
       .gte('created_at', startDate)
       .lte('created_at', endDate);
 
     if (error) throw error;
-    const inspections = data as { inspector_id: string; status: string; started_at: string | null; completed_at: string | null }[];
+    const inspections = data as { inspector_id: string; result: string; status: string; started_at: string | null; completed_at: string | null }[];
 
     const byInspector = new Map<string, {
       count: number;
@@ -189,8 +223,8 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       if (!i.inspector_id) continue;
       const existing = byInspector.get(i.inspector_id) || { count: 0, passed: 0, failed: 0, durations: [] };
       existing.count++;
-      if (i.status === 'passed') existing.passed++;
-      else if (i.status === 'failed') existing.failed++;
+      if (i.result === 'passed') existing.passed++;
+      else if (i.result === 'failed') existing.failed++;
       if (i.started_at && i.completed_at) {
         existing.durations.push((new Date(i.completed_at).getTime() - new Date(i.started_at).getTime()) / 60000);
       }
@@ -205,5 +239,50 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       failedCount: failed,
       avgDurationMinutes: durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0,
     }));
+  }
+
+  async getStats(tenantId: string, startDate: string, endDate: string): Promise<{
+    total: number;
+    passed: number;
+    failed: number;
+    discrepancy: number;
+    passRate: number;
+    byInspector: Record<string, { total: number; passed: number; failed: number }>;
+  }> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('result, inspector_id')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
+
+    if (error) throw error;
+    const inspections = data as { result: string; inspector_id: string | null }[];
+
+    const byInspector: Record<string, { total: number; passed: number; failed: number }> = {};
+    let total = 0, passed = 0, failed = 0, discrepancy = 0;
+
+    for (const i of inspections) {
+      total++;
+      if (i.result === 'passed') passed++;
+      else if (i.result === 'failed') failed++;
+      else if (i.result === 'discrepancy') discrepancy++;
+
+      if (i.inspector_id) {
+        if (!byInspector[i.inspector_id]) byInspector[i.inspector_id] = { total: 0, passed: 0, failed: 0 };
+        byInspector[i.inspector_id].total++;
+        if (i.result === 'passed') byInspector[i.inspector_id].passed++;
+        else if (i.result === 'failed') byInspector[i.inspector_id].failed++;
+      }
+    }
+
+    return {
+      total,
+      passed,
+      failed,
+      discrepancy,
+      passRate: total > 0 ? Math.round((passed / total) * 100) : 0,
+      byInspector,
+    };
   }
 }
