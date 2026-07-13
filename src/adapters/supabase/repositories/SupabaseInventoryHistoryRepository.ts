@@ -17,6 +17,91 @@ export class SupabaseInventoryHistoryRepository implements IInventoryHistoryRepo
     return useAdmin ? this.supabase.getAdminClient() : this.supabase.getClient();
   }
 
+  async findById(id: number): Promise<InventoryHistoryRow | null> {
+    const { data, error } = await this.getClient()
+      .from('inventory_history')
+      .select('*')
+      .eq('hist_id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data as InventoryHistoryRow;
+  }
+
+  async findAll(options: {
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+    ascending?: boolean;
+    filters?: Record<string, unknown>;
+  } = {}): Promise<InventoryHistoryRow[]> {
+    const { limit = 100, offset = 0, orderBy = 'changed_at', ascending = false, filters = {} } = options;
+    let query = this.getClient()
+      .from('inventory_history')
+      .select('*')
+      .order(orderBy, { ascending })
+      .range(offset, offset + limit - 1);
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null) {
+        query = query.eq(key, value);
+      }
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data as InventoryHistoryRow[]) || [];
+  }
+
+  async count(filters: Record<string, unknown> = {}): Promise<number> {
+    let query = this.getClient()
+      .from('inventory_history')
+      .select('*', { count: 'exact', head: true });
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null) {
+        query = query.eq(key, value);
+      }
+    }
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  async create(data: InventoryHistoryInsert): Promise<InventoryHistoryRow> {
+    throw new Error('Inventory history is read-only');
+  }
+
+  async createMany(data: InventoryHistoryInsert[]): Promise<InventoryHistoryRow[]> {
+    throw new Error('Inventory history is read-only');
+  }
+
+  async update(id: number, data: InventoryHistoryUpdate): Promise<InventoryHistoryRow> {
+    throw new Error('Inventory history is read-only');
+  }
+
+  async delete(id: number): Promise<void> {
+    throw new Error('Inventory history is read-only');
+  }
+
+  async exists(id: number): Promise<boolean> {
+    const { data, error } = await this.getClient()
+      .from('inventory_history')
+      .select('hist_id')
+      .eq('hist_id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return false;
+      throw error;
+    }
+    return !!data;
+  }
+
   async findByInventory(inventoryId: string): Promise<InventoryHistoryRow[]> {
     const { data, error } = await this.getClient()
       .from('inventory_history')
