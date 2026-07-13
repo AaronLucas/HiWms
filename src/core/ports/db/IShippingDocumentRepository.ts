@@ -1,5 +1,5 @@
 /**
- * 发货单据/面单仓储端口接口
+ * 发货单据仓储端口接口
  */
 import { IRepository } from './IRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
@@ -15,27 +15,22 @@ export interface IShippingDocumentRepository extends IRepository<ShippingDocumen
   findByDocNo(docNo: string, tenantId: string): Promise<ShippingDocumentRow | null>;
 
   /**
-   * 按租户查找（分页、状态/承运商过滤）
+   * 按租户查找（分页、类型/状态过滤）
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; carrier?: string }
+    options?: { limit?: number; offset?: number; docType?: string; status?: string }
   ): Promise<ShippingDocumentRow[]>;
 
   /**
-   * 查找待打印面单
+   * 按装车任务查找关联单据
    */
-  findPendingPrint(tenantId: string): Promise<ShippingDocumentRow[]>;
-
-  /**
-   * 查找待发货单据
-   */
-  findPendingShip(tenantId: string): Promise<ShippingDocumentRow[]>;
+  findByLoadingTask(loadingTaskId: string): Promise<ShippingDocumentRow[]>;
 
   /**
    * 更新状态
    */
-  updateStatus(docId: string, status: string, extra?: { trackingNo?: string; shippedAt?: string }): Promise<ShippingDocumentRow>;
+  updateStatus(docId: string, status: string, issuedAt?: string): Promise<ShippingDocumentRow>;
 
   /**
    * 获取发货统计
