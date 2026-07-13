@@ -25,11 +25,11 @@ export interface IVasBomRepository extends IRepository<VasBomRow, VasBomInsert, 
   findByCode(code: string, tenantId: string): Promise<VasBomRow | null>;
 
   /**
-   * 按租户查找 BOM（分页、状态过滤）
+   * 按租户查找 BOM（分页、状态/类型过滤）
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; vasType?: string }
+    options?: { limit?: number; offset?: number; status?: string; processType?: string }
   ): Promise<VasBomRow[]>;
 
   /**
@@ -38,19 +38,19 @@ export interface IVasBomRepository extends IRepository<VasBomRow, VasBomInsert, 
   findWithItems(bomId: string): Promise<VasBomWithItems | null>;
 
   /**
-   * 查找指定 SKU 适用的 BOM
+   * 查找指定产出产品的 BOM
    */
-  findBySku(skuId: string, tenantId: string): Promise<VasBomRow[]>;
+  findByOutputProduct(outputProductId: string, tenantId: string): Promise<VasBomRow[]>;
 
   /**
    * 创建 BOM 明细项
    */
-  createBomItems(items: VasBomItemInsert[]): Promise<VasBomItemRow[]>;
+  createBomItems(items: TablesInsert<'vas_bom_items'>[]): Promise<Tables<'vas_bom_items'>[]>;
 
   /**
    * 更新 BOM 明细项
    */
-  updateBomItem(itemId: string, data: Partial<VasBomItemUpdate>): Promise<VasBomItemRow>;
+  updateBomItem(itemId: string, data: TablesUpdate<'vas_bom_items'>): Promise<Tables<'vas_bom_items'>>;
 
   /**
    * 删除 BOM 明细项

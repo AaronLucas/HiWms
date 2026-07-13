@@ -15,7 +15,7 @@ export interface IQualityInspectionRepository extends IRepository<QualityInspect
   findByInspectionNo(inspectionNo: string, tenantId: string): Promise<QualityInspectionRow | null>;
 
   /**
-   * 按租户查找（分页、状态/结果/工单过滤）
+   * 按租户查找（分页、状态/结果/工单/波次过滤）
    */
   findByTenant(
     tenantId: string,

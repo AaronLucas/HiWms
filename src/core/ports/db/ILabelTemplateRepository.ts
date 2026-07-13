@@ -10,16 +10,16 @@ export type LabelTemplateUpdate = TablesUpdate<'label_templates'>;
 
 export interface ILabelTemplateRepository extends IRepository<LabelTemplateRow, LabelTemplateInsert, LabelTemplateUpdate> {
   /**
-   * 按编码查找模板
+   * 按编码查找
    */
   findByCode(code: string, tenantId: string): Promise<LabelTemplateRow | null>;
 
   /**
-   * 按租户查找模板（分页、类型过滤）
+   * 按租户查找模板（分页、类型/状态过滤）
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; labelType?: string; isDefault?: boolean }
+    options?: { limit?: number; offset?: number; labelType?: string; isDefault?: boolean; isActive?: boolean }
   ): Promise<LabelTemplateRow[]>;
 
   /**
@@ -39,5 +39,6 @@ export interface ILabelTemplateRepository extends IRepository<LabelTemplateRow, 
     total: number;
     byType: Record<string, number>;
     defaultCount: number;
+    activeCount: number;
   }>;
 }

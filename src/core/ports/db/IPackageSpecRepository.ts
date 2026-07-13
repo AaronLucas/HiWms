@@ -20,7 +20,7 @@ export interface IPackageSpecRepository extends IRepository<PackageSpecRow, Pack
   findDefault(tenantId: string, boxType?: string): Promise<PackageSpecRow | null>;
 
   /**
-   * 按租户查找包装规格（分页、类型过滤）
+   * 按租户查找包装规格（分页、类型/状态过滤）
    */
   findByTenant(
     tenantId: string,
@@ -36,4 +36,9 @@ export interface IPackageSpecRepository extends IRepository<PackageSpecRow, Pack
     weight?: number,
     volume?: number
   ): Promise<PackageSpecRow[]>;
+
+  /**
+   * 设置/取消默认包装规格
+   */
+  setDefault(specId: string, tenantId: string, isDefault: boolean): Promise<PackageSpecRow>;
 }
