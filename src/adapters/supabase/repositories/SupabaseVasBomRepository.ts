@@ -109,7 +109,7 @@ export class SupabaseVasBomRepository extends SupabaseBaseRepository<
   }
 
   async updateBomItem(itemId: string, data: TablesUpdate<'vas_bom_items'>): Promise<Tables<'vas_bom_items'>> {
-    const { data, error } = await this.getClient()
+    const { data: updatedData, error } = await this.getClient()
       .from('vas_bom_items')
       .update(data as any)
       .eq('id', itemId)
@@ -117,7 +117,7 @@ export class SupabaseVasBomRepository extends SupabaseBaseRepository<
       .single();
 
     if (error) throw error;
-    return data as Tables<'vas_bom_items'>;
+    return updatedData as Tables<'vas_bom_items'>;
   }
 
   async deleteBomItem(itemId: string): Promise<void> {

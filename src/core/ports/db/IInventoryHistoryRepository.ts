@@ -9,7 +9,7 @@ export type InventoryHistoryRow = Tables<'inventory_history'>;
 export type InventoryHistoryInsert = TablesInsert<'inventory_history'>;
 export type InventoryHistoryUpdate = TablesUpdate<'inventory_history'>;
 
-export interface IInventoryHistoryRepository extends IRepository<InventoryHistoryRow, InventoryHistoryInsert, InventoryHistoryUpdate> {
+export interface IInventoryHistoryRepository extends IRepository<InventoryHistoryRow, InventoryHistoryInsert, InventoryHistoryUpdate, number> {
   /**
    * 按库存记录查找历史
    */
