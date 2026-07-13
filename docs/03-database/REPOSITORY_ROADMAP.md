@@ -55,6 +55,42 @@
 
 ---
 
+## Phase 2: P0 出库作业（8个） - 优先级次高
+
+### 2.1 端口定义
+| # | 文件 | 状态 | 预估行数 | 备注 |
+|---|------|------|---------|------|
+| 1 | `src/core/ports/db/IVehicleRepository.ts` | ⏳ 待开始 | ~70 | 车辆管理 |
+| 2 | `src/core/ports/db/IPackageSpecRepository.ts` | ⏳ 待开始 | ~80 | 包装规格 |
+| 3 | `src/core/ports/db/ILabelTemplateRepository.ts` | ⏳ 待开始 | ~80 | 面单模板 |
+| 4 | `src/core/ports/db/IQualityInspectionRepository.ts` | ⏳ 待开始 | ~90 | 质检规则/记录 |
+| 5 | `src/core/ports/db/IVerificationRuleRepository.ts` | ⏳ 待开始 | ~80 | 验货规则版本化 |
+| 6 | `src/core/ports/db/IConsumableUsageRepository.ts` | ⏳ 待开始 | ~70 | 耗材使用记录 |
+| 7 | `src/core/ports/db/IShippingDocumentRepository.ts` | ⏳ 待开始 | ~80 | 发货单据/面单 |
+| 8 | `src/core/ports/db/ISortingChuteRepository.ts` | ⏳ 待开始 | ~80 | 滑道管理 |
+
+### 2.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabasePackageSpecRepository.ts` | ⏳ 待开始 |
+| 3 | `src/adapters/supabase/repositories/SupabaseLabelTemplateRepository.ts` | ⏳ 待开始 |
+| 4 | `src/adapters/supabase/repositories/SupabaseQualityInspectionRepository.ts` | ⏳ 待开始 |
+| 5 | `src/adapters/supabase/repositories/SupabaseVerificationRuleRepository.ts` | ⏳ 待开始 |
+| 6 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ⏳ 待开始 |
+| 7 | `src/adapters/supabase/repositories/SupabaseShippingDocumentRepository.ts` | ⏳ 待开始 |
+| 8 | `src/adapters/supabase/repositories/SupabaseSortingChuteRepository.ts` | ⏳ 待开始 |
+
+### 2.3 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 8 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 8 个新实现
+
+### 2.4 验收
+- [ ] `npx tsc --noEmit` 零错误
+- [ ] 每个实现 `implements` 对应接口编译通过
+
+---
+
 ## Phase 3: P1 业务扩展（6个） - 次优先级
 
 ### 3.1 端口定义

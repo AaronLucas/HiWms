@@ -21,3 +21,13 @@ export { SupabaseInboundReceiptRepository } from './SupabaseInboundReceiptReposi
 // Phase 1 已完成的实现
 export { SupabaseProductConstraintRepository } from './SupabaseProductConstraintRepository';
 export { SupabaseRoleRepository } from './SupabaseRoleRepository';
+
+// Phase 2 新增实现
+export { SupabaseVehicleRepository } from './SupabaseVehicleRepository';
+export { SupabasePackageSpecRepository } from './SupabasePackageSpecRepository';
+export { SupabaseLabelTemplateRepository } from './SupabaseLabelTemplateRepository';
+export { SupabaseQualityInspectionRepository } from './SupabaseQualityInspectionRepository';
+export { SupabaseVerificationRuleRepository } from './SupabaseVerificationRuleRepository';
+export { SupabaseConsumableUsageRepository } from './SupabaseConsumableUsageRepository';
+export { SupabaseShippingDocumentRepository } from './SupabaseShippingDocumentRepository';
+export { SupabaseSortingChuteRepository } from './SupabaseSortingChuteRepository';

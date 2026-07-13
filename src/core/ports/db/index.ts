@@ -21,3 +21,13 @@ export { IInboundReceiptRepository } from './IInboundReceiptRepository';
 // Phase 1 已完成的端口
 export { IProductConstraintRepository } from './IProductConstraintRepository';
 export { IRoleRepository } from './IRoleRepository';
+
+// Phase 2 新增端口
+export { IVehicleRepository } from './IVehicleRepository';
+export { IPackageSpecRepository } from './IPackageSpecRepository';
+export { ILabelTemplateRepository } from './ILabelTemplateRepository';
+export { IQualityInspectionRepository } from './IQualityInspectionRepository';
+export { IVerificationRuleRepository } from './IVerificationRuleRepository';
+export { IConsumableUsageRepository } from './IConsumableUsageRepository';
+export { IShippingDocumentRepository } from './IShippingDocumentRepository';
+export { ISortingChuteRepository } from './ISortingChuteRepository';
