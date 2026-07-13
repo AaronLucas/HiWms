@@ -31,3 +31,9 @@ export { SupabaseVerificationRuleRepository } from './SupabaseVerificationRuleRe
 export { SupabaseConsumableUsageRepository } from './SupabaseConsumableUsageRepository';
 export { SupabaseShippingDocumentRepository } from './SupabaseShippingDocumentRepository';
 export { SupabaseSortingChuteRepository } from './SupabaseSortingChuteRepository';
+
+// Phase 3 新增实现
+export { SupabaseBillingRuleRepository } from './SupabaseBillingRuleRepository';
+export { SupabaseBillingTransactionRepository } from './SupabaseBillingTransactionRepository';
+export { SupabaseUserRepository } from './SupabaseUserRepository';
+export { SupabaseAsnRepository } from './SupabaseAsnRepository';

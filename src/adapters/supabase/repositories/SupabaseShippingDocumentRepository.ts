@@ -35,18 +35,18 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; carrier?: string }
+    options?: { limit?: number; offset?: number; docType?: string; status?: string }
   ): Promise<ShippingDocumentRow[]> {
-    const { limit = 100, offset = 0, status, carrier } = options || {};
+    const { limit = 100, offset = 0, docType, status } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
+      .order('issued_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
+    if (docType) query = query.eq('doc_type', docType);
     if (status) query = query.eq('status', status);
-    if (carrier) query = query.ilike('doc_type', `%${carrier}%`);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -64,34 +64,9 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
     return (data as ShippingDocumentRow[]) || [];
   }
 
-  async findPendingPrint(tenantId: string): Promise<ShippingDocumentRow[]> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('status', 'pending_print')
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    return (data as ShippingDocumentRow[]) || [];
-  }
-
-  async findPendingShip(tenantId: string): Promise<ShippingDocumentRow[]> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('status', 'pending_ship')
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    return (data as ShippingDocumentRow[]) || [];
-  }
-
-  async updateStatus(docId: string, status: string, extra?: { trackingNo?: string; shippedAt?: string }): Promise<ShippingDocumentRow> {
+  async updateStatus(docId: string, status: string, issuedAt?: string): Promise<ShippingDocumentRow> {
     const updateData: Partial<ShippingDocumentUpdate> = { status };
-    if (extra?.trackingNo) updateData.file_url = extra.trackingNo;
-    if (extra?.shippedAt) updateData.issued_at = extra.shippedAt;
+    if (issuedAt) updateData.issued_at = issuedAt;
     else if (status === 'shipped') updateData.issued_at = new Date().toISOString();
     return this.update(docId, updateData as ShippingDocumentUpdate);
   }

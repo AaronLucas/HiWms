@@ -47,7 +47,7 @@ export interface IBillingTransactionRepository extends IRepository<BillingTransa
   getStats(tenantId: string, startDate: string, endDate: string): Promise<{
     totalAmount: number;
     totalCount: number;
-    byFeeType: Record<string, { amount: number; count: number }>;
+    byFeeType: Record<string, { count: number; amount: number }>;
     byStatus: Record<string, number>;
     byCurrency: Record<string, number>;
   }>;

@@ -20,7 +20,7 @@ export interface IConsumableUsageRepository extends IRepository<ConsumableUsageR
       packingTaskId?: string;
       itemType?: string;
       startDate?: string;
-      endDate?: string
+      endDate?: string;
     }
   ): Promise<ConsumableUsageRow[]>;
 

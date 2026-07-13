@@ -31,3 +31,9 @@ export { IVerificationRuleRepository } from './IVerificationRuleRepository';
 export { IConsumableUsageRepository } from './IConsumableUsageRepository';
 export { IShippingDocumentRepository } from './IShippingDocumentRepository';
 export { ISortingChuteRepository } from './ISortingChuteRepository';
+
+// Phase 3 新增端口
+export { IBillingRuleRepository } from './IBillingRuleRepository';
+export { IBillingTransactionRepository } from './IBillingTransactionRepository';
+export { IUserRepository } from './IUserRepository';
+export { IAsnRepository } from './IAsnRepository';
