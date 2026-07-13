@@ -91,33 +91,33 @@
 
 ---
 
-## Phase 3: P1 业务扩展（6个） - 次优先级
+## Phase 3: P1 业务扩展（6个） - **已完成 ✅**
 
 ### 3.1 端口定义
 | # | 文件 | 状态 | 预估行数 |
 |---|------|------|---------|
-| 1 | `src/core/ports/db/IShippingDocumentRepository.ts` | ⏳ 待开始 | ~80 |
-| 2 | `src/core/ports/db/IVehicleRepository.ts` | ⏳ 待开始 | ~70 |
-| 3 | `src/core/ports/db/IBillingRuleRepository.ts` | ⏳ 待开始 | ~80 |
-| 4 | `src/core/ports/db/IBillingTransactionRepository.ts` | ⏳ 待开始 | ~70 |
-| 5 | `src/core/ports/db/IUserRepository.ts` | ⏳ 待开始 | ~90 |
-| 6 | `src/core/ports/db/IAsnRepository.ts` | ⏳ 待开始 | ~90 |
-| 7 | `src/core/ports/db/IConsumableUsageRepository.ts` | ⏳ 待开始 | ~70 |
+| 1 | `src/core/ports/db/IShippingDocumentRepository.ts` | ✅ **已完成** | ~80 |
+| 2 | `src/core/ports/db/IVehicleRepository.ts` | ✅ **已完成** | ~70 |
+| 3 | `src/core/ports/db/IBillingRuleRepository.ts` | ✅ **已完成** | ~80 |
+| 4 | `src/core/ports/db/IBillingTransactionRepository.ts` | ✅ **已完成** | ~70 |
+| 5 | `src/core/ports/db/IUserRepository.ts` | ✅ **已完成** | ~90 |
+| 6 | `src/core/ports/db/IAsnRepository.ts` | ✅ **已完成** | ~90 |
+| 7 | `src/core/ports/db/IConsumableUsageRepository.ts` | ✅ **已完成** | ~70 |
 
 ### 3.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseShippingDocumentRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` | ⏳ 待开始 |
-| 4 | `src/adapters/supabase/repositories/SupabaseBillingTransactionRepository.ts` | ⏳ 待开始 |
-| 5 | `src/adapters/supabase/repositories/SupabaseUserRepository.ts` | ⏳ 待开始 |
-| 6 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ⏳ 待开始 |
-| 7 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseShippingDocumentRepository.ts` | ✅ **已完成** |
+| 2 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` | ✅ **已完成** |
+| 3 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` | ✅ **已完成** |
+| 4 | `src/adapters/supabase/repositories/SupabaseBillingTransactionRepository.ts` | ✅ **已完成** |
+| 5 | `src/adapters/supabase/repositories/SupabaseUserRepository.ts` | ✅ **已完成** |
+| 6 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ✅ **已完成** |
+| 7 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ✅ **已完成** |
 
 ### 3.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 7 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 7 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 7 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 7 个新实现
 
 ---
 

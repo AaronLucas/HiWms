@@ -108,4 +108,44 @@ export class SupabaseBillingTransactionRepository extends SupabaseBaseRepository
 
     return { totalAmount, totalCount, byFeeType, byStatus, byCurrency };
   }
+
+  async getReconciliationReport(tenantId: string, startDate: string, endDate: string): Promise<Array<{
+    transId: string;
+    feeType: string;
+    amount: number;
+    currency: string;
+    status: string;
+    orderId: string | null;
+    invId: string | null;
+    createdAt: string;
+  }>> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('trans_id, fee_type, amount, currency, status, order_id, inv_id, created_at')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', startDate)
+      .lte('created_at', endDate)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data as Array<{
+      trans_id: string;
+      fee_type: string;
+      amount: number | null;
+      currency: string | null;
+      status: string | null;
+      order_id: string | null;
+      inv_id: string | null;
+      created_at: string | null;
+    }>)?.map(t => ({
+      transId: t.trans_id,
+      feeType: t.fee_type,
+      amount: t.amount || 0,
+      currency: t.currency || 'UNKNOWN',
+      status: t.status || 'unknown',
+      orderId: t.order_id,
+      invId: t.inv_id,
+      createdAt: t.created_at || '',
+    })) || [];
+  }
 }
