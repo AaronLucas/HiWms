@@ -39,14 +39,19 @@
 - [x] `fn_purge_old_action_logs`（历史日志清理：wo_action_logs + inventory_history，可挂 pg_cron）
 
 
-### 1.4 PDA 离线同步核心后端（P0）
-- [ ] 实现同步队列 RPC：`fn_sync_push_operations`（批量写入、幂等去重、版本向量校验）
-- [ ] 实现冲突检测 RPC：`fn_sync_detect_conflicts`（版本向量比对、业务规则校验）
-- [ ] 实现增量拉取 RPC：`fn_sync_pull_incremental`（游标分页、多表并行）
-- [ ] 实现冲突解决 RPC：`fn_sync_resolve_conflict`（OT/CRDT/LWW/MANUAL 策略执行）
-- [ ] 部署 Device API `/sync` 端点（Express + 认证/限流/分片/重试）
-- [ ] 实现 WebSocket 推送服务：任务下发、同步触发、实时进度
-- [ ] 配置 pg_cron 定时任务：同步会话清理、游标过期清理、冲突超时升级
+### 1.4 PDA 离线同步核心后端（P0，2026-07-15 按 DBA 新方案 ADR-011 重写，替代原状态同步/OT-CRDT 任务项）
+
+> 设计依据：`docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` v2.0.0、`docs/01-architecture/ADR/011-offline-sync-operation-log-exception-domain.md`。数据库表/函数设计已在 `docs/03-database/DB_SCHEMA.md` §2.10-2.14/§4 落地为文档，**迁移脚本本身与下述仓储层/路由实现均未开始**（本节任务全部待办）。
+
+- [ ] **迁移脚本落地**：把 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表 + `inventory_reservations.work_order_id` + `order_lines.EXCEPTION` 状态固化为正式迁移脚本（并入部署流程；`supabase/` 已 `.gitignore`，脚本版本化事实来源见 DB_SCHEMA.md）
+- [ ] 补齐仓储层：`IExceptionRepository`/`ISyncEventRepository`/`ITaskClaimRepository`/`ISyncPolicyRepository`/`IDeviceSyncStateRepository` 端口 + Supabase 适配器实现（见 REPOSITORY_ROADMAP.md Phase 5）
+- [ ] 扩展 `fn_apply_sync_event` 的 action_type 路由：目前仅 `PICK`（`fn_apply_pick_action`）完整实现，需补齐 PUTAWAY/COUNT/PACK 等其余动作类型
+- [ ] 部署 Device API `/sync/events`（提交动作事件）、`/sync/pull`（增量拉取）、`/sync/policy`（查询离线策略）端点
+- [ ] 部署任务领用/释放端点：`POST /tasks/{id}/claim`（`fn_claim_task`）、`POST /tasks/claims/{id}/release`（`fn_release_task_claim`）
+- [ ] 部署统一异常查看端点：`GET /exceptions`、`GET /exceptions/{id}`（设备端只读）+ Web 管理端 `fn_resolve_exception` 处理入口
+- [ ] 配置 pg_cron 定时任务：`fn_expire_task_claims`（建议每 1~5 分钟，任务租约过期清扫+自动登记 `TASK_CLAIM_EXPIRED` 异常）
+- [ ] 补充权限种子数据：`permissions`/`role_permissions` 覆盖 `exception_type_catalog.required_permission_resource`（inventory_exception/compliance_exception/sync_exception/task_exception/fulfillment_exception/billing_exception/manual_exception）
+- [ ] **待业务/合规确认（非工程任务，登记跟踪）**：危险品/冷链相关 task_type/zone_type 的 `ONLINE_ONLY` 判定与 `max_offline_duration_seconds` 具体数值，需合规负责人签字确认后录入 `sync_policies`
 
 ---
 
@@ -73,18 +78,21 @@
 | **财务计费** | 账单列表、明细、导出、对账 | 多币种、阶梯定价演示 |
 | **系统管理** | 用户/角色/权限、租户配置、审计日志 | RBAC 可视化编辑器 |
 
-### 2.3 PDA 离线优先前端开发（P0 - 并行 Phase 1.4）
-- [ ] PDA 端本地 SQLite 初始化（SQLCipher 加密、Schema 迁移、版本管理）
-- [ ] 同步引擎核心：队列管理、分片上传、断点续传、重试策略
-- [ ] 版本向量计算与冲突预检（本地乐观锁版本维护）
-- [ ] 冲突解决 UI：并排对比、策略选择、预览合并结果、风险提示
-- [ ] 核心作业离线流程：收货扫描→质检→上架、拣选扫码→确认数量、打包扫箱→加品→封箱→面单打印、分拣扫码→滑道分配、发货扫码→交接、盘点扫码→差异提交
+### 2.3 PDA 离线优先前端开发（P0 - 并行 Phase 1.4，2026-07-15 按 DBA 新方案 ADR-011 重写）
+
+> 设计依据：`docs/03-database/SQLITE_LOCAL_SCHEMA.md` v2.0.0（只读缓存 + Outbox 两类本地表，移除原 `sync_queue`/`version_vector`/`sync_conflicts` 设计）。
+
+- [ ] PDA 端本地 SQLite 初始化（只读缓存表 + Outbox 动作日志表，SQLCipher 加密、Schema 迁移）
+- [ ] Outbox 引擎核心：本地动作追加、幂等键(`local_id`)生成、设备端单调序号 `device_seq` 维护、批量提交、重试策略
+- [ ] 离线策略查询集成：任务开始前调用 `fn_get_sync_policy`（`ALLOW`/`LIMITED`/`ONLINE_ONLY`），`ONLINE_ONLY` 任务需先调用任务领用接口拿到 `task_claims` 租约才能开始
+- [ ] 异常状态展示 UI：轮询/展示 `GET /exceptions`，向操作员展示"已登记异常 #X，请联系主管"，**不需要**任何合并/冲突协商界面（已被预分工机制取代）
+- [ ] 核心作业离线流程：收货扫描→质检→上架、拣选扫码→确认数量、打包扫箱→加品→封箱→面单打印、分拣扫码→滑道分配、发货扫码→交接、盘点扫码→差异提交（走统一异常登记而非专属 `difference_reason` 字段）
 - [ ] 后台同步调度：网络感知、电量感知、优先级队列、WiFi/4G/5G 差异化策略
 - [ ] WebSocket 实时通道：任务下发、进度推送、同步触发、指令下达
 - [ ] 设备硬件集成：条码扫描枪、RFID、蓝牙打印机、GPS、相机、电量监听
-- [ ] 本地数据查询：商品/库位/库存/任务全离线检索、模糊搜索、条码反查
+- [ ] 本地数据查询：只读缓存表全离线检索、模糊搜索、条码反查（含"数据同步于 X 分钟前"提示）
 - [ ] 异常/照片/签名本地缓存 + 后台异步上传 R2（预签名 URL、断点续传）
-- [ ] 多租户切换：本地数据隔离清理、全量重同步、游标重置
+- [ ] 多租户切换：本地数据隔离清理、全量重同步、拉取游标重置
 
 ### 2.4 组件库与通用逻辑
 - [ ] 表格、表单、模态框、下拉树、条码扫描器封装
@@ -267,3 +275,28 @@
 | P2 任务：RLS 兼容中间件 | ✅ 完成 | `src/middleware/rls.ts` | Worker/Express 通用、JWT 解析、Header 注入
 
 > **后续**：P1 全项完成 ✅、进入阶段 2 前端骨架与阶段 4 CI/CD
+
+---
+
+## 离线同步 / 统一异常领域 方案对齐记录 (2026-07-15)
+
+DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并）后，认定其不符合"多设备并发操作共享可变资源"的真实需求，交付新方案（操作同步 + 预分工 + 竞争性任务锁 + 统一异常领域）。本轮完成文档/架构/规划层面的对齐（Phase 3+4），代码/迁移脚本/仓储层实现（Phase 0-2）留待下一轮：
+
+| 执行项 | 状态 | 产出 |
+|--------|------|------|
+| PDA 离线同步设计重写 | ✅ 完成 | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` v2.0.0 |
+| SQLite 本地 Schema 重写 | ✅ 完成 | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` v2.0.0 |
+| 冲突解决策略重写（精简） | ✅ 完成 | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` v2.0.0 |
+| 同步接口契约重写 | ✅ 完成 | `docs/02-api/SYNC_API_CONTRACT.md` v2.0.0 |
+| 设备端协议规范更新 | ✅ 完成 | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` v2.0.0 |
+| DB_SCHEMA.md 补充 7 新表/9 新函数 | ✅ 完成 | `docs/03-database/DB_SCHEMA.md` v2.2.0 |
+| ARCHITECTURE.md 联动更新 | ✅ 完成 | 离线同步流程图、ADR 摘要、模块拓扑 |
+| 新增 ADR-011 | ✅ 完成 | `docs/01-architecture/ADR/011-offline-sync-operation-log-exception-domain.md` |
+| ROADMAP Phase 1.4/2.3 重写 | ✅ 完成 | 本文件 |
+| REPOSITORY_ROADMAP Phase 5 替换 | ✅ 完成 | `docs/03-database/REPOSITORY_ROADMAP.md` |
+| CONVENTIONS.md 联动更新 | ✅ 完成 | `docs/00-project/CONVENTIONS.md` |
+| 数据库迁移脚本落地 | ⏳ 待办（Phase 1，下一轮） | — |
+| 仓储层端口+适配器实现 | ⏳ 待办（Phase 2，下一轮） | — |
+| 现有 RPC→Repository 重构止血 | ⏳ 待办（Phase 0，下一轮，需先于 Phase 1-2） | 当前工作区另有未提交、69 个 tsc 错误的重构，需先修复 |
+
+> **后续**：下一轮先完成 Phase 0（修复现有未提交重构的编译错误、补 ADR 记录该重构），再进入 Phase 1（迁移脚本）与 Phase 2（仓储层）。

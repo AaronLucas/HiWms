@@ -6,51 +6,31 @@
 
 ## 1. 目录结构约定
 
+> ⚠️ **2026-07-15 更新**：项目已迁移到六边形架构（Ports & Adapters），下方结构以 `docs/01-architecture/ARCHITECTURE.md` §2 为准（本节为速查摘要，完整拓扑见该文档）。旧版扁平结构（`src/supabase/SupabaseClient.ts` 单文件封装、`src/workflows/` 内部工作流实现）已被取代，**不要**再新建这两处路径下的文件。
+
 ```
 src/
-├── index.ts              # 应用入口
-├── routes/               # API 路由（每模块一个文件，kebab-case）
-│   ├── auth.ts
-│   ├── inventory.ts
-│   ├── orders.ts
-│   ├── work-orders.ts
-│   ├── sorting.ts
-│   ├── verification.ts
-│   ├── packing.ts
-│   ├── loading.ts
-│   ├── replenishment.ts
-│   ├── wave-strategy.ts
-│   ├── devices.ts
-│   └── reports.ts
-├── services/             # 业务逻辑服务（单一职责，依赖注入）
-│   ├── BillingEngine.ts
-│   ├── RoleManager.ts
-│   ├── StockAllocationService.ts
-│   ├── WorkOrderService.ts
-│   ├── SortingService.ts
-│   ├── VerificationService.ts
-│   ├── PackingService.ts
-│   ├── LoadingService.ts
-│   ├── ReplenishmentScheduler.ts
-│   ├── ProductConstraintService.ts
-│   ├── ActionLogService.ts
-│   └── BlackboxReceivingService.ts
-├── models/               # TypeScript 接口/类型定义
-│   ├── entity.ts         # 核心实体
-│   ├── rbac.ts           # RBAC 相关
-│   └── fulfillment.ts    # 履约链相关
-├── middleware/           # Express 中间件
-│   └── AuthMiddleware.ts
-├── supabase/             # Supabase 客户端封装
-│   └── SupabaseClient.ts
-├── workflows/            # 工作流引擎（主项目内部实现）
-│   ├── WorkflowManager.ts
-│   ├── TaskManager.ts
-│   ├── Scheduler.ts
-│   ├── types.ts
-│   └── tasks.ts
-└── __tests__/            # 测试文件（就近原则，同目录或此处）
+├── core/                    # 核心领域层（只依赖 ports/ 与 types/，不依赖任何适配器）
+│   ├── domain/               # 领域模型（实体、值对象、领域事件）
+│   ├── ports/                 # 端口接口（对外契约）
+│   │   ├── db/                 # 仓储端口（含离线同步/统一异常领域端口，见 REPOSITORY_ROADMAP.md）
+│   │   ├── auth/ cache/ external/ queue/ rpc/ workflow/
+│   ├── usecases/               # 用例层（应用服务，按业务域分包）
+│   └── workflows/              # 工作流引擎核心
+├── adapters/                 # 适配器层（实现 ports/）
+│   ├── supabase/
+│   │   ├── repositories/       # Repository 实现（Supabase*Repository.ts）
+│   │   └── rpc/                 # RPC 客户端实现
+│   ├── cloudflare/ express/ external/ device/
+├── apps/                      # 应用入口（admin-api/tenant-api/device-api/edge-worker）
+├── types/                     # 类型定义（`database.ts` 为 Supabase 生成类型，单一事实来源）
+└── __tests__/                 # 测试文件（就近原则，同目录或此处）
 ```
+
+命名/组织细则：
+- 路由文件：kebab-case，每模块一个文件（`inventory.ts`, `work-orders.ts`）
+- Repository 端口：`I{Entity}Repository.ts`，实现：`Supabase{Entity}Repository.ts`，两者一一对应
+- 依赖注入优先于直接 import 单例（见 §3.2）
 
 ---
 
@@ -171,9 +151,9 @@ POST   /api/work-orders/{id}/complete # 工单完成
 
 #### 5.4.2 时间戳
 - 创建时间：`created_at` (timestamptz, DEFAULT CURRENT_TIMESTAMP)
-- 更新时间：`updated_at` (timestamptz, DEFAULT CURRENT_TIMESTAMP) —— **38 表全覆盖**，由 `fn_update_updated_at()` 触发器维护
+- 更新时间：`updated_at` (timestamptz, DEFAULT CURRENT_TIMESTAMP) —— **43 表全覆盖**（含 v2.2.0 新增的离线同步/异常领域表），由 `fn_update_updated_at()` 触发器维护
 - **故意不加 `updated_at` 的表**（纯追加审计/关联表）：
-  `inventory_history`, `wo_action_logs`, `wave_order_mapping`, `role_permissions`, `user_roles`, `permissions`, `inspection_items`, `vas_boms`, `vas_bom_items`, `shipping_documents`
+  `inventory_history`, `wo_action_logs`, `wave_order_mapping`, `role_permissions`, `user_roles`, `permissions`, `inspection_items`, `vas_boms`, `vas_bom_items`, `shipping_documents`, `sync_events`, `exception_events`（后两者是纯追加型事件流水，同一设计约定）
 
 #### 5.4.3 乐观锁
 - 核心业务表（`inventory` 等）加 `version bigint DEFAULT 1`
@@ -206,6 +186,11 @@ POST   /api/work-orders/{id}/complete # 工单完成
 #### 5.4.7 触发器命名
 - `trg_{table}_{action}`：`trg_inventory_version_update`, `trg_inventory_history`, `trg_enforce_product_constraints`
 - `trg_{table}_updated_at`：统一由 DO 块批量挂载 `fn_update_updated_at()`
+
+#### 5.4.8 "全局默认 + 租户覆盖"并存字段（v2.2.0 新增约定，来自 `exception_type_catalog` 设计教训）
+- 当某字段需要表达"可选按租户覆盖，否则回退全局默认"时（`tenant_id` 需要支持 NULL），**不要把该字段放进主键**——主键列隐含 `NOT NULL`，无法表达"全局默认"这个 NULL 语义。
+- 正确做法：改用两条局部唯一索引分别约束"全局唯一"（`WHERE tenant_id IS NULL`）与"租户内唯一"（`WHERE tenant_id IS NOT NULL`），参照 `exception_type_catalog` 的 `uq_{table}_global` / `uq_{table}_tenant` 命名。
+- 幂等锁/竞争性资源同理：用局部唯一索引表达"某状态下最多一条"（如 `task_claims` 的 `uq_task_claims_active` WHERE status='ACTIVE'），比应用层加锁更可靠，见 `task_claims` 设计（`DB_SCHEMA.md` §2.10）。
 
 ---
 
@@ -249,7 +234,7 @@ POST   /api/work-orders/{id}/complete # 工单完成
 | `ci` | CI 配置变更 |
 
 ### Scope 范围（模块名）
-`auth` | `inventory` | `orders` | `waves` | `work-orders` | `sorting` | `verification` | `packing` | `loading` | `replenishment` | `devices` | `reports` | `rbac` | `billing` | `workflow` | `db` | `ci` | `docker` | `k8s`
+`auth` | `inventory` | `orders` | `waves` | `work-orders` | `sorting` | `verification` | `packing` | `loading` | `replenishment` | `devices` | `reports` | `rbac` | `billing` | `workflow` | `db` | `ci` | `docker` | `k8s` | `sync`（离线同步：task_claims/sync_policies/sync_events/device_sync_state） | `exception`（统一异常领域）
 
 ### 示例
 ```
@@ -292,3 +277,5 @@ chore(deps): upgrade @supabase/supabase-js to v2.110
 ---
 
 *本文档随项目演进持续更新。重大规范变更需团队评审通过。*
+
+*2026-07-15：同步 ADR-011（离线同步操作日志 + 统一异常领域）——更新 §1 目录结构约定为六边形架构实际拓扑，§5.4.2 updated_at 覆盖范围，§5.4.8 新增"全局默认+租户覆盖"字段设计约定，§7 Git scope 补充 `sync`/`exception`。*

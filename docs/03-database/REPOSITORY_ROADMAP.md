@@ -1,11 +1,15 @@
 # 仓储层实施路线图
 
 ## 项目概览
-- **总表数**：34 个业务表 + 6 个 PDA 本地表
-- **聚合根数**：30 个
+- **总表数**：34 个业务表 + 7 个离线同步/统一异常领域表（v2.2.0 新增，取代原规划的 6 个 PDA 本地专用表设想）
+- **聚合根数**：35 个
 - **已完成**：5 个
-- **待完成**：25 个
-- **分 4 个优先级阶段实施**
+- **待完成**：30 个
+- **分 5 个优先级阶段实施**
+
+> **2026-07-15 更新说明**：Phase 5 已按 DBA 新方案（操作同步 + 预分工 + 统一异常领域，见 ADR-011）整体替换——原规划的 `SyncQueue`/`SyncSession`/`SyncConflict`/`SyncCursor`/`PendingUpload`/`DeviceState` 6 个仓储对应的是旧版状态同步设计，其表名/职责与新方案的 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exceptions` 完全不匹配，已废弃。
+>
+> **已知文档滞后提示**：调研发现 Phase 1/3/4 的部分端口/实现文件在实际代码仓库中可能已经存在（早于本文档勾选状态更新），但本次仅在独立 worktree 中核对文档设计，未接触到相关未提交代码，因此下方 Phase 1/3/4 的勾选状态**未做核实性修改**，留待下一轮 Phase 0（止血现有重构）时一并核对并更新。
 
 ---
 
@@ -111,31 +115,31 @@
 
 ---
 
-## Phase 5: PDA 离线同步专用仓储（6个） - P0 同步配套
+## Phase 5: 离线同步 / 统一异常领域仓储（5个） - P0 同步配套（2026-07-15 按 ADR-011 重写，替代原 PDA 同步专用仓储规划）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。执行本 Phase 前需先完成 Phase 0（止血现有 RPC→Repository 重构，详见 `docs/00-project/ROADMAP.md` 离线同步方案对齐记录）与迁移脚本落地（Phase 1）。
 
 ### 5.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ISyncQueueRepository.ts` | ⏳ 待开始 | ~100 | 同步队列核心操作 |
-| 2 | `src/core/ports/db/ISyncSessionRepository.ts` | ⏳ 待开始 | ~70 | 同步会话管理 |
-| 3 | `src/core/ports/db/ISyncConflictRepository.ts` | ⏳ 待开始 | ~90 | 冲突持久化与查询 |
-| 4 | `src/core/ports/db/ISyncCursorRepository.ts` | ⏳ 待开始 | ~60 | 增量同步游标 |
-| 5 | `src/core/ports/db/IPendingUploadRepository.ts` | ⏳ 待开始 | ~80 | 待上传文件记录 |
-| 6 | `src/core/ports/db/IDeviceStateRepository.ts` | ⏳ 待开始 | ~70 | 设备心跳/状态 |
+| 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ⏳ 待开始 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` |
+| 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | ⏳ 待开始 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
+| 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | ⏳ 待开始 | ~60 | 设备同步状态：`device_sync_state` 读写 |
+| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ⏳ 待开始 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action` |
+| 5 | `src/core/ports/db/IExceptionRepository.ts` | ⏳ 待开始 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount` |
 
 ### 5.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseSyncQueueRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseSyncSessionRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseSyncConflictRepository.ts` | ⏳ 待开始 |
-| 4 | `src/adapters/supabase/repositories/SupabaseSyncCursorRepository.ts` | ⏳ 待开始 |
-| 5 | `src/adapters/supabase/repositories/SupabasePendingUploadRepository.ts` | ⏳ 待开始 |
-| 6 | `src/adapters/supabase/repositories/SupabaseDeviceStateRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | ⏳ 待开始 |
+| 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | ⏳ 待开始 |
+| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ⏳ 待开始 |
+| 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ⏳ 待开始 |
 
 ### 5.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 6 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 6 个新实现
+- [ ] `src/core/ports/db/index.ts` - 导出 5 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 5 个新实现
 
 ---
 
@@ -147,8 +151,8 @@
 | Phase 2 (P0 出库作业) | 8 | 8 | 16 | ~1,800 |
 | Phase 3 (P1 业务扩展) | 8 | 8 | 16 | ~1,600 |
 | Phase 4 (P2 支撑域) | 6 | 6 | 12 | ~1,200 |
-| Phase 5 (PDA 同步专用) | 6 | 6 | 12 | ~1,500 |
-| **合计** | **39** | **39** | **78** | **~8,300** |
+| Phase 5 (离线同步/异常领域) | 5 | 5 | 10 | ~1,050 |
+| **合计** | **38** | **38** | **76** | **~7,850** |
 
 ---
 
@@ -189,3 +193,4 @@
 
 *创建时间：2025-07-10*
 *状态：待开始 Phase 1*
+*最近更新：2026-07-15 — Phase 5 按 ADR-011（离线同步操作日志+统一异常领域）整体重写*
