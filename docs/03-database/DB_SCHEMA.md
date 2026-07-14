@@ -1,12 +1,25 @@
 # DB_SCHEMA.md
 
-> **版本**: v2.1.0 (2026-07-08)  
-> **同步来源**: `supabase/migrations/001_initial_schema.sql` (V2.1 统一初始化脚本)  
-> **状态**: ✅ 生产就绪，已含 V2/V2.1 全部修复
+> **版本**: v2.2.0 (2026-07-15)  
+> **同步来源**: `supabase/migrations/` 下的初始化脚本（V2.1 主脚本 + 离线同步/统一异常领域增量扩展）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。  
+> **状态**: ✅ V2.1 主体生产就绪；🚧 本次新增的离线同步/统一异常领域 7 张表为**设计已确定、待迁移脚本落地**（工程排期见 `docs/00-project/ROADMAP.md` Phase 1.4、`docs/03-database/REPOSITORY_ROADMAP.md` Phase 5）
 
 ---
 
-## 1. 表结构总览（38 张业务表）
+## 0. 本次变更说明（v2.2.0）
+
+DBA 团队评审了旧版 PDA 离线同步设计后，交付了新的离线同步 + 竞争性任务锁 + 统一异常领域扩展方案（详见 `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md`）。本次更新把该方案涉及的 **7 张新表**、**9 个新函数**补充进本文档：
+
+- 新表：`task_claims`、`sync_policies`、`device_sync_state`、`sync_events`、`exception_type_catalog`、`exceptions`、`exception_events`
+- `inventory_reservations` 增加 `work_order_id` 列（库存预占精确到工单）
+- `order_lines.status` CHECK 约束增加 `EXCEPTION` 取值
+- 新函数：`fn_claim_task`、`fn_release_task_claim`、`fn_expire_task_claims`、`fn_get_sync_policy`、`fn_apply_sync_event`、`fn_apply_pick_action`、`fn_confirm_inventory_recount`、`fn_raise_exception`、`fn_resolve_exception`
+
+设计原则与业务背景见 `PDA_OFFLINE_SYNC_DESIGN.md` §1；本文档只记录表结构事实，不重复设计动机。
+
+---
+
+## 1. 表结构总览（45 张业务表：38 张 V2.1 核心表 + 7 张离线同步/异常领域表）
 
 | 分类 | 表名 | 说明 | RLS | updated_at | CHECK约束 |
 |------|------|------|-----|------------|-----------|
@@ -23,11 +36,11 @@
 | | `containers` | 容器/托盘（LPN、嵌套、位置、密封状态） | - | ✅ | ✅ |
 | **订单/波次** | `waves` | 波次（策略类型、状态） | ✅ | ✅ | ✅ |
 | | `orders` | 订单（外部单号、截单时间、平台优先级） | ✅ | ✅ | ✅ |
-| | `order_lines` | 订单行（SKU 级状态：PENDING→ALLOCATED→PICKED→PACKED→SHIPPED） | - | ✅ | ✅ |
+| | `order_lines` | 订单行（SKU 级状态：PENDING→ALLOCATED→PICKED→PACKED→SHIPPED，**新增 EXCEPTION** 用于库存异常闭环） | - | ✅ | ✅ |
 | | `wave_order_mapping` | 波次-订单关联 | - | - | - |
 | **库存** | `inventory` | 库存（乐观锁 version、拣货优先级、批次/效期） | ✅ | ✅ | - |
 | | `inventory_history` | 库存变动审计（INBOUND/OUTBOUND/ADJUSTMENT） | - | - | - |
-| | `inventory_reservations` | 库存预留（ACTIVE/RELEASED/EXPIRED/CONSUMED） | - | ✅ | ✅ |
+| | `inventory_reservations` | 库存预留（ACTIVE/RELEASED/EXPIRED/CONSUMED，**新增 `work_order_id` 精确到工单的预分工**） | - | ✅ | ✅ |
 | | `inventory_locks` | 库存冻结（按类型/目标/过期时间） | - | ✅ | - |
 | **工单** | `work_orders` | 作业工单（拣货/上架/盘点/补货、父子工单、PPH 统计） | ✅ | ✅ | ✅ |
 | | `wo_action_logs` | 原子动作日志（扫码、拣货、打包、上架、盘点） | - | - | - |
@@ -52,8 +65,15 @@
 | | `loading_tasks` | 装车任务（计划/实载重体积、铅封、分仓顺序） | ✅ | ✅ | ✅ |
 | | `shipping_documents` | 运输单据（POD/BOL/MANIFEST/CUSTOMS/INSURANCE/DELIVERY_NOTE） | ✅ | ✅ | - |
 | **履约链路-直通** | `cross_dock_jobs` | 越库作业（入库单+出库单匹配、暂存区、超时降级 FALLBACK） | ✅ | ✅ | ✅ |
+| **离线同步-预分工/锁** | `task_claims` | 竞争性在线任务租约（ACTIVE/RELEASED/EXPIRED，局部唯一索引保证同工单同时只有一条 ACTIVE） | ✅ | ✅ | ✅ |
+| | `sync_policies` | 离线策略配置（ALLOW/LIMITED/ONLINE_ONLY，按 tenant+task_type+zone_type 三维匹配） | ✅ | ✅ | ✅ |
+| | `device_sync_state` | 设备同步状态（last_pull/push_at、last_applied_seq、last_seen_online_at） | ✅ | ✅ | - |
+| **离线同步-事件收件箱** | `sync_events` | PDA 离线动作收件箱（PENDING→APPLIED/EXCEPTION/REJECTED，主键即幂等键，UNIQUE(device_id, device_seq) 检测丢包） | ✅ | - | ✅ |
+| **统一异常领域** | `exception_type_catalog` | 异常类型元数据字典（domain、默认严重度、处理所需权限，支持全局默认+租户覆盖） | ✅ (特殊策略，见 §8) | ✅ | ✅ |
+| | `exceptions` | 统一异常台账（PENDING_REVIEW→CONFLICT→RESOLVED/DISMISSED，跨领域统一查看/权限/审计入口） | ✅ | ✅ | ✅ |
+| | `exception_events` | 异常处理审计轨迹（纯追加型，RAISED/ASSIGNED/COMMENT/STATUS_CHANGE/RESOLVED/DISMISSED/REOPENED） | ✅ | - | - |
 
-> **故意不加 updated_at 的表**（设计决策）：`inventory_history`、`wo_action_logs`（纯追加审计日志）、`wave_order_mapping`、`role_permissions`、`user_roles`、`permissions`、`inspection_items`、`vas_boms`、`vas_bom_items`、`shipping_documents`（仅 INSERT/DELETE，无 UPDATE 语义）
+> **故意不加 updated_at 的表**（设计决策）：`inventory_history`、`wo_action_logs`（纯追加审计日志）、`wave_order_mapping`、`role_permissions`、`user_roles`、`permissions`、`inspection_items`、`vas_boms`、`vas_bom_items`、`shipping_documents`（仅 INSERT/DELETE，无 UPDATE 语义）、`sync_events`、`exception_events`（同属纯追加型事件流水，与 `wo_action_logs`/`inventory_history` 同一设计约定）
 
 ---
 
