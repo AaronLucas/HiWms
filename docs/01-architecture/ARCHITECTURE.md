@@ -81,7 +81,7 @@ src/core/
 ├── ports/                  # 端口接口（所有对外契约）
 │   ├── auth/               # 认证授权端口
 │   ├── cache/              # 缓存端口
-│   ├── db/                 # 仓储端口（25个聚合根）
+│   ├── db/                 # 仓储端口（25个聚合根；+5 个离线同步/统一异常领域端口设计中，见 REPOSITORY_ROADMAP.md Phase 5）
 │   ├── external/           # 外部集成端口
 │   ├── queue/              # 队列端口
 │   ├── rpc/                # RPC端口
@@ -94,6 +94,7 @@ src/core/
 │   ├── outbound/
 │   ├── billing/
 │   ├── device/
+│   ├── exception/          # 统一异常领域用例（登记/查看/处理，跨 INVENTORY/SYNC/COMPLIANCE/TASK/FULFILLMENT/BILLING 域复用同一套）
 │   └── workflow/
 ├── workflow/               # 工作流引擎核心
 │   ├── engine/
@@ -251,27 +252,38 @@ Event Handlers   Workflow Trigger    3rd Party
 (异步处理)         (工作流启动)         系统
 ```
 
-### 3.4 离线同步流
+### 3.4 离线同步流（v2：操作同步 + 预分工，取代旧版状态同步/OT-CRDT 设计）
+
+> 详细设计见 `PDA_OFFLINE_SYNC_DESIGN.md`（ADR-011）。核心范式转变：不再是"客户端提交最终状态 → 服务端合并冲突"，而是"客户端记录发生了什么动作 → 服务端重放业务函数"；冲突优先通过**预分工**（库存预占精确到工单 + 竞争性任务租约）在事前消除，事后异常统一走**异常领域**，不再有专门的合并 UI。
+
 ```
-PDA Device (离线)
+波次下发工单（服务器在线）
      │
      ▼
-本地 SQLite 存储操作
+为工单预占具体库存行 (inventory_reservations.work_order_id)
      │
      ▼
-网络恢复 → 同步协议
+PDA Device 离线执行（本地 Outbox 记录动作，非状态）
      │
      ▼
-Device API /sync 端点
+网络恢复 → 批量提交动作事件 (sync_events 幂等收件箱)
      │
      ▼
-冲突检测 → 合并策略 (LWW/OT/CRDT)
+Device API /sync/events 端点
      │
      ▼
-写入主库 → 发布同步完成事件
+fn_apply_sync_event 按 action_type 重放业务函数
+     │
+     ├── 正常 → 写入主库 (APPLIED)
+     ├── 业务性异常（如库存不足）→ 不写入，登记统一异常领域 (EXCEPTION)
+     └── 未知/系统错误 → 兜底登记 SYNC_APPLY_FAILURE (EXCEPTION)
      │
      ▼
-PDA 确认 → 清理本地待同步队列
+PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
+
+（无法预分工的任务：PDA 需先调用 fn_claim_task 竞争性锁获取租约，
+  成功才允许开始离线操作；sync_policies 按 tenant+task_type+zone_type 决定
+  该任务是 ALLOW / LIMITED / ONLINE_ONLY）
 ```
 
 ---
@@ -300,8 +312,8 @@ PDA 确认 → 清理本地待同步队列
 | 特性 | 设计 |
 |------|------|
 | **认证** | Device JWT + API Key，设备绑定租户 |
-| **离线优先** | 本地优先，冲突合并，增量同步 |
-| **核心功能** | 收货扫描、上架、拣选、打包、发货、盘点、异常上报 |
+| **离线优先** | 本地优先，操作同步（非状态合并），预分工消除大部分冲突，竞争性任务租约兜底 |
+| **核心功能** | 收货扫描、上架、拣选、打包、发货、盘点、统一异常上报（`fn_raise_exception`） |
 | **协议** | REST + WebSocket (实时推送任务) |
 | **部署** | Express + PM2，边缘节点部署靠近仓库 |
 | **数据库** | Supabase (RLS) + 本地 SQLite |
@@ -331,6 +343,7 @@ PDA 确认 → 清理本地待同步队列
 | **ADR-008** | PDA 离线优先同步 | 仓库网络不稳定，必须支持离线作业 |
 | **ADR-009** | 事件驱动架构 | 解耦领域操作与副作用，支持最终一致性 |
 | **ADR-010** | TypeScript 严格模式 | 端到端类型安全，数据库类型生成到前端 |
+| **ADR-011** | 离线同步改为操作同步 + 预分工 + 统一异常领域 | DBA 评审发现旧版状态同步/OT-CRDT 设计不符合"多设备并发操作共享可变资源"的真实需求，替换为可预防冲突的设计 |
 
 ---
 
@@ -399,6 +412,7 @@ Types           │             │       │          │      │         │ 
 | 1.0.0 | 2025-07-01 | 初始架构大纲 |
 | 1.1.0 | 2025-07-07 | 补充数据流、技术栈、ADR 索引、CONVENTIONS 引用 |
 | 2.0.0 | 2025-07-10 | 完整六边形架构、多端拓扑、数据流、安全、可观测性 |
+| 2.1.0 | 2026-07-15 | 离线同步流改为操作同步+预分工模型（ADR-011），新增统一异常领域用例模块，更新 ADR 摘要与相关文档索引 |
 
 ---
 
@@ -416,8 +430,8 @@ Types           │             │       │          │      │         │ 
 | **开发手册** | `docs/07-development/DEVELOPMENT.md` | 开发命令速查、本地环境、调试指南 |
 | **编码约定** | `docs/00-project/CONVENTIONS.md` | 命名规范、核心原则、Git 提交规范 |
 | **项目路线图** | `docs/00-project/ROADMAP.md` | 全局任务树、里程碑、依赖关系 |
-| **PDA 离线同步设计** | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` | 同步协议、版本向量、冲突检测、OT/CRDT、SQLite Schema |
-| **设备端 API 协议** | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` | REST/WebSocket 全接口、同步契约、作业操作、错误码 |
-| **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 本地表结构、触发器、索引、分区、加密、迁移 |
-| **冲突解决策略矩阵** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 20 场景矩阵、OT/CRDT/LWW 算法、工作流、UI 规范、监控 |
-| **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | 同步完整契约、分片、游标、版本控制、限流、安全 |
+| **PDA 离线同步设计** | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` | 操作同步、预分工、竞争性任务锁、统一异常领域（ADR-011） |
+| **设备端 API 协议** | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` | REST/WebSocket 全接口、任务领用、离线策略查询、统一异常上报 |
+| **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 只读缓存 + Outbox 动作日志两类本地表 |
+| **冲突解决策略** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 预分工机制、任务租约语义、统一异常处理 |
+| **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | sync_events 幂等收件箱、APPLIED/EXCEPTION/REJECTED 契约 |

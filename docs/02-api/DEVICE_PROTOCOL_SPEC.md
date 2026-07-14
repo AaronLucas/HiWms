@@ -1,9 +1,9 @@
 # 设备端 API 协议详细规范
 
-> **版本**: v1.0.0  
-> **状态**: 草案待评审  
-> **基础路径**: `/api/v1/device`  
-> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `API_SPEC.md` (第 4 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`
+> **版本**: v2.0.0
+> **状态**: 草案待评审
+> **基础路径**: `/api/v1/device`
+> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `SYNC_API_CONTRACT.md`, `API_SPEC.md` (第 4 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`
 
 ---
 
@@ -67,6 +67,13 @@ interface RateLimitInfo {
 4. Token 过期前调用 POST /auth/refresh { refresh_token }
 5. 设备解绑/注销 → POST /auth/logout → 清理本地 Token
 ```
+
+### 1.4 任务执行三大关键机制（v2.0.0 起）
+本规范中所有任务/作业类接口都受以下三个跨切面机制约束，详见第 3 节：
+
+1. **任务领用（Claim）**：多设备可能争抢同一任务时，通过 `fn_claim_task` 领用，不再依赖笼统的"服务端分布式锁"描述。
+2. **离线策略查询（Sync Policy）**：任务是否允许离线、允许多久，由 `fn_get_sync_policy(tenant_id, task_type, zone_type)` 显式返回，设备不得凭任务类型名称自行假设。
+3. **统一异常上报**：所有作业接口遇到无法自行解决的业务问题，一律通过统一异常机制（`fn_raise_exception`）登记，不再各自发明 `exception_code`/`difference_reason` 等专属字段。
 
 ---
 
@@ -226,6 +233,8 @@ Content-Type: application/json
 - `413 PAYLOAD_TOO_LARGE` - 单次同步 > 2MB，需分片
 - `429 SYNC_RATE_LIMITED` - 同步过于频繁，`meta.rate_limit.reset_at` 指示重试时间
 
+> 同步接口完整字段定义、Outbox 队列语义、分片规则见 `SYNC_API_CONTRACT.md`。
+
 ### 2.4 同步状态查询
 ```http
 GET /api/v1/device/sync/status?session_id=sync-ulid-001
@@ -307,7 +316,95 @@ Content-Type: application/json
 
 ## 3. 任务执行接口
 
-### 3.1 获取待执行任务列表
+本节接口围绕三个跨切面机制展开：**离线策略查询**（本节 3.1）→ **任务领用**（本节 3.2-3.3，仅 `ONLINE_ONLY` 任务需要）→ 正常的任务拉取/执行流程（3.4-3.8）→ **统一异常上报**（3.9-3.10）。设备必须先查策略、再按策略决定是否领用，而不是根据任务类型名称自行猜测。
+
+### 3.1 查询任务的离线同步策略
+在开始任意任务前，PDA 应先查询该任务的同步策略，而不是假设"这个类型的任务一定能离线做"。
+```http
+GET /api/v1/device/sync/policy?task_type=PICKING&zone_type=COLD_STORAGE
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "policy": "LIMITED",           // ALLOW | LIMITED | ONLINE_ONLY
+    "max_offline_duration_seconds": 1800,  // 仅 LIMITED 返回；超过需强制联网同步
+    "requires_claim": false        // ONLINE_ONLY 时恒为 true
+  },
+  "meta": { ... }
+}
+```
+
+策略含义：
+
+| policy | 行为 | 是否需要领用（3.2） |
+|---|---|---|
+| `ALLOW` | 可自由离线执行，操作写入本地 Outbox 队列，无需领用 | 否 —— 该任务对应的库存已在派工时通过 `inventory_reservations.work_order_id` 预占，天然无争抢对象 |
+| `LIMITED` | 可离线执行，但 PDA 必须自行计时该任务的离线时长，超过 `max_offline_duration_seconds` 前必须强制联网同步 | 否 |
+| `ONLINE_ONLY` | 必须先成功调用 3.2 领用接口才能开始；领用未成功前，本地不得为该任务排队任何离线操作 | 是 |
+
+> 具体哪些 `task_type`/`zone_type` 组合默认为 `ONLINE_ONLY`（例如冷链、危化品相关合规敏感场景）由租户合规配置决定，本规范不做硬编码；设备侧永远以此接口的实时返回值为准。完整策略字段与决策表见 `SYNC_API_CONTRACT.md`。
+
+### 3.2 领用任务（Claim）
+当 3.1 返回 `policy=ONLINE_ONLY`，或任务本身可能被多台设备同时争抢时，设备必须先领用任务。底层调用 `fn_claim_task(work_order_id, user_id, device_id, lease_seconds=300)`。
+```http
+POST /api/v1/device/tasks/task-uuid/claim
+Content-Type: application/json
+
+{
+  "work_order_id": "wo-uuid",
+  "lease_seconds": 300,           // 可选，默认 300
+  "device_info": { "gps": {...}, "network": "wifi", "battery": 85 }
+}
+```
+
+**响应 (200，领用成功)**:
+```json
+{
+  "success": true,
+  "data": {
+    "success": true,
+    "claim_id": "claim-uuid",
+    "message": "领用成功",
+    "expires_at": "2025-07-11T10:35:00.000Z"
+  },
+  "meta": { ... }
+}
+```
+
+**响应 (200，领用失败——非 HTTP 错误状态)**:
+```json
+{
+  "success": true,
+  "data": {
+    "success": false,
+    "claim_id": null,
+    "message": "该任务已被其他设备领用，请稍后重试或联系主管"
+  },
+  "meta": { ... }
+}
+```
+领用失败是**正常的 HTTP 200 业务响应**，不是错误状态码——同一 `work_order_id` 上是否已存在 ACTIVE 状态的领用记录，由数据库唯一索引强制保证，不依赖应用层判断，因此不存在竞态窗口。设备侧只需读取 `data.success` 决定是否可以继续。
+
+### 3.3 释放任务领用
+任务正常完成（3.7）后，设备应主动释放领用，底层调用 `fn_release_task_claim`。
+```http
+POST /api/v1/device/tasks/task-uuid/release-claim
+Content-Type: application/json
+
+{ "claim_id": "claim-uuid" }
+```
+
+**响应**:
+```json
+{ "success": true, "data": { "released": true }, "meta": { ... } }
+```
+
+> 若设备在持有领用期间离线/崩溃且未释放，租约会在 `lease_seconds` 后由服务端 `fn_expire_task_claims`（周期性任务）自动过期；若此时工单仍未完成，工单会被自动标记为 `EXCEPTION` 并登记一条 `TASK_CLAIM_EXPIRED` 异常（见 3.9 异常目录）。这是系统自动行为，设备无需专门处理——下次同步时会发现任务已不可领用，或已被重新分配/标记异常。
+
+### 3.4 获取待执行任务列表
 ```http
 GET /api/v1/device/tasks?status=PENDING,ASSIGNED&type=PICKING,PACKING&limit=20&offset=0
 ```
@@ -326,6 +423,8 @@ GET /api/v1/device/tasks?status=PENDING,ASSIGNED&type=PICKING,PACKING&limit=20&o
         "wave_id": "wave-uuid",
         "work_order_id": "wo-uuid",
         "assignee_id": "user-uuid",
+        "sync_policy": "ALLOW",          // ALLOW | LIMITED | ONLINE_ONLY，见 3.1
+        "claim_status": null,             // null | ACTIVE | EXPIRED，仅 ONLINE_ONLY 任务有意义
         "summary": {
           "total_lines": 5,
           "completed_lines": 0,
@@ -344,7 +443,7 @@ GET /api/v1/device/tasks?status=PENDING,ASSIGNED&type=PICKING,PACKING&limit=20&o
 }
 ```
 
-### 3.2 获取任务详情
+### 3.5 获取任务详情
 ```http
 GET /api/v1/device/tasks/task-uuid
 ```
@@ -359,6 +458,8 @@ GET /api/v1/device/tasks/task-uuid
     "status": "ASSIGNED",
     "work_order_id": "wo-uuid",
     "wave_id": "wave-uuid",
+    "sync_policy": "ALLOW",
+    "claim_status": null,
     "steps": [
       {
         "id": "step-1",
@@ -404,12 +505,13 @@ GET /api/v1/device/tasks/task-uuid
 }
 ```
 
-### 3.3 开始任务
+### 3.6 开始任务
 ```http
 POST /api/v1/device/tasks/task-uuid/start
 Content-Type: application/json
 
 {
+  "claim_id": "claim-uuid",   // policy=ONLINE_ONLY 时必填，且必须是 3.2 返回的有效领用；ALLOW/LIMITED 任务留空
   "device_info": {
     "gps": { "lat": 31.2304, "lng": 121.4737, "accuracy": 10 },
     "network": "wifi",
@@ -417,6 +519,7 @@ Content-Type: application/json
   }
 }
 ```
+若任务的 `sync_policy=ONLINE_ONLY` 且请求未携带有效 `claim_id`，服务端拒绝开始任务（`403 CLAIM_REQUIRED`，见第 12 节）。
 
 **响应**:
 ```json
@@ -432,7 +535,7 @@ Content-Type: application/json
 }
 ```
 
-### 3.4 完成任务步骤
+### 3.7 完成任务步骤
 ```http
 POST /api/v1/device/tasks/task-uuid/steps/step-1/complete
 Content-Type: application/json
@@ -473,36 +576,118 @@ Content-Type: application/json
 }
 ```
 
-### 3.5 完成任务
+若某一步骤扫描/校验过程中触发了业务级问题（例如目标库位不合规），本接口不再使用专属字段描述问题，而是走 3.9 统一异常上报后，在响应中附带 `exception` 摘要（见 3.9）。
+
+### 3.8 完成任务
 ```http
 POST /api/v1/device/tasks/task-uuid/complete
 Content-Type: application/json
 
 {
-  "device_info": { "gps": {...}, "network": "wifi", "battery": 80 },
-  "exception": null  // 或 { "code": "DAMAGED", "description": "商品包装破损", "photos": ["r2://..."] }
+  "claim_id": "claim-uuid",   // 若任务是通过 3.2 领用开始的，需带上以便服务端联动释放；ALLOW/LIMITED 任务留空
+  "device_info": { "gps": {...}, "network": "wifi", "battery": 80 }
+}
+```
+任务正常完成不再有内联的 `exception` 字段——如果任务执行中出现了需要登记的问题，应在发生时立即调用 3.9 的统一异常接口，而不是在完成时才附带描述。任务完成后，若持有领用，服务端会自动释放（也可显式调用 3.3）。
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "task_id": "task-uuid",
+    "status": "COMPLETED",
+    "completed_at": "2025-07-11T10:40:00.000Z",
+    "claim_released": true
+  },
+  "meta": { ... }
 }
 ```
 
-### 3.6 上报异常
+### 3.9 统一异常上报
+> **替代旧版**：本接口取代了旧版 `POST /tasks/{id}/exception` 的专属异常形状，以及旧版 `.../complete` 内联 `exception:{code,description,photos}` 对象、盘点接口的 `difference_reason` 自由文本字段。所有设备侧"遇到无法自行解决的业务问题"场景，统一走这一个接口，底层调用 `fn_raise_exception(tenant_id, exception_type, source_table, source_id, title, details, raised_by)`。
+
 ```http
-POST /api/v1/device/tasks/task-uuid/exception
+POST /api/v1/device/exceptions
 Content-Type: application/json
 
 {
-  "exception_code": "LOCATION_EMPTY",
-  "description": "货位无货，无法拣选",
-  "severity": "HIGH",  // LOW, MEDIUM, HIGH, CRITICAL
-  "photos": ["r2://exception/photo1.jpg"],
-  "location_code": "A-01-02-03",
-  "product_sku": "SKU-001",
-  "suggested_action": "REPLENISH"
+  "exception_type": "INVENTORY_SHORTAGE",
+  "source_table": "work_orders",
+  "source_id": "wo-uuid",
+  "title": "货位 A-01-02-03 库存不足，无法完成拣选",
+  "details": {
+    "task_id": "task-uuid",
+    "product_sku": "SKU-001",
+    "location_code": "A-01-02-03",
+    "expected_qty": 10,
+    "available_qty": 3,
+    "photos": ["r2://exception/photo1.jpg"]
+  },
+  "device_info": { "gps": {...}, "network": "wifi", "battery": 82 }
 }
 ```
+
+**异常类型目录**（`exception_type` 取值必须来自此表，不得自造新码）：
+
+| exception_type | 所属域 | 默认严重程度 | 设备侧触发场景 |
+|---|---|---|---|
+| `INVENTORY_SHORTAGE` | INVENTORY | HIGH | 拣选时发现可用库存不足——设备永远不会写入负库存，拣选会被明确拒绝，同时登记异常并自动生成后续 COUNT 盘点工单 |
+| `COLD_CHAIN_VIOLATION` / `HAZMAT_CONFLICT` | COMPLIANCE | CRITICAL | 上架/分配库位等操作命中非合规库位——**实时硬阻断**（设备收到明确拒绝，而非软警告），无论在线实时写入还是离线队列回放触发，规则一致（见第 4 节合规执行说明） |
+| `TASK_CLAIM_EXPIRED` | TASK | MEDIUM | 系统自动触发（领用租约过期且工单未完成），设备不会主动上报此类型 |
+| `COUNT_DISCREPANCY` | INVENTORY | MEDIUM | 盘点/库存核查时操作员手工上报差异——替代旧版 `difference_reason` 自由文本字段 |
+| `MANUAL_REVIEW` | OTHER | LOW | 其他未归入以上类型的操作员标记问题，通用兜底 |
+
+**响应 (200)**:
+```json
+{
+  "success": true,
+  "data": {
+    "exception_id": "exc-uuid",
+    "exception_type": "INVENTORY_SHORTAGE",
+    "severity": "HIGH",
+    "status": "OPEN"
+  },
+  "meta": { ... }
+}
+```
+所有会遇到业务异常的设备侧接口（拣选、上架、盘点等），在触发异常的那次调用的响应中都会附带同样形状的 `exception: { exception_id, exception_type, severity }` 摘要字段，PDA 统一展示为"已登记异常 #{exception_id}（{severity}）"，不再需要为每个业务接口单独适配错误展示逻辑。
+
+设备侧**不负责解决异常**——没有面向设备的 `fn_resolve_exception` 调用，异常处理是主管/后台管理端的职责，超出本规范范围。
+
+### 3.10 查询异常状态（只读）
+设备只能查看与自己相关任务的异常状态，不能修改。
+```http
+GET /api/v1/device/exceptions?task_id=task-uuid&status=OPEN
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "exceptions": [
+      {
+        "exception_id": "exc-uuid",
+        "exception_type": "INVENTORY_SHORTAGE",
+        "severity": "HIGH",
+        "status": "OPEN",
+        "title": "货位 A-01-02-03 库存不足，无法完成拣选",
+        "created_at": "2025-07-11T10:32:00.000Z"
+      }
+    ],
+    "total": 1
+  },
+  "meta": { ... }
+}
+```
+完整的异常生命周期状态机、后台解决流程详见 `SYNC_API_CONTRACT.md`。
 
 ---
 
 ## 4. 核心作业操作接口
+
+> 合规执行说明：以下涉及库位分配（收货、上架、拣选）的接口，其冷链/危化品/库位类型不兼容性校验触发器，无论是实时在线写入触发，还是从离线队列回放触发，规则完全一致——**永远不会因为走离线路径而被绕过**。区别仅在于呈现方式：实时在线写入时立即硬阻断，设备当场收到明确拒绝；离线回放时（设备当时已经离开该库位、以为操作已成功）触发器会在服务端生成 `COLD_CHAIN_VIOLATION`/`HAZMAT_CONFLICT` 异常，设备要等到下次同步才会看到，而不是被静默回滚。这一不对称性会影响 PDA 对"刚做完的离线合规敏感操作"应如何提示不确定性，界面设计需显式处理。
 
 ### 4.1 收货扫描
 ```http
@@ -527,6 +712,7 @@ Content-Type: application/json
   "device_info": { "gps": {...}, "network": "wifi", "battery": 90 }
 }
 ```
+若收货暂存位与商品的合规属性冲突（如冷链商品被扫到常温暂存区），按上文合规说明处理：在线时硬阻断，离线回放时登记 `COLD_CHAIN_VIOLATION`/`HAZMAT_CONFLICT` 异常（见 3.9）。
 
 ### 4.2 质检录入
 ```http
@@ -554,6 +740,7 @@ Content-Type: application/json
   ]
 }
 ```
+质检不通过且需要人工复核时，由操作员通过 3.9 上报 `MANUAL_REVIEW` 异常，而不是在本接口内附加专属复核字段。
 
 ### 4.3 上架确认
 ```http
@@ -574,6 +761,7 @@ Content-Type: application/json
   ]
 }
 ```
+目标库位与商品的冷链/危化品属性不兼容时**实时硬阻断**（本接口在线调用时直接拒绝并返回 `422` 级错误）；若该上架动作来自离线队列回放，则登记 `COLD_CHAIN_VIOLATION`/`HAZMAT_CONFLICT` 异常（见第 4 节顶部合规说明与 3.9）。
 
 ### 4.4 黑盒解箱
 ```http
@@ -598,6 +786,7 @@ Content-Type: application/json
 
 {
   "task_id": "task-uuid",
+  "claim_id": "claim-uuid",   // 仅 sync_policy=ONLINE_ONLY 的任务需要
   "location_code": "A-01-02-03",
   "device_info": { ... }
 }
@@ -633,6 +822,7 @@ Content-Type: application/json
   "device_info": { ... }
 }
 ```
+若目标库位实际可用库存不足以满足 `quantity`，设备**不会**被允许写入负库存——本次拣选被拒绝（`422 UNPROCESSABLE_ENTITY`），同时服务端登记 `INVENTORY_SHORTAGE` 异常并自动生成后续 COUNT 盘点工单。响应中附带 `exception: { exception_id, exception_type: "INVENTORY_SHORTAGE", severity: "HIGH" }`。
 
 ### 4.8 打包扫描容器
 ```http
@@ -765,13 +955,13 @@ Content-Type: application/json
       "system_qty": 100,
       "actual_qty": 98,
       "batch_no": "BATCH-001",
-      "container_lpn": "LPN-001",
-      "difference_reason": "DAMAGED"
+      "container_lpn": "LPN-001"
     }
   ],
   "device_info": { ... }
 }
 ```
+本接口仅记录原始盘点扫描数据（系统数量 vs 实盘数量），不再包含旧版 `difference_reason` 自由文本字段——差异原因的结构化上报见 4.16。
 
 ### 4.16 提交盘点差异
 ```http
@@ -788,12 +978,27 @@ Content-Type: application/json
       "expected_qty": 100,
       "actual_qty": 98,
       "difference_qty": -2,
-      "reason": "DAMAGED",
       "reference_id": "count-uuid",
       "reference_type": "inventory_count"
     }
   ],
   "device_info": { ... }
+}
+```
+当 `difference_qty != 0` 时，服务端会自动通过统一异常机制登记一条 `COUNT_DISCREPANCY` 异常（`source_table=inventory_counts`, `source_id=count_task_id`），取代旧版 `difference_reason` 自由文本字段；操作员如需补充说明，应在调用本接口前先调用 3.9 `POST /exceptions`（`exception_type=COUNT_DISCREPANCY`）附上结构化 `details`（差异数量、疑似原因等），本接口的响应会关联该异常。
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "submitted": true,
+    "adjustments_applied": 1,
+    "exceptions": [
+      { "exception_id": "exc-uuid", "exception_type": "COUNT_DISCREPANCY", "severity": "MEDIUM" }
+    ]
+  },
+  "meta": { ... }
 }
 ```
 
@@ -868,7 +1073,8 @@ interface ClientMessage {
 
 // 服务端 → 客户端
 interface ServerMessage {
-  type: 'PONG' | 'TASK_ASSIGNED' | 'TASK_UPDATED' | 'TASK_CANCELLED' 
+  type: 'PONG' | 'TASK_ASSIGNED' | 'TASK_UPDATED' | 'TASK_CANCELLED'
+       | 'TASK_CLAIM_EXPIRED' | 'EXCEPTION_RAISED'
        | 'SYNC_TRIGGER' | 'NOTIFICATION' | 'COMMAND' | 'ERROR';
   payload: any;
   msg_id: string;
@@ -886,6 +1092,8 @@ interface ServerMessage {
 | `TASK_ASSIGNED` | S→C | 新任务派发 | `{ "task_id": "...", "task": {...} }` |
 | `TASK_UPDATED` | S→C | 任务状态变更 | `{ "task_id": "...", "status": "IN_PROGRESS" }` |
 | `TASK_CANCELLED` | S→C | 任务取消 | `{ "task_id": "...", "reason": "ORDER_CANCELLED" }` |
+| `TASK_CLAIM_EXPIRED` | S→C | 本设备持有的任务领用租约已过期 | `{ "task_id": "...", "claim_id": "...", "exception_id": "..." }` |
+| `EXCEPTION_RAISED` | S→C | 与本设备相关任务上登记了新异常 | `{ "exception_id": "...", "exception_type": "INVENTORY_SHORTAGE", "severity": "HIGH" }` |
 | `SYNC_TRIGGER` | S→C | 服务端触发同步 | `{ "reason": "INVENTORY_CHANGED", "tables": ["inventory"] }` |
 | `NOTIFICATION` | S→C | 通知/公告 | `{ "title": "...", "body": "...", "level": "INFO" }` |
 | `COMMAND` | S→C | 指令下发 | `{ "command": "REBOOT", "params": {} }` |
@@ -1095,17 +1303,20 @@ Retry-After: 30  # 仅 429 时返回
 | 403 | `DEVICE_NOT_PROVISIONED` | 设备未注册 | 走设备注册流程 |
 | 403 | `DEVICE_SUSPENDED` | 设备被禁用 | 提示设备已禁用，联系管理员 |
 | 403 | `TENANT_MISMATCH` | 租户不匹配 | 清理本地数据，重新绑定租户 |
+| 403 | `CLAIM_REQUIRED` | 任务为 `ONLINE_ONLY` 但未提供有效领用 | 先调用 3.2 领用接口，成功后再重试 |
 | 404 | `NOT_FOUND` | 资源不存在 | 刷新列表，可能已被删除 |
 | 404 | `TASK_NOT_FOUND` | 任务不存在 | 任务可能已取消/完成，刷新任务列表 |
 | 409 | `SYNC_CONFLICT` | 同步冲突 | 读取冲突列表，按策略解决 |
 | 409 | `CONCURRENT_MODIFICATION` | 并发修改 | 刷新数据后重试 |
-| 409 | `BUSINESS_RULE_VIOLATION` | 业务规则违反 | 显示具体错误（如库存不足、库位冻结） |
+| 409 | `BUSINESS_RULE_VIOLATION` | 业务规则违反 | 显示具体错误；若已生成异常记录，展示 `exception_id`（见 3.9） |
 | 413 | `PAYLOAD_TOO_LARGE` | 请求体过大 | 分片同步，压缩图片 |
-| 422 | `UNPROCESSABLE_ENTITY` | 语义错误（如扫错条码） | 显示业务错误提示 |
+| 422 | `UNPROCESSABLE_ENTITY` | 语义错误（如扫错条码、库存不足、合规冲突） | 显示业务错误提示；若已登记异常，展示 `exception_id`（见 3.9） |
 | 429 | `RATE_LIMITED` | 接口限流 | 指数退避重试，读取 `Retry-After` |
 | 429 | `SYNC_RATE_LIMITED` | 同步过于频繁 | 延长同步间隔 |
 | 500 | `INTERNAL_ERROR` | 服务端错误 | 上报日志，指数退避重试 |
 | 503 | `SERVICE_UNAVAILABLE` | 服务暂不可用 | 延长轮询间隔，显示"服务维护中" |
+
+> 注：任务领用失败（3.2）不是错误码——它是 `200` 响应中 `data.success=false`，详见 3.2。异常目录（`exception_type`）不是 HTTP 错误码，而是统一异常上报机制（3.9）中的业务分类，两者不要混淆。
 
 ---
 
@@ -1114,7 +1325,8 @@ Retry-After: 30  # 仅 429 时返回
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
 | 1.0.0 | 2025-07-11 | 初版：完整 REST/WebSocket 协议、同步契约、作业操作、错误码 | 架构组 |
+| 2.0.0 | 2026-07-15 | DBA 团队重新设计任务领用/离线策略/异常机制并替换旧版实现：① 任务领用改为基于数据库唯一索引的 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` 具体语义，废弃笼统的"服务端分布式锁"描述；② 新增 `GET /sync/policy` 显式查询 `ALLOW`/`LIMITED`/`ONLINE_ONLY` 离线策略，设备不再凭任务类型名称自行假设；③ 废弃旧版 `POST /tasks/{id}/exception`、`.../complete` 内联 `exception` 对象、盘点 `difference_reason` 字段，统一为 `POST /exceptions`（`fn_raise_exception` + 5 类异常目录）与只读 `GET /exceptions`；④ 明确冷链/危化品合规触发器在线硬阻断与离线回放异常登记的不对称行为 | DBA 团队 / 架构组 |
 
 ---
 
-*本文档为设备端 API 协议单一事实来源。任何接口变更需同步更新：`PDA_OFFLINE_SYNC_DESIGN.md`（同步协议）、`SQLITE_LOCAL_SCHEMA.md`（本地表结构）、`CONFLICT_RESOLUTION_STRATEGY.md`（冲突解决）。*
+*本文档为设备端 API 协议单一事实来源。任何接口变更需同步更新：`PDA_OFFLINE_SYNC_DESIGN.md`（同步协议与离线策略语义）、`SYNC_API_CONTRACT.md`（同步/策略/异常接口完整契约）、`SQLITE_LOCAL_SCHEMA.md`（本地表结构）、`CONFLICT_RESOLUTION_STRATEGY.md`（冲突解决）。*

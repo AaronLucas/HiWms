@@ -1,546 +1,448 @@
 # 同步接口完整契约规范
 
-> **版本**: v1.0.0  
-> **状态**: 草案待评审  
-> **基础路径**: `/api/v1/device/sync`  
-> **协议**: HTTPS / JSON  
-> **认证**: Device JWT + API Key  
-> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `DEVICE_PROTOCOL_SPEC.md` (2.3 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`
+> **版本**: v2.0.0
+> **状态**: 草案待评审
+> **基础路径**: `/api/v1/device`
+> **协议**: HTTPS / JSON
+> **认证**: Device JWT + API Key
+> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `DEVICE_PROTOCOL_SPEC.md` (2.3 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`（均按本次 DBA 新方案同步重写）
+
+> **⚠️ 重大变更**：本版本废弃 v1.0.0 的“状态同步”模型（`LocalOperation` + `version_vector` + 服务端 `conflicts[]` + 客户端合并策略协商）。新模型为**事件同步**：PDA 只上报“发生了什么动作”，服务端以幂等收件箱（`sync_events`）落库，并通过确定性业务逻辑重放函数应用。不再存在需要客户端参与决策的“冲突”，无法干净应用的事件一律转化为统一异常域中的一条记录，交由人工在管理端处理。详见第 1 节“模型说明”。
 
 ---
 
-## 1. 接口概览
+## 1. 模型说明（新旧对比）
+
+| 维度 | 旧模型（v1.0.0，已废弃） | 新模型（v2.0.0，本文档） |
+|------|--------------------------|---------------------------|
+| 客户端上报内容 | 拟提交的“最终状态”（完整新值或增量）+ `version_vector` | 离散的“动作事件”（发生了什么），不携带目标状态 |
+| 服务端处理方式 | 比较版本向量，检测冲突 | 按 `id` 幂等落库到 `sync_events`，调用确定性重放函数应用 |
+| 结果状态 | `SUCCESS` / `CONFLICT` / `ERROR`，`CONFLICT` 需客户端选择合并策略 | `APPLIED` / `EXCEPTION` / `REJECTED`，三态互斥，无需客户端决策 |
+| 冲突处理 | 客户端实现 OT/CRDT/人工合并 UI，调用 `/sync/conflicts/{id}/resolve` | 服务端生成统一异常域记录，人工在管理端（Web）用 `fn_resolve_exception` 处理；PDA 仅只读展示 |
+| 幂等键 | 请求级 `X-Request-Id` + 操作级 `local_id`，两套语义 | 事件的 `id`（客户端生成的 UUID/ULID）即幂等键，别无二义 |
+| 拉取（只读参考数据） | `pull_data` 随 `/sync` 一并返回，游标含 `version` | 独立的 `GET /sync/pull`，游标基于各表 `updated_at`，语义单一 |
+| 分片/断点续传 | `chunk_meta` / `ChunkAckResponse` 机制 | 不再需要：每个事件独立幂等，批次失败直接整批重试即可 |
+
+---
+
+## 2. 接口概览
 
 | 接口 | 方法 | 路径 | 说明 | 幂等 |
 |------|------|------|------|------|
-| **同步推送/拉取** | POST | `/sync` | 核心双向同步接口 | ✅ (local_id) |
-| **同步状态查询** | GET | `/sync/status` | 查询会话状态 | ✅ |
-| **冲突列表** | GET | `/sync/conflicts` | 分页获取未解决冲突 | ✅ |
-| **解决冲突** | POST | `/sync/conflicts/{id}/resolve` | 提交冲突解决策略 | ✅ (conflict_id) |
-| **获取增量游标** | GET | `/sync/cursors` | 查询当前游标位置 | ✅ |
-| **重置游标** | POST | `/sync/cursors/reset` | 触发全量同步 | ⚠️ 非幂等 |
+| **提交动作事件** | POST | `/sync/events` | 批量提交离散动作事件到服务端收件箱 | ✅ (事件 `id`) |
+| **拉取参考数据** | GET | `/sync/pull` | 增量拉取只读主数据/工单等参考数据 | ✅ |
+| **查询同步策略** | GET | `/sync/policy` | 查询任务/区域的离线策略 | ✅ |
+| **领用任务** | POST | `/tasks/{work_order_id}/claim` | 领用工单，建立设备-任务租约 | ⚠️ 非幂等（业务语义上每次调用都是一次领用尝试） |
+| **释放任务租约** | POST | `/tasks/claims/{claim_id}/release` | 释放已领用的任务 | ✅ |
+| **异常列表** | GET | `/exceptions` | 分页查询与本设备/用户相关的异常 | ✅ |
+| **异常详情** | GET | `/exceptions/{id}` | 查询单条异常详情 | ✅ |
+
+**已移除的旧接口**（不再提供）：`GET /sync/status`、`GET /sync/conflicts`、`POST /sync/conflicts/{id}/resolve`、`GET /sync/cursors`（作为冲突/版本游标的构造）、`POST /sync/cursors/reset`，以及依附于 `version_vector` 的任何分片/断点续传机制。异常的完整解决流程（`fn_resolve_exception`）不在设备 API 范围内，仅提供只读可见性（见第 7 节）。
 
 ---
 
-## 2. 核心同步接口 - POST /sync
+## 3. 提交动作事件 - POST /sync/events
 
-### 2.1 请求规范
+### 3.1 请求规范
 
 ```http
-POST /api/v1/device/sync HTTP/1.1
+POST /api/v1/device/sync/events HTTP/1.1
 Host: api.wms7.com
 Authorization: Bearer <device_access_token>
 X-API-Key: wms7_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
-X-Client-Version: 2.1.0
-X-Request-Id: <ulid>           # 请求级幂等键
+X-Client-Version: 3.0.0
 Content-Type: application/json
 Content-Encoding: gzip         # >1KB 建议压缩
 Accept: application/json
 Accept-Encoding: gzip, br
 ```
 
-#### 2.1.1 请求体 Schema
+#### 3.1.1 请求体 Schema
 
 ```typescript
-interface SyncRequest {
-  // 会话标识
-  session_id: string;                    // ULID，首次同步生成，后续复用
-  
-  // 时间同步
-  client_time: string;                   // ISO8601 UTC，PDA 本地时间
-  last_synced_server_time?: string;      // 上次同步成功的服务端时间
-  
-  // 推送操作（分片）
-  operations: LocalOperation[];          // 本批次操作，≤ 200 条
-  chunk_meta?: ChunkMeta;                // 分片元信息（大批量时）
-  
-  // 拉取配置
-  pull_tables?: EntityType[];            // 需增量拉取的表，默认全量高频表
-  pull_cursors?: Record<string, SyncCursor>; // 游标位置
-  pull_limit?: number;                   // 单表拉取上限，默认 200，最大 500
-  
-  // 设备上下文
-  device_context: DeviceContext;
+interface SubmitEventsRequest {
+  events: SyncEvent[];                   // 本批次事件，≤ 200 条
 }
 
-interface LocalOperation {
-  local_id: string;                      // ULID，全局唯一幂等键
-  entity_type: EntityType;               // 实体类型枚举
-  operation: OperationType;              // CREATE | UPDATE | DELETE | COMPOUND
-  entity_id: string;                     // 业务主键
-  payload: Record<string, unknown>;      // 完整新值或增量字段
-  version_vector: VersionVector;         // 操作时刻的版本向量快照
-  business_context?: BusinessContext;    // 可选，冲突解决用
-  occurred_at: string;                   // ISO8601，操作发生时间
-  sync_meta: SyncMetadata;               // 优先级、重试、分片信息
-}
-
-interface VersionVector {
-  [table: string]: {
-    [row_pk: string]: number | string;   // 数字版本或 ULID
-  };
-}
-
-interface SyncMetadata {
-  retry_count: number;
-  max_retries: number;
-  priority: 1 | 2 | 3;                   // 1=高(拣选/发货) 2=中(收货/上架) 3=低(盘点/移库)
-  chunk_id?: string;
-  chunk_index?: number;
-  total_chunks?: number;
-}
-
-interface ChunkMeta {
-  chunk_id: string;                      // 同步会话分片 ID
-  chunk_index: number;                   // 0-based
-  total_chunks: number;                  // 总分片数
-  is_final: boolean;                     // 是否最后一片
-}
-
-interface SyncCursor {
-  updated_at: string;                    // 最后一条记录的 updated_at
-  pk: string;                            // 最后一条记录的主键
-  version?: number | string;             // 版本号（如有）
-}
-
-interface DeviceContext {
-  network_type: 'wifi' | '4g' | '5g' | 'ethernet' | 'offline';
-  battery_level: number;                 // 0-100
-  storage_free_mb: number;
-  gps?: { lat: number; lng: number; accuracy: number };
-  app_version: string;
-  os_version: string;
+interface SyncEvent {
+  id: string;                            // 客户端生成的 UUID/ULID —— 即幂等键，服务端主键，不由服务端 DEFAULT 生成
+  device_id: string;                     // 设备 ID，需与 X-Device-Id 一致
+  operator_user_id: string;              // 实际操作人（PDA 当前登录用户）
+  device_seq: number;                    // 设备本地单调递增序列号（bigint，非时钟相关）
+  action_type: ActionType;               // 动作类型枚举，见 3.1.2
+  payload: Record<string, unknown>;      // 结构化业务命令参数，随 action_type 变化，见 3.1.3
+  captured_at: string;                   // ISO8601，设备本地时间戳；仅作审计参考，不作为权威时间
 }
 ```
 
-#### 2.1.2 实体类型枚举
+> **幂等说明**：`id` 即幂等键，无需额外的 `Idempotency-Key` 请求头或字段。重复提交同一条 `id` 的事件会被主键约束天然去重，服务端直接返回该事件当前的（首次处理产生的）结果，不会重复应用副作用。
+
+> **序列号说明**：`UNIQUE(device_id, device_seq)` 是第二重防线，同时用于检测“该设备的序列号是否存在缺口”（可能意味着某次上传丢包，需要设备重新补发缺口部分）。`device_seq` 必须由设备本地严格单调递增生成，不得使用时钟时间代替。
+
+#### 3.1.2 动作类型枚举
 
 ```typescript
-enum EntityType {
-  // 核心业务
-  INVENTORY = 'inventory',
-  INVENTORY_RESERVATION = 'inventory_reservation',
-  INVENTORY_LOCK = 'inventory_lock',
-  WORK_ORDER = 'work_order',
-  WO_ACTION_LOG = 'wo_action_log',
-  ORDER = 'order',
-  ORDER_LINE = 'order_line',
-  WAVE = 'wave',
-  WAVE_ORDER_MAPPING = 'wave_order_mapping',
-  
-  // 入库
-  INBOUND_RECEIPT = 'inbound_receipt',
-  INSPECTION_ITEM = 'inspection_item',
-  ASN_HEADER = 'asn_header',
-  ASN_LINE = 'asn_line',
-  
-  // 出库作业
-  PACKING_TASK = 'packing_task',
-  SORTING_TASK = 'sorting_task',
-  SORTING_CHUTE = 'sorting_chute',
-  LOADING_TASK = 'loading_task',
-  
-  // 质检/VAS
-  QUALITY_INSPECTION = 'quality_inspection',
-  VAS_BOM = 'vas_bom',
-  VAS_BOM_ITEM = 'vas_bom_item',
-  
-  // 发货/运输
-  SHIPPING_DOCUMENT = 'shipping_document',
-  VEHICLE = 'vehicle',
-  
-  // 跨库/直通
-  CROSS_DOCK_JOB = 'cross_dock_job',
-  
-  // 主数据（只读镜像）
-  PRODUCT = 'product',
-  PRODUCT_CONSTRAINT = 'product_constraint',
-  LOCATION = 'location',
-  CONTAINER = 'container',
-  PACKAGE_SPEC = 'package_spec',
-  LABEL_TEMPLATE = 'label_template',
-  VERIFICATION_RULE = 'verification_rule',
-  
-  // 设备/用户
-  DEVICE = 'device',
-  USER = 'user',
-  ROLE = 'role',
-  
-  // 计费
-  BILLING_RULE = 'billing_rule',
-  BILLING_TRANSACTION = 'billing_transaction',
-  
-  // 系统
-  DEVICE_STATE = 'device_state',
-  SYNC_QUEUE = 'sync_queue',           // 内部用
-  SYNC_CONFLICT = 'sync_conflict',     // 内部用
+enum ActionType {
+  PICK = 'PICK',                         // 当前唯一已实现完整服务端处理逻辑的动作类型
+  // 以下类型尚未实现服务端处理，提交后统一返回 REJECTED_UNKNOWN_ACTION：
+  PUTAWAY = 'PUTAWAY',
+  RECEIVE = 'RECEIVE',
+  PACK = 'PACK',
+  SHIP = 'SHIP',
+  MOVE = 'MOVE',
+  COUNT = 'COUNT',
 }
 ```
 
-#### 2.1.3 操作类型枚举
+> 未实现的 `action_type` 不代表协议不支持，而是服务端 `fn_apply_sync_event` 尚未提供对应分支；PDA 可以照常提交，只是当前会得到 `REJECTED` / `REJECTED_UNKNOWN_ACTION`。每新增一个可处理的 `action_type`，需在本文档同步登记状态。
 
-```typescript
-enum OperationType {
-  CREATE = 'CREATE',
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-  COMPOUND = 'COMPOUND',               // 复合操作：多表原子事务
+#### 3.1.3 `payload` 示例（`action_type = 'PICK'`）
+
+```json
+{
+  "id": "01J8Z3K7QZR8N5V9X6M2W4T1E0",
+  "device_id": "pda-0231",
+  "operator_user_id": "user-uuid-7788",
+  "device_seq": 10245,
+  "action_type": "PICK",
+  "payload": {
+    "sku": "SKU-000123",
+    "qty": 5,
+    "location_id": "loc-uuid-A01-02-03",
+    "order_line_id": "ol-uuid-9981"
+  },
+  "captured_at": "2026-07-15T02:31:07.412Z"
 }
 ```
 
----
+### 3.2 响应规范
 
-### 2.2 响应规范
-
-#### 2.2.1 成功响应 (200 OK)
+#### 3.2.1 成功响应 (200 OK)
 
 ```typescript
-interface SyncResponse {
-  session_id: string;
-  server_time: string;                 // ISO8601 UTC，PDA 校准本地时钟用
-  
-  // 推送结果
-  push_results: PushResult[];
-  conflicts: SyncConflict[];           // 空数组表示无冲突
-  
-  // 拉取数据
-  pull_data?: PullData;
-  
-  // 统计
-  stats: SyncStats;
-  
-  // 下次同步建议
-  next_sync_interval_sec: number;      // 建议间隔，动态调整
-  rate_limit?: RateLimitInfo;
+interface SubmitEventsResponse {
+  results: EventResult[];                // 与请求 events 一一对应，顺序不保证与请求一致，以 id 匹配
+  server_time: string;                   // ISO8601 UTC
 }
 
-interface PushResult {
-  local_id: string;
-  status: 'SUCCESS' | 'CONFLICT' | 'ERROR';
-  
-  // SUCCESS 时
-  server_entity_id?: string;           // CREATE 时服务端生成的 ID
-  server_version?: number | string;    // 服务端版本
-  
-  // ERROR 时
-  error?: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-  };
-  
-  // CONFLICT 时
-  conflict_id?: string;
-}
+interface EventResult {
+  id: string;                            // 回传事件 id，用于客户端匹配
+  status: 'APPLIED' | 'EXCEPTION' | 'REJECTED';
 
-interface SyncConflict {
-  conflict_id: string;                 // 服务端生成
-  local_id: string;                    // 关联的操作 local_id
-  
-  conflict_type: ConflictType;         // 见 CONFLICT_RESOLUTION_STRATEGY.md
-  
-  // 冲突详情
-  local_operation: LocalOperation;     // 完整的本地操作
-  server_state: Record<string, unknown>; // 服务端当前完整状态
-  server_version_vector: VersionVector;
-  
-  // 解决建议
-  suggested_resolution: ConflictResolution;
-  resolution_options: ConflictResolutionOption[];
-  
-  created_at: string;
-}
+  // status = EXCEPTION 时
+  exception_id?: string;                 // 关联的异常记录 ID，PDA 可用于展示/跳转
+  exception_type?: string;               // COLD_CHAIN_VIOLATION | HAZMAT_CONFLICT | SYNC_APPLY_FAILURE 等
 
-interface ConflictResolutionOption {
-  strategy: ConflictResolution;
-  description: string;
-  preview_result?: Record<string, unknown>;
-  requires_confirmation: boolean;
-  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
-}
+  // status = REJECTED 时
+  reason?: string;                       // REJECTED_UNKNOWN_ACTION 等
 
-interface PullData {
-  [entityType: string]: {
-    records: Record<string, unknown>[]; // 实体数组
-    cursor: SyncCursor;                 // 下次拉取起点
-    has_more: boolean;                  // 是否还有更多数据
-  };
-}
-
-interface SyncStats {
-  pushed: number;
-  succeeded: number;
-  conflicts: number;
-  errors: number;
-  pulled_records: number;
-  duration_ms: number;
-  chunks_received?: number;
-  chunks_total?: number;
+  message?: string;                      // 人类可读说明，供 PDA 直接展示
 }
 ```
 
-#### 2.2.2 分片同步响应
+示例：
 
-```typescript
-// 非最后一片：仅确认收到，不返回 pull_data
-interface ChunkAckResponse {
-  session_id: string;
-  chunk_id: string;
-  chunk_index: number;
-  received_count: number;
-  status: 'CHUNK_RECEIVED';
-  next_chunk_expected: number;
+```json
+{
+  "results": [
+    {
+      "id": "01J8Z3K7QZR8N5V9X6M2W4T1E0",
+      "status": "APPLIED",
+      "message": "拣选已确认"
+    },
+    {
+      "id": "01J8Z3K7R1S9P2Q7Y8N3X5U2F1",
+      "status": "EXCEPTION",
+      "exception_id": "exc-uuid-4471",
+      "exception_type": "COLD_CHAIN_VIOLATION",
+      "message": "该库位温区与商品冷链要求不符，已生成异常 #4471，请联系主管处理"
+    },
+    {
+      "id": "01J8Z3K7R3T0Q3R8Z9P4Y6V3G2",
+      "status": "REJECTED",
+      "reason": "REJECTED_UNKNOWN_ACTION",
+      "message": "action_type=COUNT 暂未支持服务端处理"
+    }
+  ],
+  "server_time": "2026-07-15T02:31:08.020Z"
 }
-
-// 最后一片：返回完整 SyncResponse
 ```
 
-#### 2.2.3 错误响应
+> **关键差异（对照旧模型）**：响应中不存在 `conflicts[]` 数组，也不存在需要客户端选择合并策略的字段。`EXCEPTION` 是一个终态展示信息，PDA 只需提示用户“此操作触发异常 #X，请联系主管”，不需要实现任何合并/重试 UI。
+
+#### 3.2.2 事件生命周期（服务端内部状态，供理解响应含义）
+
+```
+PENDING → APPLIED    （fn_apply_sync_event 正常执行完成）
+PENDING → EXCEPTION  （命中业务合规异常 / 未预期错误，进入统一异常域）
+PENDING → REJECTED   （action_type 未知，或请求本身不满足处理前提）
+```
+
+只有 `PENDING` 会发生状态迁移；`APPLIED` / `EXCEPTION` / `REJECTED` 均为终态，不会再变化（异常记录本身在管理端可能被人工解决，但对应 `sync_events.status` 仍保持 `EXCEPTION` 不变，解决状态记录在异常域自身的状态字段中，见第 7 节）。
+
+#### 3.2.3 错误响应（批次级，非单条事件级）
 
 | HTTP | 错误码 | 含义 | 客户端处理 |
 |------|--------|------|------------|
-| 400 | `INVALID_SYNC_REQUEST` | 请求体 Schema 校验失败 | 记录日志，不重试，上报开发 |
+| 400 | `INVALID_SYNC_REQUEST` | 请求体 Schema 校验失败（如缺少必填字段） | 记录日志，不重试，上报开发 |
 | 401 | `UNAUTHORIZED` | Token 过期/无效 | 刷新 Token 重试 |
 | 403 | `DEVICE_SUSPENDED` | 设备被禁用 | 停止同步，提示联系管理员 |
 | 403 | `TENANT_MISMATCH` | 租户不匹配 | 清理本地数据，重新登录 |
-| 409 | `SYNC_CONFLICT` | 存在冲突 | `conflicts` 非空，按策略解决后重试 |
-| 413 | `PAYLOAD_TOO_LARGE` | 单次请求 > 2MB | 分片重试 |
+| 413 | `PAYLOAD_TOO_LARGE` | 单批 > 200 条或请求体 > 2MB | 拆分为多批重试 |
 | 429 | `SYNC_RATE_LIMITED` | 同步过于频繁 | 读取 `Retry-After`，指数退避 |
-| 500 | `INTERNAL_ERROR` | 服务端异常 | 指数退避重试，上报日志 |
+| 500 | `INTERNAL_ERROR` | 服务端异常（批次级，非单条事件的 EXCEPTION） | 指数退避重试同一批次（`id` 幂等，安全） |
 | 503 | `SERVICE_UNAVAILABLE` | 同步服务维护中 | 延长轮询间隔至 5 分钟 |
+
+> 注意：`409 SYNC_CONFLICT` 已从错误码表中移除。旧模型中的“冲突”在新模型中不再作为同步层的 HTTP 错误出现——它们表现为 HTTP 200 响应中某条事件的 `status: EXCEPTION`，而不是请求级失败。
 
 ---
 
-## 3. 同步状态查询 - GET /sync/status
+## 4. 拉取参考数据 - GET /sync/pull
 
-### 3.1 请求
+### 4.1 请求
 
 ```http
-GET /api/v1/device/sync/status?session_id=sync-ulid-001 HTTP/1.1
+GET /api/v1/device/sync/pull?tables=work_order,product,location,container&cursor=<opaque> HTTP/1.1
 Authorization: Bearer <token>
 X-API-Key: wms7_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 ```
 
-### 3.2 响应
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `tables` | string | 分配给该设备的高频表全集 | 逗号分隔，需拉取的表 |
+| `cursor` | string | - | 上次拉取返回的游标（按设备+表维度），首次拉取不传 |
+| `limit` | integer | 200 | 单表单页上限，最大 500 |
+
+### 4.2 响应
+
+```typescript
+interface PullResponse {
+  server_time: string;                   // ISO8601 UTC，供设备计算“数据同步于 X 分钟前”
+  data: {
+    [table: string]: {
+      records: Record<string, unknown>[];
+      cursor: string;                    // 基于该表 updated_at 的下一页游标，per-device per-table
+      has_more: boolean;
+    };
+  };
+}
+```
+
+示例：
 
 ```json
 {
-  "success": true,
+  "server_time": "2026-07-15T02:35:00.000Z",
   "data": {
-    "session_id": "sync-ulid-001",
-    "status": "COMPLETED",
-    "started_at": "2025-07-11T10:30:00.123Z",
-    "completed_at": "2025-07-11T10:30:00.357Z",
-    "stats": {
-      "pushed": 10,
-      "succeeded": 9,
-      "conflicts": 1,
-      "errors": 0,
-      "pulled_records": 45
+    "work_order": {
+      "records": [ { "id": "wo-uuid-1", "status": "ASSIGNED", "updated_at": "2026-07-15T02:20:11.000Z" } ],
+      "cursor": "eyJ1cGRhdGVkX2F0IjoiMjAyNi0wNy0xNVQwMjoyMDoxMS4wMDBaIiwiaWQiOiJ3by11dWlkLTEifQ==",
+      "has_more": false
     },
-    "chunks": {
-      "total": 1,
-      "completed": 1
+    "product": {
+      "records": [],
+      "cursor": "eyJ1cGRhdGVkX2F0IjoiMjAyNi0wNy0xNVQwMDowMDowMC4wMDBaIiwiaWQiOm51bGx9",
+      "has_more": false
     }
-  },
-  "meta": {
-    "request_id": "req-ulid",
-    "timestamp": "2025-07-11T10:30:00.400Z"
   }
 }
 ```
 
-**状态值**：
-- `PENDING` - 会话创建，未开始处理
-- `PROCESSING` - 正在处理分片
-- `COMPLETED` - 全部分片处理完毕
-- `PARTIAL` - 部分成功，有未解决冲突
-- `FAILED` - 处理失败
-- `EXPIRED` - 会话超时（24 小时）
+> 拉取游标基于各核心表已有的 `updated_at` 列（V2.1 schema 中已全表覆盖），无需为同步专门新增版本字段。游标为不透明字符串（服务端编码 `updated_at + pk`），客户端只需原样回传，不需要解析或重建其结构。
 
 ---
 
-## 4. 冲突列表 - GET /sync/conflicts
-
-### 4.1 请求参数
-
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `status` | string | `UNRESOLVED` | `UNRESOLVED`, `RESOLVED`, `IGNORED`, `ALL` |
-| `entity_type` | string | - | 按实体类型筛选 |
-| `conflict_type` | string | - | 按冲突类型筛选 |
-| `limit` | integer | 50 | 最大 200 |
-| `offset` | integer | 0 | 分页偏移 |
-| `sort` | string | `-created_at` | 排序字段，`-` 前缀降序 |
-
-### 4.2 响应
-
-```json
-{
-  "success": true,
-  "data": {
-    "conflicts": [
-      {
-        "conflict_id": "conflict-ulid",
-        "local_id": "op-ulid",
-        "entity_type": "work_order",
-        "entity_id": "wo-uuid",
-        "conflict_type": "VERSION_MISMATCH",
-        "local_operation": { ... },
-        "server_state": { "status": "COMPLETED", "_version": 7 },
-        "server_version_vector": { "work_orders": { "wo-uuid": 7 } },
-        "suggested_resolution": "SERVER_WINS",
-        "resolution_options": [
-          { "strategy": "SERVER_WINS", "description": "使用服务端状态（工单已完成）", "requires_confirmation": false, "risk_level": "LOW" },
-          { "strategy": "CLIENT_WINS", "description": "强制覆盖为进行中", "requires_confirmation": true, "risk_level": "HIGH", "preview_result": { "status": "IN_PROGRESS" } }
-        ],
-        "created_at": "2025-07-11T10:30:00.000Z"
-      }
-    ],
-    "total": 1,
-    "has_more": false
-  },
-  "meta": { ... }
-}
-```
-
----
-
-## 5. 解决冲突 - POST /sync/conflicts/{conflict_id}/resolve
+## 5. 查询同步策略 - GET /sync/policy
 
 ### 5.1 请求
 
 ```http
-POST /api/v1/device/sync/conflicts/conflict-ulid/resolve HTTP/1.1
+GET /api/v1/device/sync/policy?task_type=PICK&zone_type=COLD_CHAIN HTTP/1.1
 Authorization: Bearer <token>
 X-API-Key: wms7_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
-Content-Type: application/json
-
-{
-  "strategy": "CLIENT_WINS",
-  "resolved_by": "user-uuid",
-  "note": "确认拣选数量正确，服务端状态滞后",
-  "force": false              // true=跳过二次确认（仅 CLIENT_WINS/MANUAL 高风险策略需 false）
-}
 ```
+
+底层封装 `fn_get_sync_policy(tenant_id, task_type, zone_type)`，`tenant_id` 从鉴权上下文解析，无需前端传入。
 
 ### 5.2 响应
 
 ```json
 {
-  "success": true,
-  "data": {
-    "conflict_id": "conflict-ulid",
-    "resolution": "CLIENT_WINS",
-    "merged_operation": {
-      "local_id": "op-ulid",
-      "server_version": 8
-    },
-    "retry_sync": true,
-    "retry_after_sec": 0
-  },
-  "meta": { ... }
+  "offline_mode": "LIMITED",
+  "max_offline_duration_seconds": 1800
 }
 ```
 
-**策略枚举**：`SERVER_WINS`, `CLIENT_WINS`, `MERGE`, `MANUAL`, `TRANSFORM`, `CRDT_MERGE`
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `offline_mode` | `ALLOW` \| `LIMITED` \| `ONLINE_ONLY` | 该任务类型/区域是否允许离线作业 |
+| `max_offline_duration_seconds` | integer \| null | `LIMITED` 时的最大允许离线时长；`ALLOW` 时通常为 null（不限）；`ONLINE_ONLY` 时为 0 |
+
+PDA 在开始任务前应先调用本接口：若 `offline_mode = ONLINE_ONLY`，则必须先完成任务领用（第 6 节）确认在线可用后才允许进入作业界面；若为 `LIMITED`，需在本地记录离线开始时间，超过 `max_offline_duration_seconds` 后阻止继续离线提交并提示用户联网。
 
 ---
 
-## 6. 游标管理
+## 6. 任务领用 - POST /tasks/{work_order_id}/claim
 
-### 6.1 获取游标 - GET /sync/cursors
-
-```http
-GET /api/v1/device/sync/cursors?tables=inventory,work_orders,products HTTP/1.1
-```
-
-**响应**：
-```json
-{
-  "success": true,
-  "data": {
-    "cursors": {
-      "inventory": { "updated_at": "2025-07-11T10:25:00.000Z", "pk": "inv-last-pk", "version": 15 },
-      "work_orders": { "updated_at": "2025-07-11T10:28:00.000Z", "pk": "wo-last-pk" },
-      "products": { "updated_at": "2025-07-11T08:00:00.000Z", "pk": "prod-last-pk" }
-    }
-  },
-  "meta": { ... }
-}
-```
-
-### 6.2 重置游标 - POST /sync/cursors/reset
+### 6.1 请求
 
 ```http
-POST /api/v1/device/sync/cursors/reset HTTP/1.1
+POST /api/v1/device/tasks/wo-uuid-1/claim HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
 Content-Type: application/json
 
 {
-  "tables": ["inventory", "work_orders"],  // 不传 = 全部表
-  "confirm": true                          // 必须显式确认
+  "user_id": "user-uuid-7788",
+  "lease_seconds": 1800
 }
 ```
 
-**响应**：
+底层封装 `fn_claim_task(work_order_id, user_id, device_id, lease_seconds)`。
+
+### 6.2 响应（200 OK，无论领用成功与否）
+
 ```json
 {
   "success": true,
-  "data": {
-    "reset_tables": ["inventory", "work_orders", "products", "locations", "containers"],
-    "message": "游标已重置，下次同步将触发全量拉取"
-  },
-  "meta": { ... }
+  "claim_id": "claim-uuid-9012",
+  "message": "领用成功"
+}
+```
+
+领用失败示例（**依然是 200，而不是错误状态码**）：
+
+```json
+{
+  "success": false,
+  "claim_id": null,
+  "message": "该任务已被其他设备领用，请稍后重试或联系主管"
+}
+```
+
+> **设计说明**：领用失败（唯一约束冲突导致 `fn_claim_task` 返回失败）是一种预期内的、常规的业务结果，而不是系统错误，因此使用 `200 + success:false` 而非 `409`/`423` 等错误状态码。客户端只需读取 `success` 字段分支处理，无需捕获异常。
+
+## 7. 释放任务租约 - POST /tasks/claims/{claim_id}/release
+
+```http
+POST /api/v1/device/tasks/claims/claim-uuid-9012/release HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
+```
+
+底层封装 `fn_release_task_claim`。
+
+响应：
+
+```json
+{
+  "success": true,
+  "message": "任务租约已释放"
 }
 ```
 
 ---
 
-## 7. 版本控制与兼容性
+## 8. 异常可见性 - GET /exceptions, GET /exceptions/{id}
 
-### 7.1 版本协商
+### 8.1 列表 - GET /exceptions
 
-```http
-# 请求头
-X-Client-Version: 2.1.0
-X-Sync-Protocol-Version: 1              # 同步协议主版本
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `status` | string | `OPEN` | `OPEN`, `RESOLVED`, `ALL` |
+| `exception_type` | string | - | 按类型筛选，如 `COLD_CHAIN_VIOLATION` |
+| `limit` | integer | 50 | 最大 200 |
+| `offset` | integer | 0 | 分页偏移 |
 
-# 响应头
-X-Server-Version: 2.1.3
-X-Sync-Protocol-Version: 1
-X-Sync-Protocol-Min-Version: 1          # 最低兼容版本
+响应：
+
+```json
+{
+  "exceptions": [
+    {
+      "id": "exc-uuid-4471",
+      "exception_type": "COLD_CHAIN_VIOLATION",
+      "status": "OPEN",
+      "source_event_id": "01J8Z3K7R1S9P2Q7Y8N3X5U2F1",
+      "summary": "库位温区与商品冷链要求不符",
+      "created_at": "2026-07-15T02:31:07.900Z"
+    }
+  ],
+  "total": 1,
+  "has_more": false
+}
 ```
 
-### 7.2 兼容性矩阵
+### 8.2 详情 - GET /exceptions/{id}
 
-| 协议版本 | 发布日期 | 状态 | 兼容客户端版本 | 关键变更 |
-|----------|----------|------|----------------|----------|
-| 1 | 2025-07-11 | Current | ≥ 2.1.0 | 初版：双向同步、分片、冲突解决、游标 |
+```json
+{
+  "id": "exc-uuid-4471",
+  "exception_type": "COLD_CHAIN_VIOLATION",
+  "status": "OPEN",
+  "source_event_id": "01J8Z3K7R1S9P2Q7Y8N3X5U2F1",
+  "detail": {
+    "sqlstate": "WMS01",
+    "sku": "SKU-000123",
+    "location_id": "loc-uuid-A01-02-03",
+    "required_zone": "COLD_CHAIN",
+    "actual_zone": "AMBIENT"
+  },
+  "summary": "库位温区与商品冷链要求不符",
+  "created_at": "2026-07-15T02:31:07.900Z",
+  "resolved_at": null,
+  "resolved_by": null,
+  "resolution_note": null
+}
+```
 
-### 7.3 废弃策略
-
-- **主版本不兼容**：发布 v2 时，v1 维护 6 个月，响应头增加 `Sunset: Sat, 01 Jan 2026 00:00:00 GMT`
-- **次版本兼容**：仅新增字段/可选参数，不破坏现有客户端
+> **范围说明**：本接口仅提供**只读**可见性，供 PDA 展示“此操作触发异常 #4471，请联系主管”一类提示。异常的完整解决流程（对应 `fn_resolve_exception`，包括改写库存、重新分配库位、人工确认合规豁免等）发生在面向管理员的 Web/管理端，不属于设备 API 范围，本文档不定义其请求/响应结构。
 
 ---
 
-## 8. 限流与配额
+## 9. 异常分类与错误码
 
-### 8.1 限流规则
+### 9.1 `fn_apply_sync_event` 结果分类
+
+| 触发条件 | 事件 `status` | `exception_type` / `reason` | 说明 |
+|----------|----------------|-------------------------------|------|
+| 命中自定义 SQLSTATE `'WMS01'`（合规性冲突） | `EXCEPTION` | `COLD_CHAIN_VIOLATION` 或 `HAZMAT_CONFLICT`（按具体校验规则区分） | 业务规则明确拒绝，但不是系统故障；生成异常记录供人工处理 |
+| 应用过程中出现未预期错误（如下游服务超时、数据不一致） | `EXCEPTION` | `SYNC_APPLY_FAILURE` | 非业务规则触发，值得工程侧关注，同样落入统一异常域 |
+| `action_type` 不在已实现集合内 | `REJECTED` | `REJECTED_UNKNOWN_ACTION` | 不生成异常记录，仅作为请求被拒绝的说明返回给客户端 |
+
+### 9.2 批次级错误码汇总
+
+| HTTP | 错误码 | 含义 |
+|------|--------|------|
+| 400 | `INVALID_SYNC_REQUEST` | 请求体 Schema 校验失败 |
+| 401 | `UNAUTHORIZED` | Token 过期/无效 |
+| 403 | `DEVICE_SUSPENDED` | 设备被禁用 |
+| 403 | `TENANT_MISMATCH` | 租户不匹配 |
+| 413 | `PAYLOAD_TOO_LARGE` | 单批超出条数/大小限制 |
+| 429 | `SYNC_RATE_LIMITED` | 同步过于频繁 |
+| 500 | `INTERNAL_ERROR` | 服务端异常（整批未处理，非单条 EXCEPTION） |
+| 503 | `SERVICE_UNAVAILABLE` | 同步服务维护中 |
+
+> `409 SYNC_CONFLICT` 已废弃，不再出现于任何接口。
+
+---
+
+## 10. 限流与配额
 
 | 维度 | 限制 | 超限响应 |
 |------|------|----------|
-| 设备级同步频率 | 10 次/分钟 | `429 SYNC_RATE_LIMITED` |
+| 设备级事件提交频率 | 10 次/分钟 | `429 SYNC_RATE_LIMITED` |
 | 设备级 API 总频率 | 200 次/分钟 | `429 RATE_LIMITED` |
-| 租户级同步并发 | 50 设备并发 | 队列等待，最长 30s |
-| 单次同步载荷 | 2 MB (压缩前) | `413 PAYLOAD_TOO_LARGE` |
-| 单次同步操作数 | 200 条 | 自动分片 |
+| 单批事件数 | ≤ 200 条 | `413 PAYLOAD_TOO_LARGE`，客户端拆分为多批 |
+| 单批载荷大小 | 2 MB（压缩前） | `413 PAYLOAD_TOO_LARGE` |
 | 单次拉取记录数 | 500 条/表 | 服务端截断并返回 `has_more=true` |
 
-### 8.2 响应头
+响应头：
 
 ```http
 X-RateLimit-Limit: 10
@@ -551,12 +453,19 @@ Retry-After: 30          # 仅 429 时返回
 
 ---
 
-## 9. 安全规范
+## 11. 幂等与重试策略
 
-### 9.1 请求签名（可选增强）
+- **幂等键即事件 `id`**：不存在也不需要独立的 `Idempotency-Key` 请求头或字段。`sync_events.id` 由 PDA 生成（UUID/ULID），作为主键天然去重；重复提交同一 `id` 直接返回该事件当前结果，不重复触发副作用。
+- **`device_seq` 用于缺口检测**：`UNIQUE(device_id, device_seq)` 便于服务端察觉“这台设备的序列号是否有缺口”，从而推断是否存在丢包；PDA 应保证 `device_seq` 严格本地单调递增（不依赖设备时钟）。
+- **网络失败后的安全做法**：由于 `PENDING → {APPLIED, EXCEPTION, REJECTED}` 只有 `PENDING` 会迁移，且 `id` 幂等，客户端在网络失败/超时后的唯一正确行为是——**原样重试同一批次（相同的 `id` 集合）**，无需任何额外的去重/重试协议层，也无需先查询状态再决定是否重发。
+
+---
+
+## 12. 安全规范
+
+### 12.1 请求签名（可选增强）
 
 ```
-# 客户端计算签名
 signature = HMAC-SHA256(
   key=device_api_key,
   message=METHOD + "\n" + PATH + "\n" + TIMESTAMP + "\n" + SHA256(body)
@@ -572,7 +481,7 @@ X-Signature: <base64_signature>
 - Signature 验签通过
 - 防重放：Timestamp + DeviceId 组合在 Redis 存储 5 分钟
 
-### 9.2 数据加密
+### 12.2 数据加密
 
 | 层面 | 方案 |
 |------|------|
@@ -580,73 +489,64 @@ X-Signature: <base64_signature>
 | 应用层 | 敏感字段（如批次号、序列号）可选字段级加密 |
 | 存储层 | 服务端 PostgreSQL TDE，PDA 端 SQLCipher |
 
-### 9.3 审计日志
+### 12.3 审计日志
 
 同步接口必须记录：
-- `device_id`, `tenant_id`, `session_id`
-- `push_count`, `pull_count`, `conflict_count`
+- `device_id`, `tenant_id`, `operator_user_id`
+- 每批 `events` 数量、`APPLIED`/`EXCEPTION`/`REJECTED` 计数
 - `duration_ms`, `network_type`
-- 冲突解决详情：`conflict_id`, `strategy`, `resolved_by`
+- 异常生成详情：`exception_id`, `exception_type`, `source_event_id`
 
 ---
 
-## 10. 客户端实现指南
+## 13. 客户端实现指南
 
-### 10.1 同步状态机
+### 13.1 同步状态机（简化）
+
+新模型下客户端状态机显著简化：不再有 `RESOLVING_CONFLICTS` 状态，也没有分片重试循环。
 
 ```typescript
 enum SyncState {
   IDLE = 'IDLE',
-  PREPARING = 'PREPARING',      // 收集操作、计算版本向量
-  PUSHING = 'PUSHING',          // 发送操作
-  PULLING = 'PULLING',          // 接收拉取数据
-  RESOLVING_CONFLICTS = 'RESOLVING_CONFLICTS', // 处理冲突
-  APPLYING = 'APPLYING',        // 本地合并拉取数据
+  SUBMITTING = 'SUBMITTING',    // 提交本地待发送事件批次
+  PULLING = 'PULLING',          // 拉取只读参考数据
+  APPLYING = 'APPLYING',        // 本地写入拉取到的参考数据
   COMPLETED = 'COMPLETED',
   FAILED = 'FAILED',
 }
 
 class SyncEngine {
   private state = SyncState.IDLE;
-  private sessionId: string;
-  private chunkQueue: LocalOperation[][] = [];
-  
+
   async sync(): Promise<SyncResult> {
     if (this.state !== SyncState.IDLE) throw new Error('Sync in progress');
-    
-    this.state = SyncState.PREPARING;
-    const operations = await this.collectPendingOperations();
-    
-    // 分片
-    this.chunkQueue = this.chunkOperations(operations, 200);
-    this.sessionId = ulid();
-    
-    for (let i = 0; i < this.chunkQueue.length; i++) {
-      this.state = SyncState.PUSHING;
-      const response = await this.pushChunk(this.chunkQueue[i], i);
-      
-      if (response.conflicts.length > 0) {
-        this.state = SyncState.RESOLVING_CONFLICTS;
-        await this.resolveConflicts(response.conflicts);
-        // 冲突解决后重试同一分片
-        i--;
-        continue;
-      }
-      
-      if (i === this.chunkQueue.length - 1) {
-        this.state = SyncState.PULLING;
-        await this.applyPullData(response.pull_data);
+
+    this.state = SyncState.SUBMITTING;
+    const batch = await this.collectPendingEvents(200); // 本地已生成 id/device_seq
+    const { results } = await this.submitEvents(batch); // 失败直接重试同一批次即可
+
+    for (const r of results) {
+      if (r.status === 'EXCEPTION') {
+        await this.markLocalEventException(r.id, r.exception_id, r.message);
+      } else if (r.status === 'REJECTED') {
+        await this.markLocalEventRejected(r.id, r.reason, r.message);
+      } else {
+        await this.markLocalEventApplied(r.id);
       }
     }
-    
+
+    this.state = SyncState.PULLING;
+    const pulled = await this.pullReferenceData();
+    this.state = SyncState.APPLYING;
+    await this.applyPullData(pulled);
+
     this.state = SyncState.COMPLETED;
-    await this.cleanupCompletedOperations();
     return { success: true };
   }
 }
 ```
 
-### 10.2 退避重试策略
+### 13.2 退避重试策略
 
 ```typescript
 const RETRY_DELAYS = [1000, 2000, 5000, 10000, 30000, 60000]; // 最大 60s
@@ -661,7 +561,7 @@ async function withRetry<T>(fn: () => Promise<T>, context: string): Promise<T> {
       if (e.code === 'SYNC_RATE_LIMITED' || e.code === 'SERVICE_UNAVAILABLE') {
         const delay = RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)];
         await sleep(delay);
-        continue;
+        continue; // 重试同一批次，events 数组内 id 不变，服务端天然幂等
       }
       throw e; // 非重试错误直接抛出
     }
@@ -669,7 +569,7 @@ async function withRetry<T>(fn: () => Promise<T>, context: string): Promise<T> {
 }
 ```
 
-### 10.3 网络感知同步调度
+### 13.3 网络感知同步调度
 
 ```typescript
 interface SyncSchedulerConfig {
@@ -684,11 +584,11 @@ function getNextSyncDelay(config: SyncSchedulerConfig): number {
   const net = getNetworkType();
   const battery = getBatteryLevel();
   let delay = config[net]?.interval_sec || 60;
-  
+
   if (battery < config.low_battery.threshold) {
     delay *= config.low_battery.multiplier;
   }
-  
+
   // 抖动 ±10% 避免惊群
   return delay * (0.9 + Math.random() * 0.2);
 }
@@ -696,41 +596,42 @@ function getNextSyncDelay(config: SyncSchedulerConfig): number {
 
 ---
 
-## 11. 测试契约
+## 14. 测试契约
 
-### 11.1 契约测试用例
+### 14.1 契约测试用例
 
 | 用例 ID | 场景 | 预期结果 |
 |---------|------|----------|
-| SYNC-001 | 首次全量同步（空本地） | 拉取所有高频表，游标建立，`push_results=[]` |
-| SYNC-002 | 增量同步（本地 5 条 UPDATE） | 推送成功，返回 `server_version`，本地版本向量更新 |
-| SYNC-003 | 版本冲突（库存并发扣减） | 返回 `409 CONFLICT`，`conflicts[0].suggested_resolution=TRANSFORM` |
-| SYNC-004 | 幂等重试（网络超时重发） | 服务端识别 `local_id` 已处理，返回原结果 |
-| SYNC-005 | 分片同步（300 条操作） | 2 个分片，最后分片返回完整 `pull_data` |
-| SYNC-006 | 冲突解决后重试 | `POST /resolve` 后再次 `/sync` 成功 |
-| SYNC-007 | 游标重置触发全量 | `POST /cursors/reset` 后下次同步 `pull_cursors` 为空 |
-| SYNC-008 | 限流触发退避 | 连续 11 次同步触发 `429`，客户端指数退避 |
-| SYNC-009 | Token 过期自动刷新 | `401` → 刷新 Token → 重试同步成功 |
-| SYNC-010 | 离线 7 天后上线 | 全量同步（游标过期），数据完整无丢失 |
+| SYNC-001 | 首次拉取（空本地） | `GET /sync/pull` 无 `cursor` 时返回全量高频表数据，游标建立 |
+| SYNC-002 | 正常提交（5 条 PICK 事件） | 全部返回 `status=APPLIED` |
+| SYNC-003 | 冷链违规提交 | 返回 `status=EXCEPTION`，`exception_type=COLD_CHAIN_VIOLATION`，生成 `exception_id` |
+| SYNC-004 | 未知 action_type 提交 | 返回 `status=REJECTED`，`reason=REJECTED_UNKNOWN_ACTION` |
+| SYNC-005 | 幂等重试（网络超时后重发同一批次） | 服务端识别 `id` 已处理，返回原结果，不重复应用副作用 |
+| SYNC-006 | `device_seq` 缺口 | 服务端可通过 `UNIQUE(device_id, device_seq)` 查询发现缺口，触发丢包排查（非本接口直接返回错误） |
+| SYNC-007 | 任务领用竞争 | 两台设备并发领用同一 `work_order_id`，一台 `success:true`，另一台 `success:false` 且为 200 |
+| SYNC-008 | 离线策略查询 | `ONLINE_ONLY` 任务在无网络时 PDA 阻止进入作业界面 |
+| SYNC-009 | 限流触发退避 | 连续 11 次提交触发 `429`，客户端指数退避 |
+| SYNC-010 | 异常列表展示 | `GET /exceptions?status=OPEN` 返回本设备产生的未解决异常，供 PDA 展示 |
 
-### 11.2 性能基线
+### 14.2 性能基线
 
 | 指标 | 目标 | 测试条件 |
 |------|------|----------|
-| 单次同步延迟 (P99) | < 3000ms | 200 推送 + 500 拉取，WiFi |
-| 增量同步延迟 (P99) | < 500ms | 10 推送 + 50 拉取，WiFi |
-| 冲突解决端到端 | < 5000ms | 包括用户交互 3 秒 |
-| 同步成功率 | > 99.9% | 日均 1000 设备 |
+| 单批事件提交延迟 (P99) | < 1000ms | 200 条事件，WiFi |
+| 参考数据拉取延迟 (P99) | < 800ms | 500 条/表，WiFi |
+| 事件应用成功率（`APPLIED` 占比，排除业务性 `EXCEPTION`/`REJECTED`） | > 99.9% | 日均 1000 设备 |
+| 异常生成到管理端可见延迟 | < 5s | 事件提交后 |
 | 离线数据零丢失 | 100% | 杀进程/断电/卸载重装测试 |
 
 ---
 
-## 12. 版本记录
+## 15. 版本变更记录
 
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
-| 1.0.0 | 2025-07-11 | 初版：完整契约、分片、冲突、游标、限流、安全、客户端指南、测试用例 | 架构组 |
+| 2.0.0 | 2026-07-15 | **重大变更**：DBA 团队交付新方案，废弃 v1.0.0 的状态同步模型（`LocalOperation` + `version_vector` + 服务端 `conflicts[]` + 客户端合并策略协商），改为事件同步模型（`sync_events` 幂等收件箱 + 确定性重放函数 + `APPLIED`/`EXCEPTION`/`REJECTED` 三态）。移除 `/sync/status`、`/sync/conflicts`、`/sync/conflicts/{id}/resolve`、`/sync/cursors`、`/sync/cursors/reset` 及分片/断点续传机制；新增 `/sync/events`、`/sync/pull`、`/sync/policy`、`/tasks/{work_order_id}/claim`、`/tasks/claims/{claim_id}/release`、`/exceptions`、`/exceptions/{id}`。移除 `409 SYNC_CONFLICT` 错误码。 | DBA 团队 / 架构组 |
+| 1.0.0 | 2025-07-11 | 初版：完整契约、分片、冲突、游标、限流、安全、客户端指南、测试用例（已废弃，见上） | 架构组 |
 
 ---
 
-*本文档为同步接口契约单一事实来源。任何接口变更需同步更新：`PDA_OFFLINE_SYNC_DESIGN.md`（第 4 节流程）、`DEVICE_PROTOCOL_SPEC.md`（2.3 节）、`SQLITE_LOCAL_SCHEMA.md`（sync_queue 字段）、`CONFLICT_RESOLUTION_STRATEGY.md`（冲突响应结构）。*
+*本文档为同步接口契约单一事实来源。任何接口变更需同步更新：`PDA_OFFLINE_SYNC_DESIGN.md`（第 4 节流程）、`DEVICE_PROTOCOL_SPEC.md`（2.3 节）、`SQLITE_LOCAL_SCHEMA.md`（`sync_events` 本地镜像字段）、`CONFLICT_RESOLUTION_STRATEGY.md`（已转型为“异常处理策略”，不再描述客户端合并策略）。*
