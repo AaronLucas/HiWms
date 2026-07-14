@@ -234,6 +234,126 @@ order_lines.status IN ('PENDING','ALLOCATED','PICKED','PACKED','SHIPPED','CANCEL
 status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 ```
 
+### 2.10 task_claims (竞争性任务租约)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| work_order_id | uuid | FK→work_orders(id) CASCADE | |
+| claimed_by_user_id | uuid | FK→users(id) SET NULL | |
+| claimed_by_device_id | uuid | FK→devices(id) SET NULL | |
+| status | varchar(20) | NOT NULL DEFAULT 'ACTIVE', CHECK | ACTIVE/RELEASED/EXPIRED |
+| claimed_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
+| expires_at | timestamp | NOT NULL | |
+| released_at | timestamp | | |
+
+> **核心约束**：`uq_task_claims_active` 局部唯一索引 ON (work_order_id) WHERE status='ACTIVE' —— 同一工单同一时刻只能有一条 ACTIVE 租约，并发保证完全依赖数据库唯一约束的原子性，不依赖应用层加锁。参见 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`（§4）。
+
+### 2.11 sync_policies (离线策略配置)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| task_type | varchar(20) | NULL=不限任务类型 | |
+| zone_type | varchar(20) | NULL=不限库位类型 | |
+| offline_mode | varchar(20) | NOT NULL DEFAULT 'ALLOW', CHECK | ALLOW/LIMITED/ONLINE_ONLY |
+| max_offline_duration_seconds | int | 仅 LIMITED 生效 | CHECK: offline_mode<>'LIMITED' OR 非空 |
+| priority | int | NOT NULL DEFAULT 0 | 维度越具体应配越高优先级 |
+
+> 按 tenant_id+task_type+zone_type 三维匹配，找不到配置时 `fn_get_sync_policy` 返回安全默认值（ALLOW + 28800 秒）。危险品/冷链相关组合的 `ONLINE_ONLY` 判定与具体秒数需业务/合规负责人确认，本表只提供机制（详见 `PDA_OFFLINE_SYNC_DESIGN.md` 开放问题章节）。
+
+### 2.12 device_sync_state (设备同步状态)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| device_id | uuid | PK, FK→devices(id) CASCADE | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | 冗余存储，便于 RLS 直接过滤 |
+| last_pull_at | timestamp | | |
+| last_push_at | timestamp | | |
+| last_applied_seq | bigint | NOT NULL DEFAULT 0 | |
+| last_seen_online_at | timestamp | | |
+
+### 2.13 sync_events (离线动作事件收件箱)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | **PK，由 PDA 生成，不用 DEFAULT** | 主键即幂等键，重复上传天然去重 |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| device_id | uuid | FK→devices(id) SET NULL | |
+| operator_user_id | uuid | FK→users(id) SET NULL | |
+| device_seq | bigint | NOT NULL | 设备端单调递增序号，不依赖设备时钟 |
+| action_type | varchar(30) | NOT NULL | 目前只有 PICK 完整实现 |
+| payload | jsonb | NOT NULL | 结构化业务动作参数 |
+| captured_at | timestamp | NOT NULL | 设备本地捕获时间，仅供审计 |
+| received_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
+| applied_at | timestamp | | |
+| status | varchar(20) | NOT NULL DEFAULT 'PENDING', CHECK | PENDING/APPLIED/EXCEPTION/REJECTED |
+| UNIQUE(device_id, device_seq) | | | 第二重防线，检测设备序列号缺口（可能丢包） |
+
+> 分发执行见 `fn_apply_sync_event`（§4），业务性异常（如库存不足）主动判断后登记，不等数据库报错再捕获；合规触发器改造为携带自定义 SQLSTATE `WMS01`，供精确分类为 `COLD_CHAIN_VIOLATION`。
+
+### 2.14 exception_type_catalog / exceptions / exception_events (统一异常领域)
+
+**exception_type_catalog**（异常类型元数据字典）
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| code | varchar(50) | NOT NULL | 如 INVENTORY_SHORTAGE |
+| tenant_id | uuid | FK→tenants(id) CASCADE, NULL=全局默认 | |
+| domain | varchar(30) | NOT NULL | INVENTORY/SYNC/COMPLIANCE/TASK/FULFILLMENT/BILLING/OTHER |
+| default_severity | varchar(20) | NOT NULL DEFAULT 'MEDIUM', CHECK | LOW/MEDIUM/HIGH/CRITICAL |
+| required_permission_resource | varchar(100) | | 处理该类异常所需权限 |
+| required_permission_action | varchar(50) | DEFAULT 'resolve' | |
+| is_active | boolean | DEFAULT TRUE | |
+
+> `code` 不放进主键（因 tenant_id 需支持 NULL 表达"全局默认"，而主键列隐含 NOT NULL），改用两条局部唯一索引分别约束"全局唯一"（`uq_exception_type_catalog_global` WHERE tenant_id IS NULL）与"租户内唯一"（`uq_exception_type_catalog_tenant`）。
+
+预置 9 种全局异常类型：
+
+| code | domain | 默认严重度 | 触发方式 |
+|---|---|---|---|
+| `INVENTORY_SHORTAGE` | INVENTORY | HIGH | `fn_apply_pick_action` 主动判断触发 |
+| `SYNC_APPLY_FAILURE` | SYNC | MEDIUM | `fn_apply_sync_event` 兜底捕获 |
+| `COLD_CHAIN_VIOLATION` | COMPLIANCE | CRITICAL | 合规触发器（自定义 SQLSTATE WMS01）捕获 |
+| `HAZMAT_CONFLICT` | COMPLIANCE | CRITICAL | 同上 |
+| `TASK_CLAIM_EXPIRED` | TASK | MEDIUM | `fn_expire_task_claims` 定时巡检触发 |
+| `COUNT_DISCREPANCY` | INVENTORY | MEDIUM | 人工发起（当前无自动检测子系统） |
+| `CROSS_DOCK_TIMEOUT` | FULFILLMENT | LOW | `fn_cross_dock_timeout_sweep` 定时巡检触发 |
+| `BILLING_DISCREPANCY` | BILLING | MEDIUM | 人工发起（当前无自动稽核逻辑） |
+| `MANUAL_REVIEW` | OTHER | LOW | 人工发起的通用兜底类别 |
+
+**exceptions**（统一异常台账）
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| exception_type | varchar(50) | NOT NULL | 对应 exception_type_catalog.code |
+| domain | varchar(30) | NOT NULL | |
+| severity | varchar(20) | NOT NULL | |
+| status | varchar(20) | NOT NULL DEFAULT 'PENDING_REVIEW', CHECK | PENDING_REVIEW/CONFLICT/RESOLVED/DISMISSED |
+| source_table | varchar(50) | | 触发来源表名 |
+| source_id | uuid | | 触发来源那一行的 id |
+| title | varchar(200) | | |
+| details | jsonb | DEFAULT '{}' | |
+| raised_by | uuid | FK→users(id) SET NULL, NULL=系统自动触发 | |
+| assigned_to | uuid | FK→users(id) SET NULL | |
+| resolution_action | varchar(50) | | |
+| resolved_by | uuid | FK→users(id) SET NULL | |
+| resolved_at | timestamp | | |
+| resolution_notes | text | | |
+
+> 生命周期：🟡 PENDING_REVIEW（默认起点）→ 🔴 CONFLICT（处理中发现复杂需升级，不是所有异常一开始就是红色）→ 🟢 RESOLVED（已处理）/ DISMISSED（已知悉判定不需处理，误报）。登记走 `fn_raise_exception`，恢复走 `fn_resolve_exception`（§4）。**定位说明**：各业务表自身 status 字段仍保留（支撑高频本表内查询），`exceptions` 是在其之上的"影子台账"，负责跨领域统一查看/权限校验/审计/恢复。
+
+**exception_events**（追加型审计轨迹，永不修改，与 wo_action_logs/inventory_history 同一设计哲学）
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | bigserial | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| exception_id | uuid | FK→exceptions(id) CASCADE | |
+| event_type | varchar(30) | NOT NULL | RAISED/ASSIGNED/COMMENT/STATUS_CHANGE/RESOLVED/DISMISSED/REOPENED |
+| actor_user_id | uuid | FK→users(id) SET NULL, NULL=系统 | |
+| from_status | varchar(20) | | |
+| to_status | varchar(20) | | |
+| note | text | | |
+
 ---
 
 ## 3. 视图（10 个只读分析视图）
@@ -253,7 +373,7 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 
 ---
 
-## 4. 核心 RPC 函数（17 个）
+## 4. 核心 RPC 函数（26 个：17 个 V2.1 核心函数 + 9 个离线同步/异常领域函数）
 
 | 函数 | 分类 | 说明 |
 |------|------|------|
@@ -273,6 +393,15 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `fn_current_tenant_id()` | 认证 | **获取当前租户 ID**（优先 JWT app_metadata.tenant_id，回退 users 表） |
 | `fn_cross_dock_timeout_sweep()` | 维护 | **直通超时自动降级**（MATCHED/STAGING→FALLBACK，每 5 分钟跑批） |
 | `fn_purge_old_action_logs(p_days INT DEFAULT 180)` | 维护 | **历史日志清理**（wo_action_logs + inventory_history，每天凌晨 3 点） |
+| `fn_claim_task(p_work_order_id, p_user_id, p_device_id, p_lease_seconds=300)` | 离线同步 | **竞争性任务租约领用**：插入成功即领用成功；因唯一约束冲突失败时返回明确失败原因（不抛异常） |
+| `fn_release_task_claim(p_claim_id)` | 离线同步 | 任务正常完成后主动释放租约 |
+| `fn_expire_task_claims()` | 维护 | **定时清扫过期租约**（建议每 1~5 分钟），发现工单未完成则标记 EXCEPTION + 登记 `TASK_CLAIM_EXPIRED` 异常 |
+| `fn_get_sync_policy(p_tenant_id, p_task_type, p_zone_type)` | 离线同步 | 查询离线策略（ALLOW/LIMITED/ONLINE_ONLY），未配置时返回安全默认值 ALLOW+28800秒 |
+| `fn_apply_sync_event(p_event_id)` | 离线同步 | **同步事件统一分发入口**：按 action_type 路由（目前仅 PICK 完整实现），WMS01 SQLSTATE→COLD_CHAIN_VIOLATION，WHEN OTHERS→SYNC_APPLY_FAILURE |
+| `fn_apply_pick_action(p_event_id)` | 离线同步 | **拣货动作处理**：库存不足时主动判断、不写入负库存，登记 INVENTORY_SHORTAGE + 生成 COUNT 复盘工单 + 订单行标记 EXCEPTION |
+| `fn_confirm_inventory_recount(p_exception_id, p_resolution_details)` | 离线同步 | 主管确认复盘后：库存修正为确认值（标注"盘点调整"）+ 订单行解除异常 |
+| `fn_raise_exception(p_tenant_id, p_exception_type, p_source_table, p_source_id, p_title, p_details, p_raised_by)` | 统一异常 | **统一登记入口**：解析类型元数据、写台账 + 首条审计轨迹 |
+| `fn_resolve_exception(p_exception_id, p_resolver_user_id, p_new_status, p_resolution_action, p_resolution_notes, p_resolution_details)` | 统一异常 | **统一恢复入口**：权限校验（复用 check_user_permission）→ 领域收尾动作（目前完整实现库存异常闭环）→ 更新台账 → 写审计轨迹 |
 
 ---
 
@@ -283,7 +412,7 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `trg_inventory_version_update` | inventory | BEFORE | UPDATE | `fn_trg_inventory_version_manager()` | 乐观锁版本号+1 |
 | `trg_inventory_history` | inventory | AFTER | UPDATE | `fn_trg_inventory_history()` | 变动审计入历史表 |
 | `trg_enforce_product_constraints` | inventory | BEFORE | INSERT, UPDATE OF location_id | `fn_trg_enforce_product_constraints()` | **存储合规强校验** |
-| `trg_*_updated_at` | **38 表** | BEFORE | UPDATE | `fn_update_updated_at()` | 统一自动维护 updated_at（DO 块批量挂载） |
+| `trg_*_updated_at` | **43 表**（45 表中 `sync_events`/`exception_events` 按设计不加） | BEFORE | UPDATE | `fn_update_updated_at()` | 统一自动维护 updated_at（DO 块批量挂载） |
 
 ---
 
@@ -296,15 +425,22 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `uq_resv_active` | inventory_reservations | (inventory_id, order_id) | 唯一索引 WHERE status='ACTIVE' | 活跃预留防重复 |
 | `uq_verification_rules_current` | verification_rules | (tenant_id, sku_id) | 唯一索引 WHERE effective_to IS NULL | **当前生效规则唯一** |
 | `idx_cross_dock_jobs_timeout` | cross_dock_jobs | (timeout_at) | 部分索引 WHERE status NOT IN ('SHIPPED','CANCELLED','FALLBACK') | 超时扫描加速 |
+| `uq_task_claims_active` | task_claims | (work_order_id) | 局部唯一索引 WHERE status='ACTIVE' | **竞争性锁核心**：同工单同时只允许一条 ACTIVE 租约 |
+| `idx_task_claims_expires` | task_claims | (expires_at) | 部分索引 WHERE status='ACTIVE' | `fn_expire_task_claims` 扫描加速 |
+| `idx_sync_events_status` | sync_events | (status) | 部分索引 WHERE status='PENDING' | 待处理事件扫描加速 |
+| `idx_sync_events_device` | sync_events | (device_id, device_seq) | B-tree | 序列号缺口检测、按设备追溯 |
+| `uq_exception_type_catalog_global` / `_tenant` | exception_type_catalog | (code) / (code, tenant_id) | 局部唯一索引 | 全局默认唯一 + 租户覆盖唯一并存 |
+| `idx_exceptions_tenant_status` | exceptions | (tenant_id, status) | B-tree | 异常看板核心查询 |
+| `idx_exceptions_severity` | exceptions | (severity) | 部分索引 WHERE status IN ('PENDING_REVIEW','CONFLICT') | 高严重度异常优先展示 |
 
 ---
 
-## 7. 状态字段 CHECK 约束（20 个）
+## 7. 状态字段 CHECK 约束（26 个）
 
 | 约束名 | 表 | 允许值 |
 |--------|-----|--------|
 | `chk_orders_status` | orders | PENDING, CONFIRMED, ALLOCATED, PICKING, PACKED, SHIPPED, CANCELLED, EXCEPTION |
-| `chk_order_lines_status` | order_lines | PENDING, ALLOCATED, PICKED, PACKED, SHIPPED, CANCELLED |
+| `chk_order_lines_status` | order_lines | PENDING, ALLOCATED, PICKED, PACKED, SHIPPED, CANCELLED, **EXCEPTION**（v2.2.0 新增，库存异常闭环用） |
 | `chk_work_orders_status` | work_orders | OPEN, ASSIGNED, IN_PROGRESS, COMPLETED, EXCEPTION, CANCELLED |
 | `chk_containers_status` | containers | IDLE, IN_USE, STAGED, RETIRED |
 | `chk_waves_status` | waves | PLANNING, RELEASED, IN_PROGRESS, COMPLETED, CANCELLED |
@@ -323,6 +459,12 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `chk_billing_transactions_status` | billing_transactions | PENDING, INVOICED, PAID, VOID |
 | `chk_billing_tier_days` | billing_rule_tiers | max_days IS NULL OR max_days >= min_days |
 | `chk_verification_rules_period` | verification_rules | effective_to IS NULL OR effective_to >= effective_from |
+| `chk_task_claims_status` | task_claims | ACTIVE, RELEASED, EXPIRED |
+| `chk_sync_policies_offline_mode` | sync_policies | ALLOW, LIMITED, ONLINE_ONLY |
+| `chk_sync_policies_limited_duration` | sync_policies | offline_mode <> 'LIMITED' OR max_offline_duration_seconds IS NOT NULL |
+| `chk_sync_events_status` | sync_events | PENDING, APPLIED, EXCEPTION, REJECTED |
+| `chk_exception_type_catalog_severity` | exception_type_catalog | LOW, MEDIUM, HIGH, CRITICAL |
+| `chk_exceptions_status` | exceptions | PENDING_REVIEW, CONFLICT, RESOLVED, DISMISSED |
 
 > **设计意图**：全库状态值统一大写，写入非法值直接报错，避免统计视图静默漏数。
 
@@ -330,7 +472,14 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 
 ## 8. 行级安全 (RLS) 策略
 
-**启用表（29 表）**：`users`、`devices`、`products`、`locations`、`waves`、`orders`、`inventory`、`billing_transactions`、`barcode_mappings`、`work_orders`、`roles`、`inbound_receipts`、`sorting_chutes`、`sorting_tasks`、`sorting_waves`、`verification_rules`、`quality_inspections`、`package_specs`、`label_templates`、`packing_tasks`、`consumable_usages`、`vehicles`、`loading_tasks`、`shipping_documents`、`cross_dock_jobs`、`billing_rules`
+**启用表（35 表）**：`users`、`devices`、`products`、`locations`、`waves`、`orders`、`inventory`、`billing_transactions`、`barcode_mappings`、`work_orders`、`roles`、`inbound_receipts`、`sorting_chutes`、`sorting_tasks`、`sorting_waves`、`verification_rules`、`quality_inspections`、`package_specs`、`label_templates`、`packing_tasks`、`consumable_usages`、`vehicles`、`loading_tasks`、`shipping_documents`、`cross_dock_jobs`、`billing_rules`、`task_claims`、`sync_policies`、`device_sync_state`、`sync_events`、`exceptions`、`exception_events`（v2.2.0 新增 6 张）
+
+**exception_type_catalog 特殊策略**（v2.2.0 新增，需同时看到"本租户覆盖配置"与"全局默认配置"两部分，不能用标准模板）：
+```sql
+CREATE POLICY tenant_isolation ON exception_type_catalog
+USING (tenant_id = fn_current_tenant_id() OR tenant_id IS NULL)
+WITH CHECK (tenant_id = fn_current_tenant_id());
+```
 
 **策略模板**：
 ```sql
@@ -361,6 +510,7 @@ WITH CHECK (id = fn_current_tenant_id());
 |--------|------|----------|------|
 | `cross-dock-timeout-sweep` | `*/5 * * * *` (每 5 分钟) | `fn_cross_dock_timeout_sweep()` | 直通超时自动降级 FALLBACK |
 | `purge-old-action-logs` | `0 3 * * *` (每天凌晨 3 点) | `fn_purge_old_action_logs(180)` | 清理 180 天前日志，释放 Supabase 免费版 500MB 配额 |
+| `task-claim-expiry-sweep` | 建议 `*/1-5 * * * *` (每 1~5 分钟，v2.2.0 新增) | `fn_expire_task_claims()` | 清扫过期任务租约，未完成工单自动标记异常 |
 
 **pg_cron 启用方式**（主脚本已含异常捕获）：
 ```sql
@@ -392,10 +542,12 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 
 ## 11. 迁移脚本对应关系
 
-| 迁移文件 | 包含表 | 状态 |
+> **重要提示**：`supabase/` 目录（含 `supabase/migrations/`）已加入 `.gitignore`，不再纳入本仓库版本管理（历史备份目录 `supabase/migrations.backup.*` 同样被忽略）。因此下表记录的是**设计层面**的脚本对应关系，实际 SQL 文件由部署流程在仓库之外维护；本文档才是表结构的版本化事实来源。
+
+| 迁移脚本（设计对应） | 包含表 | 状态 |
 |----------|--------|------|
-| `supabase/migrations/001_initial_schema.sql` | **38 表全量（V2.1 统一脚本）** | ✅ 当前生效 |
-| 历史备份 | `supabase/migrations.backup.2026-07-08_07-59-27/` (3 文件) | 📦 归档 |
+| V2.1 统一初始化脚本 | 38 表全量 | ✅ 当前生效 |
+| 离线同步 + 统一异常领域增量扩展 | `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 共 7 表 + `inventory_reservations.work_order_id` + `order_lines` EXCEPTION 状态 | 🚧 设计已确定，迁移脚本落地待 Phase 1（见 `docs/00-project/ROADMAP.md`） |
 
 ---
 
@@ -406,6 +558,7 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | 1.0.0 | 2025-07-01 | 初始 Schema 定义（基于 3 份历史脚本） |
 | 1.1.0 | 2025-07-07 | 新增 RLS 策略状态表、迁移脚本对应关系 |
 | **2.1.0** | **2026-07-08** | **基于 V2.1 SQL 全量重写：RLS 全启用、CHECK 约束、updated_at 全覆盖、计费规范化、验货版本化、合规触发器、直通超时降级、日志清理、pg_cron 显式启用** |
+| **2.2.0** | **2026-07-15** | **补充离线同步 + 统一异常领域设计**（DBA 新方案替代旧状态同步/OT-CRDT 设计）：新增 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表、9 个函数、`inventory_reservations.work_order_id`、`order_lines.EXCEPTION` 状态；修正 §11 迁移文件引用（`supabase/` 已加入 .gitignore，不再假设某个具体文件名） |
 
 ---
 
@@ -415,14 +568,14 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 |------|------|------|
 | **架构设计** | `docs/01-architecture/ARCHITECTURE.md` | 系统架构、数据流、ADR |
 | **API 规范** | `docs/02-api/API_SPEC.md` | OpenAPI 端点、RPC、认证 |
-| **PDA 离线同步设计** | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` | 同步协议、版本向量、OT/CRDT |
-| **设备端 API 协议** | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` | REST/WebSocket 接口、同步契约 |
-| **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 本地表结构、触发器、索引、加密 |
-| **冲突解决策略矩阵** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 20 场景、算法、工作流、监控 |
-| **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | 完整契约、分片、游标、版本控制 |
+| **PDA 离线同步设计** | `docs/01-architecture/PDA_OFFLINE_SYNC_DESIGN.md` | 操作同步、预分工、竞争性锁、统一异常领域 |
+| **设备端 API 协议** | `docs/02-api/DEVICE_PROTOCOL_SPEC.md` | REST/WebSocket 接口、任务领用、统一异常上报 |
+| **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 只读缓存 + Outbox 两类本地表 |
+| **冲突解决策略** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 预分工为何让冲突不可能发生、任务租约语义 |
+| **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | sync_events 幂等收件箱、APPLIED/EXCEPTION/REJECTED 契约 |
 | **仓储层设计** | `docs/03-database/REPOSITORY_DESIGN.md` | 聚合根、端口、实现策略 |
 | **仓储层路线图** | `docs/03-database/REPOSITORY_ROADMAP.md` | 实施计划、里程碑 |
 
 ---
 
-*本文档为单一事实来源，与 `supabase/migrations/001_initial_schema.sql` 严格同步。任何 Schema 变更需同时更新此文档与迁移脚本。*
+*本文档为单一事实来源。`supabase/` 目录已加入 .gitignore、不再纳入版本管理，因此 Schema 变更需以本文档为准，实际迁移脚本的部署由运维流程另行维护并需与本文档保持一致。*
