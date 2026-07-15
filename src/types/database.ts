@@ -461,6 +461,51 @@ export type Database = {
           },
         ]
       }
+      device_sync_state: {
+        Row: {
+          device_id: string
+          last_applied_seq: number
+          last_pull_at: string | null
+          last_push_at: string | null
+          last_seen_online_at: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          device_id: string
+          last_applied_seq?: number
+          last_pull_at?: string | null
+          last_push_at?: string | null
+          last_seen_online_at?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          device_id?: string
+          last_applied_seq?: number
+          last_pull_at?: string | null
+          last_push_at?: string | null
+          last_seen_online_at?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_sync_state_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: true
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_sync_state_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       devices: {
         Row: {
           created_at: string | null
@@ -492,6 +537,209 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "devices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exception_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string | null
+          event_type: string
+          exception_id: string | null
+          from_status: string | null
+          id: number
+          metadata: Json | null
+          note: string | null
+          tenant_id: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string | null
+          event_type: string
+          exception_id?: string | null
+          from_status?: string | null
+          id?: number
+          metadata?: Json | null
+          note?: string | null
+          tenant_id?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string | null
+          event_type?: string
+          exception_id?: string | null
+          from_status?: string | null
+          id?: number
+          metadata?: Json | null
+          note?: string | null
+          tenant_id?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exception_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exception_events_exception_id_fkey"
+            columns: ["exception_id"]
+            isOneToOne: false
+            referencedRelation: "exceptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exception_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exception_type_catalog: {
+        Row: {
+          code: string
+          created_at: string | null
+          default_severity: string
+          description: string | null
+          domain: string
+          id: string
+          is_active: boolean | null
+          required_permission_action: string | null
+          required_permission_resource: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          default_severity?: string
+          description?: string | null
+          domain: string
+          id?: string
+          is_active?: boolean | null
+          required_permission_action?: string | null
+          required_permission_resource?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          default_severity?: string
+          description?: string | null
+          domain?: string
+          id?: string
+          is_active?: boolean | null
+          required_permission_action?: string | null
+          required_permission_resource?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exception_type_catalog_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exceptions: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          details: Json | null
+          domain: string
+          exception_type: string
+          id: string
+          raised_by: string | null
+          resolution_action: string | null
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          source_id: string | null
+          source_table: string | null
+          status: string
+          tenant_id: string | null
+          title: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          details?: Json | null
+          domain: string
+          exception_type: string
+          id?: string
+          raised_by?: string | null
+          resolution_action?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: string
+          tenant_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          details?: Json | null
+          domain?: string
+          exception_type?: string
+          id?: string
+          raised_by?: string | null
+          resolution_action?: string | null
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          source_id?: string | null
+          source_table?: string | null
+          status?: string
+          tenant_id?: string | null
+          title?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exceptions_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_raised_by_fkey"
+            columns: ["raised_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exceptions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -818,6 +1066,7 @@ export type Database = {
           reserved_qty: number | null
           status: string | null
           updated_at: string | null
+          work_order_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -828,6 +1077,7 @@ export type Database = {
           reserved_qty?: number | null
           status?: string | null
           updated_at?: string | null
+          work_order_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -838,6 +1088,7 @@ export type Database = {
           reserved_qty?: number | null
           status?: string | null
           updated_at?: string | null
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -852,6 +1103,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_reservations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -2060,6 +2318,185 @@ export type Database = {
           },
         ]
       }
+      sync_events: {
+        Row: {
+          action_type: string
+          applied_at: string | null
+          captured_at: string
+          device_id: string | null
+          device_seq: number
+          id: string
+          operator_user_id: string | null
+          payload: Json
+          received_at: string | null
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          action_type: string
+          applied_at?: string | null
+          captured_at: string
+          device_id?: string | null
+          device_seq: number
+          id: string
+          operator_user_id?: string | null
+          payload: Json
+          received_at?: string | null
+          status?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          applied_at?: string | null
+          captured_at?: string
+          device_id?: string | null
+          device_seq?: number
+          id?: string
+          operator_user_id?: string | null
+          payload?: Json
+          received_at?: string | null
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sync_events_operator_user_id_fkey"
+            columns: ["operator_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sync_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_policies: {
+        Row: {
+          created_at: string | null
+          id: string
+          max_offline_duration_seconds: number | null
+          offline_mode: string
+          priority: number
+          task_type: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          zone_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          max_offline_duration_seconds?: number | null
+          offline_mode?: string
+          priority?: number
+          task_type?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          zone_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          max_offline_duration_seconds?: number | null
+          offline_mode?: string
+          priority?: number
+          task_type?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          zone_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_policies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_claims: {
+        Row: {
+          claimed_at: string | null
+          claimed_by_device_id: string | null
+          claimed_by_user_id: string | null
+          created_at: string | null
+          expires_at: string
+          id: string
+          released_at: string | null
+          status: string
+          tenant_id: string | null
+          updated_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          claimed_at?: string | null
+          claimed_by_device_id?: string | null
+          claimed_by_user_id?: string | null
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          released_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          claimed_at?: string | null
+          claimed_by_device_id?: string | null
+          claimed_by_user_id?: string | null
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          released_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_claims_claimed_by_device_id_fkey"
+            columns: ["claimed_by_device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_claims_claimed_by_user_id_fkey"
+            columns: ["claimed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_claims_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           billing_strategy: Json | null
@@ -2989,8 +3426,28 @@ export type Database = {
           chute_id: string
         }[]
       }
+      fn_apply_pick_action: { Args: { p_event_id: string }; Returns: string }
+      fn_apply_sync_event: { Args: { p_event_id: string }; Returns: string }
+      fn_claim_task: {
+        Args: {
+          p_device_id: string
+          p_lease_seconds?: number
+          p_user_id: string
+          p_work_order_id: string
+        }
+        Returns: {
+          claim_id: string
+          message: string
+          success: boolean
+        }[]
+      }
+      fn_confirm_inventory_recount: {
+        Args: { p_exception_id: string; p_resolution_details: Json }
+        Returns: undefined
+      }
       fn_cross_dock_timeout_sweep: { Args: never; Returns: number }
       fn_current_tenant_id: { Args: never; Returns: string }
+      fn_expire_task_claims: { Args: never; Returns: number }
       fn_get_active_billing_rule: {
         Args: { p_tenant_id: string }
         Returns: {
@@ -2998,6 +3455,17 @@ export type Database = {
           rule_id: string
           rule_name: string
           source: string
+        }[]
+      }
+      fn_get_sync_policy: {
+        Args: {
+          p_task_type?: string
+          p_tenant_id: string
+          p_zone_type?: string
+        }
+        Returns: {
+          max_offline_duration_seconds: number
+          offline_mode: string
         }[]
       }
       fn_logic_resolve_blackbox_box: {
@@ -3031,6 +3499,30 @@ export type Database = {
           purged_inventory_history: number
           purged_wo_logs: number
         }[]
+      }
+      fn_raise_exception: {
+        Args: {
+          p_details?: Json
+          p_exception_type: string
+          p_raised_by?: string
+          p_source_id: string
+          p_source_table: string
+          p_tenant_id: string
+          p_title: string
+        }
+        Returns: string
+      }
+      fn_release_task_claim: { Args: { p_claim_id: string }; Returns: boolean }
+      fn_resolve_exception: {
+        Args: {
+          p_exception_id: string
+          p_new_status: string
+          p_resolution_action?: string
+          p_resolution_details?: Json
+          p_resolution_notes?: string
+          p_resolver_user_id: string
+        }
+        Returns: boolean
       }
       fn_verify_weight: {
         Args: { p_actual_weight: number; p_sku_id: string }

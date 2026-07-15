@@ -26,5 +26,5 @@
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "workflow-engine"]
+  "exclude": ["node_modules", "dist", "workflow-engine", "src/apps", "src/routes", "src/middleware", "src/services"]
 }
