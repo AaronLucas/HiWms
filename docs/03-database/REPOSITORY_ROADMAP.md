@@ -143,6 +143,52 @@
 
 ---
 
+## Phase 6: Layer 3 同步动作扩展仓储（2个） - P0 同步配套（Layer 3：PUTAWAY/COUNT/PACK）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16（`packing_task_items`、`inventory_count_policies`）；对应函数见同文档 §4（`fn_adjust_inventory_at_location`、`fn_reconcile_location_count`、`fn_apply_putaway_action`、`fn_apply_count_action`、`fn_apply_pack_action`）。执行本 Phase 前需先完成 Phase 0（止血现有 RPC→Repository 重构）与迁移脚本落地（Phase 1-2）。
+
+### 6.1 端口定义
+| # | 文件 | 状态 | 预估行数 | 说明 |
+|---|------|------|---------|------|
+| 1 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ⏳ 待开始 | ~80 | 打包明细：CRUD + 双局部唯一索引去重（有箱/无箱）+ 完成时联动更新 `order_lines`/`packing_tasks` |
+| 2 | `src/core/ports/db/IInventoryAdjustRepository.ts` | ⏳ 待开始 | ~100 | 库存原子原语：封装 `fn_adjust_inventory_at_location`/`fn_reconcile_location_count` + 盘点容差策略 `inventory_count_policies` CRUD |
+
+### 6.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabaseInventoryAdjustRepository.ts` | ⏳ 待开始 |
+
+### 6.3 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 2 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 2 个新实现
+
+---
+
+## Phase 7: Layer 4 追踪策略 / 无码货物仓储（3个） - P0 同步配套（Layer 4：追踪策略 + MISSING_LABEL + UNIDENTIFIED_GOODS）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17（`tenant_tracking_policies`）；对应函数见同文档 §4（`fn_generate_internal_lpn`、`fn_confirm_label_applied`、`fn_identify_unidentified_goods`、`fn_receive_unidentified_goods`、`fn_requires_unique_tracking`、合规触发器扩展）。执行本 Phase 前需先完成 Phase 0-3。
+
+### 7.1 端口定义
+| # | 文件 | 状态 | 预估行数 | 说明 |
+|---|------|------|---------|------|
+| 1 | `src/core/ports/db/ITrackingPolicyRepository.ts` | ⏳ 待开始 | ~90 | 追踪策略：封装 `fn_requires_unique_tracking`（三层解析）+ CRUD `tenant_tracking_policies` |
+| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ⏳ 待开始 | ~80 | MISSING_LABEL：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied`，内部码生成/确认/挂载容器/关异常 |
+| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | ⏳ 待开始 | ~80 | UNIDENTIFIED_GOODS：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods`，回填 product_id 触发合规复查 |
+
+### 7.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseTrackingPolicyRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ⏳ 待开始 |
+| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | ⏳ 待开始 |
+
+### 7.3 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 3 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+
+---
+
 ## 总计统计
 
 | 阶段 | 端口数 | 实现数 | 总文件数 | 预估代码行数 |
@@ -152,7 +198,9 @@
 | Phase 3 (P1 业务扩展) | 8 | 8 | 16 | ~1,600 |
 | Phase 4 (P2 支撑域) | 6 | 6 | 12 | ~1,200 |
 | Phase 5 (离线同步/异常领域) | 5 | 5 | 10 | ~1,050 |
-| **合计** | **38** | **38** | **76** | **~7,850** |
+| Phase 6 (Layer 3 同步动作) | 2 | 2 | 4 | ~600 |
+| Phase 7 (Layer 4 追踪策略/无码货物) | 3 | 3 | 6 | ~900 |
+| **合计** | **43** | **43** | **86** | **~9,350** |
 
 ---
 
@@ -188,6 +236,12 @@
 | M4: P1 实现完成 | 8 个实现，tsc 通过，索引更新 | - |
 | M5: P2 端口定义完成 | 6 个 .ts 文件，tsc 通过 | - |
 | M6: P2 实现完成 | 6 个实现，tsc 通过，全量编译通过 | - |
+| M7: Phase 5 端口定义完成 | 5 个 .ts 文件，tsc 通过 | - |
+| M8: Phase 5 实现完成 | 5 个实现，tsc 通过，索引更新 | - |
+| M9: Phase 6 端口定义完成 | 2 个 .ts 文件，tsc 通过 | - |
+| M10: Phase 6 实现完成 | 2 个实现，tsc 通过，索引更新 | - |
+| M11: Phase 7 端口定义完成 | 3 个 .ts 文件，tsc 通过 | - |
+| M12: Phase 7 实现完成 | 3 个实现，tsc 通过，全量编译通过 | - |
 
 ---
 

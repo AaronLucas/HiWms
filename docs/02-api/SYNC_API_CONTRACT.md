@@ -36,6 +36,10 @@
 | **释放任务租约** | POST | `/tasks/claims/{claim_id}/release` | 释放已领用的任务 | ✅ |
 | **异常列表** | GET | `/exceptions` | 分页查询与本设备/用户相关的异常 | ✅ |
 | **异常详情** | GET | `/exceptions/{id}` | 查询单条异常详情 | ✅ |
+| **生成内部码** | POST | `/missing-label/generate` | 生成内部 LPN 码（`fn_generate_internal_lpn`） | ✅ |
+| **确认贴码** | POST | `/missing-label/confirm` | 扫码确认内部码已贴好（`fn_confirm_label_applied`） | ✅ |
+| **上报未识别货物** | POST | `/unidentified/receive` | 记录无法识别的货物（`fn_receive_unidentified_goods`） | ✅ |
+| **识别未识别货物** | POST | `/unidentified/identify` | 回填未识别货物的商品身份（`fn_identify_unidentified_goods`） | ✅ |
 
 **已移除的旧接口**（不再提供）：`GET /sync/status`、`GET /sync/conflicts`、`POST /sync/conflicts/{id}/resolve`、`GET /sync/cursors`（作为冲突/版本游标的构造）、`POST /sync/cursors/reset`，以及依附于 `version_vector` 的任何分片/断点续传机制。异常的完整解决流程（`fn_resolve_exception`）不在设备 API 范围内，仅提供只读可见性（见第 7 节）。
 
@@ -85,13 +89,13 @@ interface SyncEvent {
 ```typescript
 enum ActionType {
   PICK = 'PICK',                         // 当前唯一已实现完整服务端处理逻辑的动作类型
-  // 以下类型尚未实现服务端处理，提交后统一返回 REJECTED_UNKNOWN_ACTION：
-  PUTAWAY = 'PUTAWAY',
+  PUTAWAY = 'PUTAWAY',                   // Layer 3: 上架（含批次/效期写入、合规校验、MISSING_LABEL 分支）
+  COUNT = 'COUNT',                       // Layer 3: 盘点（容差策略查询、自动过账/超容差登记 COUNT_DISCREPANCY、fn_reconcile_location_count 核销）
+  PACK = 'PACK',                         // Layer 3: 打包（明细追踪、一箱一码/同码模式、完成时联动更新 order_lines/packing_tasks 状态）
+  // 以下类型暂未实现服务端处理，提交后统一返回 REJECTED_UNKNOWN_ACTION：
   RECEIVE = 'RECEIVE',
-  PACK = 'PACK',
   SHIP = 'SHIP',
   MOVE = 'MOVE',
-  COUNT = 'COUNT',
 }
 ```
 
@@ -113,6 +117,72 @@ enum ActionType {
     "order_line_id": "ol-uuid-9981"
   },
   "captured_at": "2026-07-15T02:31:07.412Z"
+}
+```
+
+#### 3.1.4 `payload` 示例（`action_type = 'PUTAWAY'`）
+
+```json
+{
+  "id": "01J8Z3K7QZR8N5V9X6M2W4T1E1",
+  "device_id": "pda-0231",
+  "operator_user_id": "user-uuid-7788",
+  "device_seq": 10246,
+  "action_type": "PUTAWAY",
+  "payload": {
+    "sku": "SKU-000123",
+    "qty": 10,
+    "location_id": "loc-uuid-B01-01-01",
+    "container_id": "ctn-uuid-5566",
+    "batch_no": "BATCH-20260701-001",
+    "mfg_date": "2026-06-15",
+    "exp_date": "2027-06-15"
+  },
+  "captured_at": "2026-07-15T02:32:15.123Z"
+}
+```
+
+#### 3.1.5 `payload` 示例（`action_type = 'COUNT'`）
+
+```json
+{
+  "id": "01J8Z3K7QZR8N5V9X6M2W4T1E2",
+  "device_id": "pda-0231",
+  "operator_user_id": "user-uuid-7788",
+  "device_seq": 10247,
+  "action_type": "COUNT",
+  "payload": {
+    "location_id": "loc-uuid-A01-02-03",
+    "product_id": "prod-uuid-4455",
+    "counted_qty": 95,
+    "expected_qty": 100,
+    "difference_qty": -5,
+    "difference_reason": "DAMAGED"
+  },
+  "captured_at": "2026-07-15T02:33:20.456Z"
+}
+```
+
+#### 3.1.6 `payload` 示例（`action_type = 'PACK'`）
+
+```json
+{
+  "id": "01J8Z3K7QZR8N5V9X6M2W4T1E3",
+  "device_id": "pda-0231",
+  "operator_user_id": "user-uuid-7788",
+  "device_seq": 10248,
+  "action_type": "PACK",
+  "payload": {
+    "order_line_id": "ol-uuid-9981",
+    "sku": "SKU-000123",
+    "qty": 5,
+    "container_id": "ctn-uuid-7788",
+    "box_type": "MEDIUM",
+    "box_code": "BOX-001",
+    "labels_printed": ["SF1234567890"],
+    "completed": true
+  },
+  "captured_at": "2026-07-15T02:34:10.789Z"
 }
 ```
 
@@ -401,7 +471,143 @@ X-Device-Id: <device_id>
 }
 ```
 
-> **范围说明**：本接口仅提供**只读**可见性，供 PDA 展示“此操作触发异常 #4471，请联系主管”一类提示。异常的完整解决流程（对应 `fn_resolve_exception`，包括改写库存、重新分配库位、人工确认合规豁免等）发生在面向管理员的 Web/管理端，不属于设备 API 范围，本文档不定义其请求/响应结构。
+---
+
+## 9. 缺码处理 - POST /missing-label/generate
+
+### 9.1 请求
+
+```http
+POST /api/v1/device/missing-label/generate HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
+Content-Type: application/json
+
+{
+  "exception_id": "exc-uuid-4471",
+  "sku": "SKU-000123",
+  "location_id": "loc-uuid-A01-02-03",
+  "quantity": 10
+}
+```
+
+底层封装 `fn_generate_internal_lpn`，返回格式为 `INT-{日期}-{随机串}` 的内部 LPN 码（`containers.lpn_source = 'SYSTEM_GENERATED'`）。
+
+### 9.2 响应 (200 OK)
+
+```json
+{
+  "internal_lpn": "INT-20260715-A1B2C3D4",
+  "container_id": "ctn-uuid-9999",
+  "message": "内部码已生成，请打印贴码"
+}
+```
+
+---
+
+## 10. 确认贴码 - POST /missing-label/confirm
+
+### 10.1 请求
+
+```http
+POST /api/v1/device/missing-label/confirm HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
+Content-Type: application/json
+
+{
+  "exception_id": "exc-uuid-4471",
+  "scanned_lpn": "INT-20260715-A1B2C3D4"
+}
+```
+
+底层封装 `fn_confirm_label_applied`，核对扫描码与生成码一致后，将暂存库存正式挂载到该容器，并通过 `fn_resolve_exception` 关闭异常。
+
+### 10.2 响应 (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "贴码确认成功，库存已挂载至容器 INT-20260715-A1B2C3D4，异常已关闭"
+}
+```
+
+扫码不匹配时返回 `400 { "success": false, "message": "扫描码与生成的内部码不一致，请重新扫描" }`。
+
+---
+
+## 11. 上报未识别货物 - POST /unidentified/receive
+
+### 11.1 请求
+
+```http
+POST /api/v1/device/unidentified/receive HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
+Content-Type: application/json
+
+{
+  "tenant_id": "tenant-uuid-1234",
+  "location_id": "loc-uuid-Q01-01-01",
+  "quantity": 5,
+  "unit": "PCS",
+  "notes": "残包，无标签，无法识别 SKU"
+}
+```
+
+底层封装 `fn_receive_unidentified_goods`，向 `inventory` 插入 `product_id=NULL` 的暂存行，登记 `UNIDENTIFIED_GOODS` 异常（severity=HIGH）。
+
+### 11.2 响应 (200 OK)
+
+```json
+{
+  "inventory_id": "inv-uuid-8888",
+  "exception_id": "exc-uuid-5555",
+  "message": "未识别货物已暂存，请联系主管识别"
+}
+```
+
+---
+
+## 12. 识别未识别货物 - POST /unidentified/identify
+
+### 12.1 请求
+
+```http
+POST /api/v1/device/unidentified/identify HTTP/1.1
+Authorization: Bearer <token>
+X-API-Key: wms7_dk_<deviceId>_<random>
+X-Device-Id: <device_id>
+Content-Type: application/json
+
+{
+  "inventory_id": "inv-uuid-8888",
+  "product_id": "prod-uuid-4455"
+}
+```
+
+底层封装 `fn_identify_unidentified_goods`，回填 `product_id`，**同时触发合规触发器复查（UPDATE OF product_id 触发 `fn_trg_enforce_product_constraints`）**。若目标库位不满足该商品的冷链/危险品要求，识别动作会被直接拦截并报错，倒逼主管先移库再识别。
+
+### 12.2 响应 (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "未识别货物已识别为 SKU-000445，库存已更新，异常已关闭"
+}
+```
+
+若合规复查失败：
+
+```json
+{
+  "success": false,
+  "message": "识别失败：商品 SKU-000445 要求冷链存储（2-8°C），但当前库位 loc-uuid-Q01-01-01 非冷藏区，请先将货物移至合规库位后再确认身份"
+}
+```
 
 ---
 
@@ -629,6 +835,7 @@ function getNextSyncDelay(config: SyncSchedulerConfig): number {
 
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
+| 2.1.0 | 2026-07-16 | **Layer 3/4 扩展**：新增 PUTAWAY/COUNT/PACK 三个 action_type 的 payload 规范，新增 Layer 4 端点（`/missing-label/generate`、`/missing-label/confirm`、`/unidentified/receive`、`/unidentified/identify`），对应 Layer 3 同步动作扩展与 Layer 4 追踪策略/无码货物闭环 | DBA 团队 / 架构组 |
 | 2.0.0 | 2026-07-15 | **重大变更**：DBA 团队交付新方案，废弃 v1.0.0 的状态同步模型（`LocalOperation` + `version_vector` + 服务端 `conflicts[]` + 客户端合并策略协商），改为事件同步模型（`sync_events` 幂等收件箱 + 确定性重放函数 + `APPLIED`/`EXCEPTION`/`REJECTED` 三态）。移除 `/sync/status`、`/sync/conflicts`、`/sync/conflicts/{id}/resolve`、`/sync/cursors`、`/sync/cursors/reset` 及分片/断点续传机制；新增 `/sync/events`、`/sync/pull`、`/sync/policy`、`/tasks/{work_order_id}/claim`、`/tasks/claims/{claim_id}/release`、`/exceptions`、`/exceptions/{id}`。移除 `409 SYNC_CONFLICT` 错误码。 | DBA 团队 / 架构组 |
 | 1.0.0 | 2025-07-11 | 初版：完整契约、分片、冲突、游标、限流、安全、客户端指南、测试用例（已废弃，见上） | 架构组 |
 

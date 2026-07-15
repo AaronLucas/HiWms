@@ -55,6 +55,60 @@
 
 ---
 
+## 阶段 1.5：Layer 3/4 离线同步扩展（P0，2026-07-16 DBA 新方案 Layer 3/4 设计文档已完成，代码层落地待启动）
+
+> 设计依据：`docs/02-api/SYNC_ACTIONS_EXTENSION.md`（Layer 3）、`docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md`（Layer 4）、`docs/01-architecture/ADR/014-tracking-policy-missing-label.md`。数据库表/函数设计已在 `docs/03-database/DB_SCHEMA.md` §2.10-2.14/§4 落地为文档，**迁移脚本本身与下述仓储层/路由实现均未开始**。
+
+### 1.5.1 数据库迁移脚本落地（本地生成，**严禁推 main**，需 DBA 评审）
+- [ ] `003_sync_actions_extension.sql`：Layer 3——`packing_task_items`、`inventory_count_policies`、`fn_adjust_inventory_at_location`、`fn_reconcile_location_count`、`fn_apply_putaway_action`、`fn_apply_count_action`、`fn_apply_pack_action`、修正合规触发器
+- [ ] `004_tracking_policy_missing_label.sql`：Layer 4——`tenant_tracking_policies`、`fn_generate_internal_lpn`、`fn_confirm_label_applied`、`fn_identify_unidentified_goods`、`fn_receive_unidentified_goods`、`fn_requires_unique_tracking`、合规触发器扩展到 `UPDATE OF product_id`
+- [ ] 更新 `setup_cron_jobs.sql`：追加 `fn_expire_task_claims`（每 1~5 分钟）
+- [ ] **DBA 评审前置确认**：确认当前脚本是“可直接用”还是“需评审后定夺” —— 如后者请现在告知，我好提前去确认 DBA/合规/业务
+
+### 1.5.2 仓储层端口 + 适配器实现（Layer 3/4 新增端口，扩展 REPOSITORY_ROADMAP.md Phase 5-7）
+- [ ] `IPackingTaskItemRepository` + `SupabasePackingTaskItemRepository`（Layer 3：`packing_task_items` CRUD、同箱/同码去重逻辑）
+- [ ] `IInventoryAdjustRepository`（Layer 3：封装 `fn_adjust_inventory_at_location`/`fn_reconcile_location_count` 原子原语）
+- [ ] `IInventoryCountPolicyRepository`（Layer 3：`inventory_count_policies` CRUD、租户/SKU 级容差查询）
+- [ ] `ITenantTrackingPolicyRepository`（Layer 4：`tenant_tracking_policies` CRUD、ABC 默认值/显式覆盖逻辑）
+- [ ] `IMissingLabelRepository`（Layer 4：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied`）
+- [ ] `IUnidentifiedGoodsRepository`（Layer 4：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods`）
+- [ ] `ITrackingPolicyRepository`（Layer 4：封装 `fn_requires_unique_tracking` 三层策略解析）
+- [ ] 更新 `src/core/ports/db/index.ts`、`src/adapters/supabase/repositories/index.ts` 导出
+
+### 1.5.3 动作类型路由扩展（扩展 `fn_apply_sync_event` 路由表）
+- [ ] `PUTAWAY` → `fn_apply_putaway_action`（批次/效期写入、合规校验、MISSING_LABEL 分支）
+- [ ] `COUNT` → `fn_apply_count_action`（容差策略查询、自动过账/超容差登记 `COUNT_DISCREPANCY`、`fn_reconcile_location_count` 核销）
+- [ ] `PACK` → `fn_apply_pack_action`（明细追踪、一箱一码/同码模式、完成时联动更新 `order_lines`/`packing_tasks` 状态）
+
+### 1.5.4 Device API 端点部署
+- [ ] `POST /sync/events`（提交动作事件，幂等收件箱）
+- [ ] `GET /sync/pull`（增量拉取只读缓存，游标基于 `updated_at`）
+- [ ] `GET /sync/policy`（查询离线策略，`ALLOW`/`LIMITED`/`ONLINE_ONLY`）
+- [ ] `POST /tasks/{id}/claim`（`fn_claim_task`，竞争性租约领用）
+- [ ] `POST /tasks/claims/{id}/release`（`fn_release_task_claim`，主动释放）
+- [ ] `GET /exceptions`、`GET /exceptions/{id}`（设备端只读，异常轮询/展示）
+- [ ] Web 管理端 `fn_resolve_exception` 处理入口（权限校验→领域收尾→状态流转→审计轨迹）
+
+### 1.5.5 Layer 3/4 专用端点（Layer 3/4 新增动作类型对应的 Device API）
+- [ ] `POST /putaway`（PUTAWAY 动作载荷，走 `/sync/events` 统一入口，仅文档层面区分 `action_type`）
+- [ ] `POST /count`（COUNT 动作，容差策略前置查询 `GET /sync/policy`）
+- [ ] `POST /pack`（PACK 动作，明细追踪 `packing_task_items`）
+- [ ] `POST /missing-label/generate`（`fn_generate_internal_lpn`，生成内部码 `INT-{日期}-{随机串}`）
+- [ ] `POST /missing-label/confirm`（`fn_confirm_label_applied`，核对扫码与生成码一致）
+- [ ] `POST /unidentified/receive`（`fn_receive_unidentified_goods`，暂存 `product_id=NULL` 库存）
+- [ ] `POST /unidentified/identify`（`fn_identify_unidentified_goods`，回填 `product_id` 触发合规复查）
+
+### 1.5.6 pg_cron 与权限种子数据
+- [ ] 配置 pg_cron：`fn_expire_task_claims`（建议每 1~5 分钟，任务租约过期清扫+自动登记 `TASK_CLAIM_EXPIRED` 异常）
+- [ ] 补充权限种子数据：`permissions`/`role_permissions` 覆盖 `exception_type_catalog.required_permission_resource`（9 种 Layer 2 异常 + `packing_task_items` 管理 + `inventory_count_policies` 管理 + `tenant_tracking_policies` 管理 + `missing_label`/`unidentified_goods` 异常处理）
+
+### 1.5.6 待业务/合规确认（非工程任务，登记跟踪）
+- [ ] 危险品/冷链相关 `task_type`/`zone_type` 的 `ONLINE_ONLY` 判定与 `max_offline_duration_seconds` 具体数值，需合规负责人签字确认后录入 `sync_policies`
+- [ ] `tenant_tracking_policies` B 类默认值：租户上线前必须显式配置，不能依赖保守兜底值长期运行
+- [ ] `packing_task_items.container_id` 可空的双局部唯一索引模式是否作为“可空业务键去重”标准模式推广
+
+---
+
 ## 阶段 2：前端应用（Uniapp Vue3）
 
 ### 2.1 项目骨架与工程化
