@@ -26,7 +26,8 @@ export const OrderProcessWorkflow: WorkflowDefinition = {
       type: 'rpc',
       handler: 'allocateInventory',
       inputSchema: { orderId: 'string', skuId: 'string', neededQty: 'number' },
-      retryPolicy: { maxAttempts: 3, backoffMs: 1000 },
+      retryPolicy: { maxAttempts: 3, baseDelayMs: 1000, maxDelayMs: 30000, backoffMultiplier: 2, jitterFactor: 0.2, retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'timeout', 'network'] },
+      circuitBreaker: { failureThreshold: 5, successThreshold: 2, timeoutMs: 30000, halfOpenMaxRequests: 3 },
     },
     {
       id: 'create-wave',
@@ -139,6 +140,8 @@ export const InventorySyncWorkflow: WorkflowDefinition = {
       handler: 'fetchSourceInventory',
       inputSchema: { tenantId: 'string', sourceSystem: 'string' },
       timeout: 300000, // 5分钟
+      retryPolicy: { maxAttempts: 3, baseDelayMs: 5000, maxDelayMs: 60000, backoffMultiplier: 2, jitterFactor: 0.2, retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'timeout', 'network'] },
+      circuitBreaker: { failureThreshold: 5, successThreshold: 2, timeoutMs: 60000, halfOpenMaxRequests: 3 },
     },
     {
       id: 'compare-inventory',
@@ -160,7 +163,8 @@ export const InventorySyncWorkflow: WorkflowDefinition = {
       type: 'rpc',
       handler: 'applyInventoryChanges',
       inputSchema: { changes: 'object[]' },
-      retryPolicy: { maxAttempts: 3, backoffMs: 2000 },
+      retryPolicy: { maxAttempts: 3, baseDelayMs: 2000, maxDelayMs: 30000, backoffMultiplier: 2, jitterFactor: 0.2, retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'timeout', 'network'] },
+      circuitBreaker: { failureThreshold: 5, successThreshold: 2, timeoutMs: 30000, halfOpenMaxRequests: 3 },
     },
     {
       id: 'notify-completion',
@@ -233,7 +237,8 @@ export const ReplenishmentWorkflow: WorkflowDefinition = {
       type: 'rpc',
       handler: 'updateInventoryAfterReplenishment',
       inputSchema: { workOrderIds: 'string[]' },
-      retryPolicy: { maxAttempts: 3, backoffMs: 1000 },
+      retryPolicy: { maxAttempts: 3, baseDelayMs: 1000, maxDelayMs: 30000, backoffMultiplier: 2, jitterFactor: 0.2, retryableErrors: ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED', 'timeout', 'network'] },
+      circuitBreaker: { failureThreshold: 5, successThreshold: 2, timeoutMs: 30000, halfOpenMaxRequests: 3 },
     },
   ],
   transitions: [

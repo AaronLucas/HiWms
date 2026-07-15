@@ -2,7 +2,7 @@
  * 库存分配任务
  * 用于工作流中调用 AllocateInventoryUseCase
  */
-import { ITaskHandler } from '../IWorkflowEngine';
+import { TaskHandler } from '../IWorkflowEngine';
 import { AllocateInventoryUseCase, AllocateInventoryInput } from '../../usecases/inventory/AllocateInventoryUseCase';
 
 export interface AllocateInventoryTaskInput {
@@ -12,7 +12,7 @@ export interface AllocateInventoryTaskInput {
   tenantId: string;
 }
 
-export class AllocateInventoryTask implements ITaskHandler<AllocateInventoryTaskInput, { allocations: any[]; totalAllocated: number }> {
+export class AllocateInventoryTask implements TaskHandler<AllocateInventoryTaskInput, { allocations: any[]; totalAllocated: number }> {
   constructor(private useCase: AllocateInventoryUseCase) {}
 
   async execute(input: AllocateInventoryTaskInput): Promise<{ allocations: any[]; totalAllocated: number }> {
@@ -40,7 +40,7 @@ export interface CreateWorkOrderTaskInput {
   priority?: number;
 }
 
-export class CreateWorkOrderTask implements ITaskHandler<CreateWorkOrderTaskInput, { workOrderId: string }> {
+export class CreateWorkOrderTask implements TaskHandler<CreateWorkOrderTaskInput, { workOrderId: string }> {
   // 需要 WorkOrderRepository
   constructor() {}
 
@@ -63,7 +63,7 @@ export interface SendNotificationTaskInput {
   channel?: 'in_app' | 'push' | 'email' | 'sms';
 }
 
-export class SendNotificationTask implements ITaskHandler<SendNotificationTaskInput, { sent: number }> {
+export class SendNotificationTask implements TaskHandler<SendNotificationTaskInput, { sent: number }> {
   // 需要 NotificationSender
   constructor() {}
 
@@ -83,7 +83,7 @@ export interface MatchCrossDockTaskInput {
   tenantId: string;
 }
 
-export class MatchCrossDockTask implements ITaskHandler<MatchCrossDockTaskInput, { jobId: string; matchedQty: number }> {
+export class MatchCrossDockTask implements TaskHandler<MatchCrossDockTaskInput, { jobId: string; matchedQty: number }> {
   constructor() {}
 
   async execute(input: MatchCrossDockTaskInput): Promise<{ jobId: string; matchedQty: number }> {
@@ -101,7 +101,7 @@ export interface AllocateChuteTaskInput {
   tenantId: string;
 }
 
-export class AllocateChuteTask implements ITaskHandler<AllocateChuteTaskInput, { chuteId: string; chuteCode: string }> {
+export class AllocateChuteTask implements TaskHandler<AllocateChuteTaskInput, { chuteId: string; chuteCode: string }> {
   constructor() {}
 
   async execute(input: AllocateChuteTaskInput): Promise<{ chuteId: string; chuteCode: string }> {
@@ -119,7 +119,7 @@ export interface VerifyWeightTaskInput {
   tenantId: string;
 }
 
-export class VerifyWeightTask implements ITaskHandler<VerifyWeightTaskInput, { passed: boolean; tolerance: number }> {
+export class VerifyWeightTask implements TaskHandler<VerifyWeightTaskInput, { passed: boolean; tolerance: number }> {
   constructor() {}
 
   async execute(input: VerifyWeightTaskInput): Promise<{ passed: boolean; tolerance: number }> {
@@ -138,7 +138,7 @@ export interface ReplenishmentTaskInput {
   quantity: number;
 }
 
-export class ReplenishmentTask implements ITaskHandler<ReplenishmentTaskInput, { workOrderId: string }> {
+export class ReplenishmentTask implements TaskHandler<ReplenishmentTaskInput, { workOrderId: string }> {
   constructor() {}
 
   async execute(input: ReplenishmentTaskInput): Promise<{ workOrderId: string }> {
@@ -156,7 +156,7 @@ export interface CalculateBillingTaskInput {
   invId?: string;
 }
 
-export class CalculateBillingTask implements ITaskHandler<CalculateBillingTaskInput, { amount: number; currency: string }> {
+export class CalculateBillingTask implements TaskHandler<CalculateBillingTaskInput, { amount: number; currency: string }> {
   constructor() {}
 
   async execute(input: CalculateBillingTaskInput): Promise<{ amount: number; currency: string }> {

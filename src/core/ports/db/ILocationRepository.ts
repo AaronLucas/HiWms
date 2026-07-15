@@ -2,7 +2,7 @@
  * 库位仓储端口接口
  */
 import { IRepository } from './IRepository';
-import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
 
 export type LocationRow = Tables<'locations'>;
 export type LocationInsert = TablesInsert<'locations'>;

@@ -50,6 +50,17 @@ export const TABLES = {
   VERIFICATION_RULES: 'verification_rules',
   LABEL_TEMPLATES: 'label_templates',
   SHIPPING_DOCUMENTS: 'shipping_documents',
+
+  // Phase 5: PDA 离线同步专用表
+  SYNC_QUEUE: 'sync_queue',
+  SYNC_SESSIONS: 'sync_sessions',
+  SYNC_CONFLICTS: 'sync_conflicts',
+  SYNC_CURSORS: 'sync_cursors',
+  PENDING_UPLOADS: 'pending_uploads',
+  DEVICE_STATES: 'device_states',
+
+  // 分拣相关缺失表
+  CONTAINER_SORTING_TARGETS: 'container_sorting_targets',
 } as const;
 
 export type TableName = typeof TABLES[keyof typeof TABLES];
@@ -59,6 +70,7 @@ export interface SupabaseConfig {
   url: string;
   anonKey: string;
   serviceRoleKey?: string;
+  defaultTenantId?: string;
   /** 重试配置 */
   retry?: {
     maxRetries: number;
@@ -178,14 +190,9 @@ export class WmsSupabaseClient {
   }
 
   /** 构建带租户上下文的查询 */
-  from<T extends TableName>(table: T, useAdmin = false) {
+  from(table: string, useAdmin = false) {
     const client = useAdmin ? this.getAdminClient() : this.getClient();
-    let query = client.from(table);
-
-    // 如果有默认租户且不是管理员客户端，注入租户上下文
-    // 注意：RLS 策略通常通过 JWT 或 SET LOCAL 自动处理
-    // 这里预留扩展点，实际 RLS 由数据库策略处理
-    return query;
+    return (client as any).from(table);
   }
 
   /** 执行 RPC 调用（类型安全） */
