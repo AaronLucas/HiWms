@@ -618,8 +618,10 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 
 | 迁移脚本（设计对应） | 包含表 | 状态 |
 |----------|--------|------|
-| V2.1 统一初始化脚本 | 38 表全量 | ✅ 当前生效 |
-| 离线同步 + 统一异常领域增量扩展 | `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 共 7 表 + `inventory_reservations.work_order_id` + `order_lines` EXCEPTION 状态 | 🚧 设计已确定，迁移脚本落地待 Phase 1（见 `docs/00-project/ROADMAP.md`） |
+| V2.1 统一初始化脚本（本地 `001_enterprise_core_schema.sql`） | 38 表全量 | ✅ 当前生效，与设计文档逐字一致 |
+| Layer 2：离线同步 + 统一异常领域增量扩展（本地 `002_offline_sync_exception_domain.sql`） | `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 共 7 表 + `inventory_reservations.work_order_id` + `order_lines` EXCEPTION 状态 | ✅ 本地脚本与设计文档逐字一致（已核对）；🚧 应用层（仓储/路由）未实现，见 ROADMAP.md Phase 1.4 |
+| Layer 3：同步动作扩展 PUTAWAY/COUNT/PACK（本地 `003_extend_sync_event_actions.sql`） | `inventory_count_policies`、`packing_task_items` 2 表 + `adjust_inventory`/`fn_adjust_inventory_at_location`/`fn_reconcile_location_count`/`fn_get_count_tolerance`/`fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action` | ⛔ **本地文件现存但含真实 bug**（语法错误无法编译、`locations.status` 列名错误、`packing_tasks` 粒度用错、盘点容差硬编码、异常分类错误）——DBA 已提供修正版设计（`docs/02-api/SYNC_ACTIONS_EXTENSION.md`），**修正需先与 DBA 团队协调确认，本轮不执行** |
+| Layer 4：唯一追踪策略 + 无码/未识别货物处理（拟命名 `004_tracking_policy_missing_label.sql`） | `tenant_tracking_policies` 1 表 + `containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 3 新列 + 6 个函数 + 触发器范围扩展 | 🚧 全新设计，**本地尚不存在此文件**，需先与 DBA 团队协调确认后才能起草（见 `docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md`）。**部署顺序硬约束：必须严格排在 Layer 3 之后**（会 CREATE OR REPLACE 覆盖 Layer 3 的 fn_apply_putaway_action） |
 
 ---
 
@@ -631,6 +633,7 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | 1.1.0 | 2025-07-07 | 新增 RLS 策略状态表、迁移脚本对应关系 |
 | **2.1.0** | **2026-07-08** | **基于 V2.1 SQL 全量重写：RLS 全启用、CHECK 约束、updated_at 全覆盖、计费规范化、验货版本化、合规触发器、直通超时降级、日志清理、pg_cron 显式启用** |
 | **2.2.0** | **2026-07-15** | **补充离线同步 + 统一异常领域设计**（DBA 新方案替代旧状态同步/OT-CRDT 设计）：新增 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表、9 个函数、`inventory_reservations.work_order_id`、`order_lines.EXCEPTION` 状态；修正 §11 迁移文件引用（`supabase/` 已加入 .gitignore，不再假设某个具体文件名） |
+| **2.3.0** | **2026-07-16** | **补充 Layer 3（同步动作扩展 PUTAWAY/COUNT/PACK，对开发团队 PR 的修正重新实现）+ Layer 4（唯一追踪策略+无码/未识别货物处理，全新设计）**：新增 `inventory_count_policies`/`packing_task_items`/`tenant_tracking_policies` 3 表、`containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 3 新列、11 个新函数、2 个新 CHECK 约束、1 处触发器范围扩展、3 个新异常类型（`REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS`）。**本次仅为设计文档补充，本地迁移脚本未改动**（003 现存 bug 未修正，004 不存在），修正/新增均需先与 DBA 团队协调确认 |
 
 ---
 
@@ -645,6 +648,8 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 只读缓存 + Outbox 两类本地表 |
 | **冲突解决策略** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 预分工为何让冲突不可能发生、任务租约语义 |
 | **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | sync_events 幂等收件箱、APPLIED/EXCEPTION/REJECTED 契约 |
+| **同步动作扩展（Layer 3）** | `docs/02-api/SYNC_ACTIONS_EXTENSION.md` | PUTAWAY/COUNT/PACK 修正实现、原子库存写入原语、容器身份模型 |
+| **唯一追踪策略（Layer 4）** | `docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md` | 三层策略解析、MISSING_LABEL/UNIDENTIFIED_GOODS 闭环 |
 | **仓储层设计** | `docs/03-database/REPOSITORY_DESIGN.md` | 聚合根、端口、实现策略 |
 | **仓储层路线图** | `docs/03-database/REPOSITORY_ROADMAP.md` | 实施计划、里程碑 |
 

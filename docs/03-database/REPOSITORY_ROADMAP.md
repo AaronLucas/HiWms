@@ -1,15 +1,15 @@
 # 仓储层实施路线图
 
 ## 项目概览
-- **总表数**：34 个业务表 + 7 个离线同步/统一异常领域表（v2.2.0 新增，取代原规划的 6 个 PDA 本地专用表设想）
-- **聚合根数**：35 个
-- **已完成**：5 个
-- **待完成**：30 个
-- **分 5 个优先级阶段实施**
+- **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表
+- **聚合根数**：43 个
+- **已完成**：5 个（Phase 1/3/4 核心域，已在 `origin/main` 落地）
+- **待完成**：38 个（Phase 5/6/7 全部待开始）
+- **分 7 个优先级阶段实施**
 
 > **2026-07-15 更新说明**：Phase 5 已按 DBA 新方案（操作同步 + 预分工 + 统一异常领域，见 ADR-011）整体替换——原规划的 `SyncQueue`/`SyncSession`/`SyncConflict`/`SyncCursor`/`PendingUpload`/`DeviceState` 6 个仓储对应的是旧版状态同步设计，其表名/职责与新方案的 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exceptions` 完全不匹配，已废弃。
 >
-> **已知文档滞后提示**：调研发现 Phase 1/3/4 的部分端口/实现文件在实际代码仓库中可能已经存在（早于本文档勾选状态更新），但本次仅在独立 worktree 中核对文档设计，未接触到相关未提交代码，因此下方 Phase 1/3/4 的勾选状态**未做核实性修改**，留待下一轮 Phase 0（止血现有重构）时一并核对并更新。
+> **2026-07-16 更新说明（已核实，非推测）**：直接核对 `origin/main` 实际代码后确认：Phase 1/3/4（核心域仓储）已完整实现且 `npx tsc --noEmit` 零错误——此前记录的"文档滞后"提示已解决。但 **Phase 5（Layer 2 离线同步/异常领域仓储）目前 100% 未实现**——`src/types/database.ts` 里虽已有 Layer 2 的 7 张表类型，但 `src/core/ports/db/`、`src/adapters/supabase/repositories/` 里没有任何一个对应端口或实现，也没有任何设备端路由（代码库目前只有 `src/apps/admin-api`）。新增 **Phase 6（Layer 3 同步动作扩展仓储）与 Phase 7（Layer 4 唯一追踪策略仓储）**，二者在 `database.ts` 里连表类型都不存在（尚未迁移），是比 Phase 5 更前置的空白。
 
 ---
 
@@ -117,7 +117,7 @@
 
 ## Phase 5: 离线同步 / 统一异常领域仓储（5个） - P0 同步配套（2026-07-15 按 ADR-011 重写，替代原 PDA 同步专用仓储规划）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。执行本 Phase 前需先完成 Phase 0（止血现有 RPC→Repository 重构，详见 `docs/00-project/ROADMAP.md` 离线同步方案对齐记录）与迁移脚本落地（Phase 1）。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。**Phase 0（止血现有 RPC→Repository 重构）已由其他并行工作解决**（`origin/main` `ac3da7a`，`npx tsc --noEmit` 现为零错误），不再是阻塞项；执行本 Phase 前仍需先完成迁移脚本落地（Phase 1，需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4）。
 
 ### 5.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
@@ -143,6 +143,52 @@
 
 ---
 
+## Phase 6: 同步动作扩展仓储（2个）- Layer 3 配套（2026-07-16 新增，ADR-013）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16；对应 RPC 封装见同文档 §4。**执行本 Phase 前需先完成 Layer 3 迁移脚本修正**（需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4.1），当前本地脚本仍含 bug，尚未替换。
+
+### 6.1 端口定义
+| # | 文件 | 状态 | 预估行数 | 说明 |
+|---|------|------|---------|------|
+| 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | ⏳ 待开始 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
+| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ⏳ 待开始 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑 |
+
+### 6.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ⏳ 待开始 |
+
+### 6.3 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 2 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 2 个新实现
+
+---
+
+## Phase 7: 唯一追踪策略仓储（3个）- Layer 4 配套（2026-07-16 新增，ADR-014）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17；对应 RPC 封装见同文档 §4。**执行本 Phase 前需先完成 Phase 6（Layer 3）与 Layer 4 迁移脚本落地**（需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4.2），本地目前无任何 Layer 4 迁移脚本草稿。
+
+### 7.1 端口定义
+| # | 文件 | 状态 | 预估行数 | 说明 |
+|---|------|------|---------|------|
+| 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | ⏳ 待开始 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
+| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ⏳ 待开始 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied` |
+| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | ⏳ 待开始 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
+
+### 7.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | ⏳ 待开始 |
+| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ⏳ 待开始 |
+| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | ⏳ 待开始 |
+
+### 7.3 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 3 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+
+---
+
 ## 总计统计
 
 | 阶段 | 端口数 | 实现数 | 总文件数 | 预估代码行数 |
@@ -152,7 +198,9 @@
 | Phase 3 (P1 业务扩展) | 8 | 8 | 16 | ~1,600 |
 | Phase 4 (P2 支撑域) | 6 | 6 | 12 | ~1,200 |
 | Phase 5 (离线同步/异常领域) | 5 | 5 | 10 | ~1,050 |
-| **合计** | **38** | **38** | **76** | **~7,850** |
+| Phase 6 (同步动作扩展，Layer 3) | 2 | 2 | 4 | ~280 |
+| Phase 7 (唯一追踪策略，Layer 4) | 3 | 3 | 6 | ~420 |
+| **合计** | **43** | **43** | **86** | **~8,550** |
 
 ---
 
@@ -192,5 +240,5 @@
 ---
 
 *创建时间：2025-07-10*
-*状态：待开始 Phase 1*
-*最近更新：2026-07-15 — Phase 5 按 ADR-011（离线同步操作日志+统一异常领域）整体重写*
+*状态：Phase 1/3/4 已完成（已在 origin/main 核实）；Phase 5/6/7 待开始*
+*最近更新：2026-07-16 — 新增 Phase 6（Layer 3 同步动作扩展，ADR-013）与 Phase 7（Layer 4 唯一追踪策略，ADR-014）仓储规划；核实 Phase 0 止血/Phase 1/3/4 完成状态*
