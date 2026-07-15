@@ -47,4 +47,26 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
    * 查找需要补货的库位
    */
   findReplenishmentNeeded(tenantId: string): Promise<InventoryRow[]>;
+
+  /**
+   * 查找可用的补货源库位（有库存、符合区域类型、数量足够）
+   */
+  findAvailableSources(params: {
+    skuId: string;
+    zoneTypes: string[];
+    minQuantity: number;
+  }): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>>;
+
+  /**
+   * 查询补货需求视图
+   */
+  getReplenishmentNeeds(tenantId?: string): Promise<Array<{
+    loc_id: string;
+    loc_code: string;
+    sku_id: string;
+    sku_code: string;
+    current_qty: number;
+    picking_max_qty: number;
+    fill_rate_pct: number;
+  }>>;
 }

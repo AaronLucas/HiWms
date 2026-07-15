@@ -18,10 +18,8 @@ export interface TaskDefinition {
   handler: string;
   inputSchema: Record<string, string>;
   timeout?: number;
-  retryPolicy?: {
-    maxAttempts: number;
-    backoffMs: number;
-  };
+  retryPolicy?: RetryPolicy;
+  circuitBreaker?: CircuitBreakerConfig;
 }
 
 export interface TransitionDefinition {
@@ -87,16 +85,20 @@ export interface IWorkflowEngine {
 /** 任务注册表接口 */
 export interface ITaskRegistry {
   /** 注册任务处理器 */
-  register(handlerName: string, handler: TaskHandler): void;
+  register<TIn, TOut>(handlerName: string, handler: TaskHandler<TIn, TOut>): void;
 
   /** 获取任务处理器 */
-  get(handlerName: string): TaskHandler | undefined;
+  get<TIn, TOut>(handlerName: string): TaskHandler<TIn, TOut> | undefined;
 
   /** 执行任务 */
-  execute(handlerName: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  execute<TIn, TOut>(handlerName: string, input: TIn): Promise<TOut>;
 }
 
-export type TaskHandler = (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+/** 任务处理器接口 - 支持补偿事务 */
+export interface TaskHandler<TIn = Record<string, unknown>, TOut = Record<string, unknown>> {
+  execute(input: TIn): Promise<TOut>;
+  compensate?(output: unknown, context: any): Promise<void>;
+}
 
 /** 工作流定义存储接口 */
 export interface IWorkflowDefinitionStore {
@@ -122,3 +124,30 @@ export interface ITaskExecutionStore {
   findById(id: string): Promise<TaskExecution | null>;
   update(execution: TaskExecution): Promise<void>;
 }
+
+/**
+ * 重试策略配置
+ */
+export interface RetryPolicy {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs?: number;
+  backoffMultiplier?: number;
+  jitterFactor?: number;
+  retryableErrors?: string[];
+}
+
+/**
+ * 熔断器配置
+ */
+export interface CircuitBreakerConfig {
+  failureThreshold: number;
+  successThreshold: number;
+  timeoutMs: number;
+  halfOpenMaxRequests: number;
+}
+
+/**
+ * 熔断器状态
+ */
+export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';

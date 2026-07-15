@@ -1,7 +1,7 @@
 /**
  * 创建工单用例
  */
-import { IWorkOrderRepository } from '../../core/ports/db/IWorkOrderRepository';
+import { WmsSupabaseClient } from '@adapters/supabase/SupabaseClient';
 
 export interface CreateWorkOrderInput {
   tenantId: string;
@@ -14,19 +14,27 @@ export interface CreateWorkOrderInput {
 }
 
 export class CreateWorkOrderUseCase {
-  constructor(private workOrderRepo: IWorkOrderRepository) {}
+  constructor(private supabase: WmsSupabaseClient) {}
 
   async execute(input: CreateWorkOrderInput): Promise<{ workOrderId: string }> {
-    const workOrder = await this.workOrderRepo.create({
-      tenant_id: input.tenantId,
-      wave_id: input.waveId ?? null,
-      task_type: input.taskType,
-      related_order_id: input.relatedOrderId ?? null,
-      assigned_user_id: input.assignedUserId ?? null,
-      expected_duration_seconds: input.expectedDurationSeconds ?? null,
-      status: 'pending',
-      pda_summary: null,
-    } as any);
+    const { data: workOrder, error } = await this.supabase
+      .from('work_orders')
+      .insert({
+        tenant_id: input.tenantId,
+        wave_id: input.waveId ?? null,
+        task_type: input.taskType,
+        related_order_id: input.relatedOrderId ?? null,
+        assigned_user_id: input.assignedUserId ?? null,
+        expected_duration_seconds: input.expectedDurationSeconds ?? null,
+        status: 'PENDING',
+        pda_summary: null,
+        metadata: input.metadata ?? null,
+      })
+      .select('id')
+      .single();
+
+    if (error) throw new Error(`创建工单失败: ${error.message}`);
+    if (!workOrder?.id) throw new Error('Work order creation returned no id');
 
     return { workOrderId: workOrder.id };
   }
@@ -50,22 +58,29 @@ export interface ExecuteWorkOrderActionInput {
 }
 
 export class ExecuteWorkOrderActionUseCase {
-  constructor(private workOrderRepo: IWorkOrderRepository) {}
+  constructor(private supabase: WmsSupabaseClient) {}
 
   async execute(input: ExecuteWorkOrderActionInput): Promise<{ logId: number }> {
-    const log = await this.workOrderRepo.logAction({
-      wo_id: input.workOrderId,
-      action_type: input.actionType,
-      from_loc_id: input.fromLocId ?? null,
-      to_loc_id: input.toLocId ?? null,
-      sku_id: input.skuId ?? null,
-      qty_acted: input.qtyActed,
-      captured_data: input.capturedData ?? null,
-      start_at: input.startAt,
-      end_at: input.endAt,
-    } as any);
+    const { data, error } = await this.supabase
+      .from('wo_action_logs')
+      .insert({
+        wo_id: input.workOrderId,
+        action_type: input.actionType.toUpperCase(),
+        from_loc_id: input.fromLocId ?? null,
+        to_loc_id: input.toLocId ?? null,
+        sku_id: input.skuId ?? null,
+        qty_acted: input.qtyActed,
+        captured_data: input.capturedData ?? null,
+        start_at: input.startAt,
+        end_at: input.endAt,
+      })
+      .select('log_id')
+      .single();
 
-    return { logId: log.log_id };
+    if (error) throw new Error(`记录工单动作失败: ${error.message}`);
+    if (!data?.log_id) throw new Error('Action log creation returned no id');
+
+    return { logId: data.log_id };
   }
 }
 
@@ -79,13 +94,25 @@ export interface UpdateWorkOrderStatusInput {
 }
 
 export class UpdateWorkOrderStatusUseCase {
-  constructor(private workOrderRepo: IWorkOrderRepository) {}
+  constructor(private supabase: WmsSupabaseClient) {}
 
   async execute(input: UpdateWorkOrderStatusInput): Promise<void> {
-    const updateData: any = { status: input.status };
+    const updateData: any = {
+      status: input.status.toUpperCase(),
+      updated_at: new Date().toISOString(),
+    };
     if (input.completedAt) {
       updateData.completed_at = input.completedAt;
     }
-    await this.workOrderRepo.updateStatus(input.workOrderId, input.status);
+    if (input.status === 'completed' && !input.completedAt) {
+      updateData.completed_at = new Date().toISOString();
+    }
+
+    const { error } = await this.supabase
+      .from('work_orders')
+      .update(updateData)
+      .eq('id', input.workOrderId);
+
+    if (error) throw new Error(`更新工单状态失败: ${error.message}`);
   }
 }

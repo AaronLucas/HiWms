@@ -2,7 +2,7 @@
  * 黑盒收货解析用例
  * 封装 fn_logic_resolve_blackbox_box RPC
  */
-import { IBlackboxReceivingRpc } from '../../core/ports/rpc/IBlackboxReceivingRpc';
+import { IBlackboxReceivingRpc } from '../../ports/rpc/IBlackboxReceivingRpc';
 
 export interface ResolveBlackboxInput {
   lpnCode: string;
@@ -40,7 +40,7 @@ export class ResolveBlackboxUseCase {
  * 库存调整用例
  * 封装 adjust_inventory RPC（入库/出库/盘点，乐观锁保护）
  */
-import { IInventoryAdjustRpc } from '../../core/ports/rpc/IInventoryAdjustRpc';
+import { IInventoryAdjustRpc } from '../../ports/rpc/IInventoryAdjustRpc';
 
 export interface AdjustInventoryInput {
   tenantId: string;
@@ -74,7 +74,7 @@ export class AdjustInventoryUseCase {
  * 库存同步用例
  * 封装 sync_inventory_from_source RPC（多租户同步）
  */
-import { IInventorySyncRpc } from '../../core/ports/rpc/IInventorySyncRpc';
+import { IInventorySyncRpc } from '../../ports/rpc/IInventorySyncRpc';
 
 export interface SyncInventoryInput {
   tenantId: string;

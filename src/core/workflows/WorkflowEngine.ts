@@ -2,6 +2,7 @@
  * 工作流引擎实现
  * 单一实现，替代 workflow-engine + src/workflows 双引擎
  */
+
 import {
   IWorkflowEngine,
   WorkflowDefinition,
@@ -233,7 +234,7 @@ export class WorkflowEngine implements IWorkflowEngine {
     await this.executionStore.save(execution);
 
     try {
-      const output = await handler(instance.context);
+      const output = await handler.execute(instance.context) as Record<string, unknown>;
       execution.output = output;
       execution.status = 'completed';
       execution.completedAt = new Date();
@@ -356,19 +357,19 @@ export class InMemoryExecutionStore implements ITaskExecutionStore {
 
 /** 任务注册表实现 */
 export class TaskRegistry implements ITaskRegistry {
-  private handlers = new Map<string, TaskHandler>();
+  private handlers = new Map<string, TaskHandler<any, any>>();
 
-  register(handlerName: string, handler: TaskHandler): void {
+  register<TIn, TOut>(handlerName: string, handler: TaskHandler<TIn, TOut>): void {
     this.handlers.set(handlerName, handler);
   }
 
-  get(handlerName: string): TaskHandler | undefined {
+  get<TIn, TOut>(handlerName: string): TaskHandler<TIn, TOut> | undefined {
     return this.handlers.get(handlerName);
   }
 
-  async execute(handlerName: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async execute<TIn, TOut>(handlerName: string, input: TIn): Promise<TOut> {
     const handler = this.get(handlerName);
     if (!handler) throw new Error(`Handler not found: ${handlerName}`);
-    return handler(input);
+    return handler.execute(input) as Promise<TOut>;
   }
 }
