@@ -11,10 +11,16 @@
  */
 import { Router, Request, Response } from 'express';
 import { DeviceApiDependencies } from './di';
+import type { Database } from '../../../types/database';
+import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   const router = Router();
   const { supabaseAdapters } = deps;
+
+  // 获取 RPC 客户端和 Supabase 客户端
+  const rpcClient = supabaseAdapters.rpc as SupabaseRpcClient;
+  const supabaseClient = supabaseAdapters.client;
 
   // ========== 同步事件端点 ==========
 
@@ -38,16 +44,57 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         return res.status(400).json({ error: 'events array required' });
       }
 
-      // TODO: 实现批量写入 sync_events 表 + 调用 fn_apply_sync_event
-      // 暂返回接受状态，实际处理异步进行
+      // 从请求上下文获取 tenant_id（由中间件注入）
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
+
+      // 批量插入 sync_events 表（幂等键 id + device_seq 防重）
+      const eventsToInsert = events.map(event => ({
+        id: event.id,
+        tenant_id: tenantId,
+        device_id: event.device_id,
+        operator_user_id: (req as any).context?.userId || null,
+        device_seq: event.device_seq,
+        action_type: event.action_type,
+        payload: event.payload as Database['public']['Tables']['sync_events']['Insert']['payload'],
+        captured_at: event.captured_at,
+        received_at: new Date().toISOString(),
+        status: 'PENDING' as const,
+      }));
+
+      const { error: insertError } = await supabaseClient.getAdminClient()
+        .from('sync_events')
+        .insert(eventsToInsert as any);
+
+      if (insertError) {
+        console.error('sync_events insert error:', insertError);
+        return res.status(500).json({ error: 'Failed to insert sync events', details: insertError.message });
+      }
+
+      // 异步处理每个事件：调用 fn_apply_sync_event
+      // 这里只返回接受状态，实际处理可由后台任务或同步完成
       const results = await Promise.all(
         events.map(async (event) => {
-          // 这里应该调用 RPC: fn_apply_sync_event(event.id)
-          // 目前返回模拟结果
-          return {
-            event_id: event.id,
-            status: 'PENDING' as const,
-          };
+          try {
+            // 调用 RPC 处理同步事件
+            const result = await rpcClient.raw('fn_apply_sync_event', {
+              p_event_id: event.id,
+            });
+            return {
+              event_id: event.id,
+              status: 'APPLIED' as const,
+              result,
+            };
+          } catch (rpcError) {
+            console.error(`fn_apply_sync_event failed for event ${event.id}:`, rpcError);
+            return {
+              event_id: event.id,
+              status: 'EXCEPTION' as const,
+              error: rpcError instanceof Error ? rpcError.message : 'Unknown error',
+            };
+          }
         })
       );
 
@@ -68,9 +115,31 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       const sinceSeq = parseInt(req.query.since_seq as string || '0', 10);
       const limit = parseInt(req.query.limit as string || '100', 10);
 
-      // TODO: 查询 sync_events 表 where device_seq > sinceSeq and status = 'APPLIED'
-      // 返回应用结果供 PDA 更新本地状态
-      res.json({ events: [], next_cursor: sinceSeq });
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
+
+      // 查询已处理的同步事件（APPLIED 状态），按 device_seq 递增
+      const { data, error } = await supabaseClient.getClient()
+        .from('sync_events')
+        .select('id, device_seq, action_type, payload, status, applied_at')
+        .eq('tenant_id', tenantId)
+        .gt('device_seq', sinceSeq)
+        .eq('status', 'APPLIED')
+        .order('device_seq', { ascending: true })
+        .limit(limit);
+
+      if (error) {
+        console.error('sync_events query error:', error);
+        return res.status(500).json({ error: 'Failed to pull sync data' });
+      }
+
+      const nextCursor = data && data.length > 0
+        ? Math.max(...data.map(e => e.device_seq))
+        : sinceSeq;
+
+      res.json({ events: data || [], next_cursor: nextCursor });
     } catch (error) {
       console.error('GET /sync/pull error:', error);
       res.status(500).json({ error: 'Failed to pull sync data' });
@@ -87,12 +156,25 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       const taskType = req.query.task_type as string | undefined;
       const zoneType = req.query.zone_type as string | undefined;
 
-      // TODO: 调用 RPC fn_get_sync_policy(tenant_id, task_type, zone_type)
-      // 返回: { offline_mode: 'ALLOW' | 'LIMITED' | 'ONLINE_ONLY', max_offline_duration_seconds?: number }
-      res.json({
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
+
+      // 调用 RPC fn_get_sync_policy
+      const policy = await rpcClient.raw('fn_get_sync_policy', {
+        p_tenant_id: tenantId,
+        p_task_type: taskType,
+        p_zone_type: zoneType,
+      });
+
+      // 返回第一条匹配策略（按优先级已在 RPC 内部处理）
+      const result = policy && policy.length > 0 ? policy[0] : {
         offline_mode: 'ALLOW',
         max_offline_duration_seconds: 28800,
-      });
+      };
+
+      res.json(result);
     } catch (error) {
       console.error('GET /sync/policy error:', error);
       res.status(500).json({ error: 'Failed to fetch sync policy' });
@@ -115,12 +197,31 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         return res.status(400).json({ error: 'user_id and device_id required' });
       }
 
-      // TODO: 调用 Supabase RPC fn_claim_task
-      // const { data, error } = await supabase.rpc('fn_claim_task', {...});
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
 
-      // 模拟成功响应
+      // 调用 RPC fn_claim_task
+      const result = await rpcClient.raw('fn_claim_task', {
+        p_work_order_id: id,
+        p_user_id: user_id,
+        p_device_id: device_id,
+        p_lease_seconds: lease_seconds,
+      });
+
+      // RPC 返回数组，取第一个结果
+      const claimResult = result && result.length > 0 ? result[0] : null;
+
+      if (!claimResult || !claimResult.success) {
+        return res.status(409).json({
+          error: 'Failed to claim task',
+          message: claimResult?.message || 'Task already claimed or not available',
+        });
+      }
+
       res.json({
-        claim_id: 'claim-' + id,
+        claim_id: claimResult.claim_id,
         status: 'ACTIVE',
         expires_at: new Date(Date.now() + lease_seconds * 1000).toISOString(),
       });
@@ -139,8 +240,14 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     try {
       const { id } = req.params;
 
-      // TODO: 调用 Supabase RPC fn_release_task_claim
-      // const { data, error } = await supabase.rpc('fn_release_task_claim', { p_claim_id: id });
+      // 调用 RPC fn_release_task_claim
+      const success = await rpcClient.raw('fn_release_task_claim', {
+        p_claim_id: id,
+      });
+
+      if (!success) {
+        return res.status(404).json({ error: 'Claim not found or already released' });
+      }
 
       res.json({ success: true });
     } catch (error) {
@@ -164,10 +271,31 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       const limit = parseInt(req.query.limit as string || '50', 10);
       const offset = parseInt(req.query.offset as string || '0', 10);
 
-      // TODO: 查询 exceptions 表（RLS 自动过滤 tenant_id）
-      // 支持过滤：status IN (PENDING_REVIEW, CONFLICT, RESOLVED, DISMISSED)
-      //          domain IN (INVENTORY, SYNC, COMPLIANCE, TASK, FULFILLMENT, BILLING, OTHER)
-      res.json({ data: [], total: 0, limit, offset });
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
+
+      // 查询 exceptions 表（RLS 自动过滤 tenant_id）
+      let query = supabaseClient.getClient()
+        .from('exceptions')
+        .select('*', { count: 'exact' })
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (status) query = query.eq('status', status);
+      if (domain) query = query.eq('domain', domain);
+      if (severity) query = query.eq('severity', severity);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        console.error('exceptions query error:', error);
+        return res.status(500).json({ error: 'Failed to fetch exceptions' });
+      }
+
+      res.json({ data: data || [], total: count || 0, limit, offset });
     } catch (error) {
       console.error('GET /exceptions error:', error);
       res.status(500).json({ error: 'Failed to fetch exceptions' });
@@ -182,23 +310,37 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     try {
       const { id } = req.params;
 
-      // TODO: 查询 exceptions 表 + exception_events 关联
-      // 设备端只读，不暴露解决操作
+      const tenantId = (req as any).context?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ error: 'tenant_id not available in context' });
+      }
+
+      // 查询异常主表
+      const { data: exception, error: excError } = await supabaseClient.getClient()
+        .from('exceptions')
+        .select('*')
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (excError || !exception) {
+        return res.status(404).json({ error: 'Exception not found' });
+      }
+
+      // 查询审计轨迹
+      const { data: events, error: eventsError } = await supabaseClient.getClient()
+        .from('exception_events')
+        .select('*')
+        .eq('exception_id', id)
+        .order('id', { ascending: true });
+
+      if (eventsError) {
+        console.error('exception_events query error:', eventsError);
+      }
+
       res.json({
-        id,
-        tenant_id: 'tenant-xxx',
-        exception_type: 'INVENTORY_SHORTAGE',
-        domain: 'INVENTORY',
-        severity: 'HIGH',
-        status: 'PENDING_REVIEW',
-        source_table: 'order_lines',
-        source_id: 'order-line-xxx',
-        title: '拣货库存不足',
-        details: { needed: 10, available: 3 },
-        raised_by: null,
-        assigned_to: null,
-        created_at: new Date().toISOString(),
-        events: [],
+        ...exception,
+        events: events || [],
       });
     } catch (error) {
       console.error('GET /exceptions/:id error:', error);
