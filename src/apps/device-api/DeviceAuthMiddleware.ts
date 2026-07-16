@@ -216,4 +216,24 @@ export function createDeviceAuthMiddleware(
       };
     },
   };
+
+  // Export the authenticate function and optionalAuthenticate
+  const middleware = {
+    authenticate: authenticate(),
+    optionalAuthenticate: () => {
+      return async (req: Request, res: Response, next: NextFunction) => {
+        const authHeader = req.headers.authorization;
+        const apiKey = req.headers['x-api-key'];
+
+        if (!authHeader?.startsWith('Bearer ') && !apiKey) {
+          return next(); // No auth provided, continue without auth
+        }
+
+        // Delegate to full authenticate
+        return authenticate()(req, res, next);
+      };
+    },
+  };
+
+  return middleware;
 }
