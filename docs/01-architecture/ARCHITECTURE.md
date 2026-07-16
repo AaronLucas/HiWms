@@ -313,10 +313,12 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 |------|------|
 | **认证** | Device JWT + API Key，设备绑定租户 |
 | **离线优先** | 本地优先，操作同步（非状态合并），预分工消除大部分冲突，竞争性任务租约兜底 |
-| **核心功能** | 收货扫描、上架、拣选、打包、发货、盘点、统一异常上报（`fn_raise_exception`） |
+| **核心功能** | 收货扫描、上架（PUTAWAY）、拣选（PICK）、打包（PACK）、发货、盘点（COUNT）、唯一追踪策略校验、统一异常上报（`fn_raise_exception`） |
 | **协议** | REST + WebSocket (实时推送任务) |
 | **部署** | Express + PM2，边缘节点部署靠近仓库 |
 | **数据库** | Supabase (RLS) + 本地 SQLite |
+
+> ⚠️ **实现状态（2026-07-16 已核实）**：`src/apps/` 目前只有 `admin-api`，**`device-api` 应用尚不存在**——本节描述的是设计目标，不是当前可运行的代码。
 
 ### 4.4 Edge Worker (Cloudflare Workers)
 | 特性 | 设计 |
@@ -344,6 +346,8 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 | **ADR-009** | 事件驱动架构 | 解耦领域操作与副作用，支持最终一致性 |
 | **ADR-010** | TypeScript 严格模式 | 端到端类型安全，数据库类型生成到前端 |
 | **ADR-011** | 离线同步改为操作同步 + 预分工 + 统一异常领域 | DBA 评审发现旧版状态同步/OT-CRDT 设计不符合"多设备并发操作共享可变资源"的真实需求，替换为可预防冲突的设计 |
+| **ADR-013** | 同步动作扩展（PUTAWAY/COUNT/PACK）改为修正版重新实现 | DBA 评审开发团队 PR 发现真实语法错误+并发丢单 bug+表结构引用错误，重新实现而非打补丁 |
+| **ADR-014** | 唯一追踪策略三层解析 + 无码/未识别货物分离处理 | 区分"低值货物本不追踪"与"该追踪但现场缺码"两种完全不同的场景，避免混为一谈造成操作摩擦或追溯断裂 |
 
 ---
 
@@ -413,6 +417,7 @@ Types           │             │       │          │      │         │ 
 | 1.1.0 | 2025-07-07 | 补充数据流、技术栈、ADR 索引、CONVENTIONS 引用 |
 | 2.0.0 | 2025-07-10 | 完整六边形架构、多端拓扑、数据流、安全、可观测性 |
 | 2.1.0 | 2026-07-15 | 离线同步流改为操作同步+预分工模型（ADR-011），新增统一异常领域用例模块，更新 ADR 摘要与相关文档索引 |
+| 2.2.0 | 2026-07-16 | 新增 ADR-013/ADR-014（Layer 3 同步动作扩展、Layer 4 唯一追踪策略），标注 Device API 当前实现状态（尚不存在，仅 admin-api 已实现），更新相关文档索引 |
 
 ---
 
@@ -435,3 +440,5 @@ Types           │             │       │          │      │         │ 
 | **PDA 本地 SQLite Schema** | `docs/03-database/SQLITE_LOCAL_SCHEMA.md` | 只读缓存 + Outbox 动作日志两类本地表 |
 | **冲突解决策略** | `docs/03-database/CONFLICT_RESOLUTION_STRATEGY.md` | 预分工机制、任务租约语义、统一异常处理 |
 | **同步接口契约规范** | `docs/02-api/SYNC_API_CONTRACT.md` | sync_events 幂等收件箱、APPLIED/EXCEPTION/REJECTED 契约 |
+| **同步动作扩展（Layer 3）** | `docs/02-api/SYNC_ACTIONS_EXTENSION.md` | PUTAWAY/COUNT/PACK 修正实现、原子库存写入原语（ADR-013） |
+| **唯一追踪策略（Layer 4）** | `docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md` | 三层策略解析、MISSING_LABEL/UNIDENTIFIED_GOODS 闭环（ADR-014） |

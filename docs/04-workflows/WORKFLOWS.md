@@ -159,6 +159,7 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 - 执行任何 `supabase db push` / 迁移脚本前
 - 修改 RLS 策略前
 - 执行生产环境数据修复脚本前
+- **涉及 `.sql` 文件的 PR，提交前必须按 `.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md` 逐条自查并附验证证据**（2026-07-16 新增，DBA 团队根据真实踩坑经验制定，详见 `docs/00-project/CONVENTIONS.md` §8）
 
 ### 7.2 部署相关
 - 创建 Release 标签前 (vX.Y.Z)

@@ -259,6 +259,7 @@ chore(deps): upgrade @supabase/supabase-js to v2.110
 - [ ] 错误处理使用自定义错误类
 - [ ] 新增 API 有对应类型定义
 - [ ] 变更涉及 Schema 时已生成迁移脚本
+- [ ] **涉及 `.sql` 文件的 PR，必须按 `.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md` 的 8 条自查清单逐条验证并在 PR 描述中附上证据（本地空库全跑一遍零 ERROR、字段名核对、并发测试、可空唯一索引处理等）；缺失证据的 PR 评审人有权直接打回，不需要先读代码细节**（2026-07-16 新增，源于 DBA 团队评审开发团队 PR 时发现的真实 bug：语法错误、字段名凭记忆写错、并发丢单、可空唯一索引失效等）
 - [ ] 更新了相关文档（API_SPEC.md, DB_SCHEMA.md 等）
 
 ---

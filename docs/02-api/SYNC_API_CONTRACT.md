@@ -414,6 +414,12 @@ X-Device-Id: <device_id>
 | 命中自定义 SQLSTATE `'WMS01'`（合规性冲突） | `EXCEPTION` | `COLD_CHAIN_VIOLATION` 或 `HAZMAT_CONFLICT`（按具体校验规则区分） | 业务规则明确拒绝，但不是系统故障；生成异常记录供人工处理 |
 | 应用过程中出现未预期错误（如下游服务超时、数据不一致） | `EXCEPTION` | `SYNC_APPLY_FAILURE` | 非业务规则触发，值得工程侧关注，同样落入统一异常域 |
 | `action_type` 不在已实现集合内 | `REJECTED` | `REJECTED_UNKNOWN_ACTION` | 不生成异常记录，仅作为请求被拒绝的说明返回给客户端 |
+| PUTAWAY/COUNT/PACK 引用了不存在的 SKU/库位/订单行（Layer 3，见 `SYNC_ACTIONS_EXTENSION.md`） | `EXCEPTION` | `REFERENCE_NOT_FOUND` | **不与** `INVENTORY_SHORTAGE`/`COLD_CHAIN_VIOLATION` 混用——原 PR 曾把这类数据引用缺失问题误分类为后两者，污染其统计口径 |
+| COUNT 差异超出可配置容差（Layer 3） | `EXCEPTION` | `COUNT_DISCREPANCY` | 容差来自 `fn_get_count_tolerance`（按 SKU 覆盖 > 租户默认 > 0），不再是硬编码 0.01 |
+| PUTAWAY 命中追踪策略但现场无箱码（Layer 4，见 `TRACKING_POLICY_MISSING_LABEL.md`） | `EXCEPTION` | `MISSING_LABEL` | 商品身份明确，先按数量正常记账，等待补码闭环（`fn_generate_internal_lpn`/`fn_confirm_label_applied`） |
+| 操作员标记无法识别商品身份（Layer 4） | `EXCEPTION` | `UNIDENTIFIED_GOODS` | 严重度 HIGH（高于 MISSING_LABEL 的 MEDIUM），`product_id=NULL` 暂存，等待 `fn_identify_unidentified_goods` 回填 |
+
+> **Layer 3/4 现状提示**：本节新增的 `REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS` 三个异常类型与 PUTAWAY/COUNT/PACK 的修正实现，均**仅为设计文档**——本地对应迁移脚本（Layer 3 含 bug 未修正，Layer 4 尚不存在）需先与 DBA 团队协调确认才能起草/执行，详见 `docs/00-project/ROADMAP.md` Phase 1.4.1/1.4.2。
 
 ### 9.2 批次级错误码汇总
 
@@ -629,6 +635,7 @@ function getNextSyncDelay(config: SyncSchedulerConfig): number {
 
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
+| 2.1.0 | 2026-07-16 | 补充 Layer 3（`REFERENCE_NOT_FOUND`/`COUNT_DISCREPANCY`）与 Layer 4（`MISSING_LABEL`/`UNIDENTIFIED_GOODS`）四个新异常类型到 §9 分类表。**本次仅为文档补充，本地对应迁移脚本未修正/未创建**，需先与 DBA 团队协调确认 | DBA 团队 / 架构组 |
 | 2.0.0 | 2026-07-15 | **重大变更**：DBA 团队交付新方案，废弃 v1.0.0 的状态同步模型（`LocalOperation` + `version_vector` + 服务端 `conflicts[]` + 客户端合并策略协商），改为事件同步模型（`sync_events` 幂等收件箱 + 确定性重放函数 + `APPLIED`/`EXCEPTION`/`REJECTED` 三态）。移除 `/sync/status`、`/sync/conflicts`、`/sync/conflicts/{id}/resolve`、`/sync/cursors`、`/sync/cursors/reset` 及分片/断点续传机制；新增 `/sync/events`、`/sync/pull`、`/sync/policy`、`/tasks/{work_order_id}/claim`、`/tasks/claims/{claim_id}/release`、`/exceptions`、`/exceptions/{id}`。移除 `409 SYNC_CONFLICT` 错误码。 | DBA 团队 / 架构组 |
 | 1.0.0 | 2025-07-11 | 初版：完整契约、分片、冲突、游标、限流、安全、客户端指南、测试用例（已废弃，见上） | 架构组 |
 
