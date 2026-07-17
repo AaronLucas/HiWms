@@ -38,6 +38,13 @@ export { SupabaseBillingTransactionRepository } from './repositories/SupabaseBil
 export { SupabaseUserRepository } from './repositories/SupabaseUserRepository';
 export { SupabaseAsnRepository } from './repositories/SupabaseAsnRepository';
 
+// Phase 5: 离线同步 / 统一异常领域仓储（Layer 2）
+export { SupabaseTaskClaimRepository } from './repositories/SupabaseTaskClaimRepository';
+export { SupabaseSyncPolicyRepository } from './repositories/SupabaseSyncPolicyRepository';
+export { SupabaseDeviceSyncStateRepository } from './repositories/SupabaseDeviceSyncStateRepository';
+export { SupabaseSyncEventRepository } from './repositories/SupabaseSyncEventRepository';
+export { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRepository';
+
 export { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 export { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
 export { SupabaseTenantResolver } from './auth/SupabaseTenantResolver';
@@ -80,6 +87,13 @@ import { SupabaseBillingRuleRepository } from './repositories/SupabaseBillingRul
 import { SupabaseBillingTransactionRepository } from './repositories/SupabaseBillingTransactionRepository';
 import { SupabaseUserRepository } from './repositories/SupabaseUserRepository';
 import { SupabaseAsnRepository } from './repositories/SupabaseAsnRepository';
+
+// Phase 5: Layer 2
+import { SupabaseTaskClaimRepository } from './repositories/SupabaseTaskClaimRepository';
+import { SupabaseSyncPolicyRepository } from './repositories/SupabaseSyncPolicyRepository';
+import { SupabaseDeviceSyncStateRepository } from './repositories/SupabaseDeviceSyncStateRepository';
+import { SupabaseSyncEventRepository } from './repositories/SupabaseSyncEventRepository';
+import { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRepository';
 
 import { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 import { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
@@ -126,6 +140,12 @@ export interface SupabaseAdapters {
     billingTransactions: SupabaseBillingTransactionRepository;
     users: SupabaseUserRepository;
     asn: SupabaseAsnRepository;
+    // Phase 5: Layer 2
+    taskClaims: SupabaseTaskClaimRepository;
+    syncPolicies: SupabaseSyncPolicyRepository;
+    deviceSyncStates: SupabaseDeviceSyncStateRepository;
+    syncEvents: SupabaseSyncEventRepository;
+    exceptions: SupabaseExceptionRepository;
   };
   auth: {
     provider: SupabaseAuthProvider;
@@ -195,6 +215,12 @@ export function createSupabaseAdapters(config: {
       billingTransactions: new SupabaseBillingTransactionRepository(client),
       users: new SupabaseUserRepository(client),
       asn: new SupabaseAsnRepository(client),
+      // Phase 5: Layer 2
+      taskClaims: new SupabaseTaskClaimRepository(client, rpc),
+      syncPolicies: new SupabaseSyncPolicyRepository(client, rpc),
+      deviceSyncStates: new SupabaseDeviceSyncStateRepository(client),
+      syncEvents: new SupabaseSyncEventRepository(client, rpc),
+      exceptions: new SupabaseExceptionRepository(client, rpc),
     },
     auth: {
       provider: new SupabaseAuthProvider(client.getClient(), config.serviceRoleKey ? client.getAdminClient() : null),
