@@ -82,7 +82,7 @@ export class SupabaseTaskClaimRepository extends SupabaseBaseRepository<
    * 调用 RPC fn_expire_task_claims() -> 返回过期数量
    */
   async expireTaskClaims(): Promise<number> {
-    const result = await this.rpcClient.raw('fn_expire_task_claims', {});
+    const result = await this.rpcClient.raw('fn_expire_task_claims' as any, {});
     return Number(result) || 0;
   }
 

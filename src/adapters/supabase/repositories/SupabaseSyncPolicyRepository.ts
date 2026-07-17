@@ -63,7 +63,7 @@ export class SupabaseSyncPolicyRepository extends SupabaseBaseRepository<
       maxOfflineDurationSeconds: policy.max_offline_duration_seconds,
       requiresTaskClaim: false, // Not in RPC return, default to false
       conflictStrategy: 'SERVER_WINS', // Not in RPC return, default
-      policyId: policy.id || 'unknown',
+      policyId: 'unknown', // RPC return type doesn't include id
     };
   }
 

@@ -7,6 +7,9 @@ import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ISyncEventRepository, SyncEventRow, SyncEventInsert, SyncEventUpdate, SyncEventStatus, SyncActionType } from '@core/ports/db/ISyncEventRepository';
 import { WmsSupabaseClient } from '../SupabaseClient';
 import { SupabaseRpcClient } from '../rpc/SupabaseRpcClient';
+import type { Database } from '../../../types/database';
+
+type RpcFunctionName = keyof Database['public']['Functions'];
 
 export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
   SyncEventRow,
@@ -102,7 +105,7 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
           rpcName = 'fn_apply_sync_event';
       }
 
-      const result = await this.rpcClient.raw(rpcName, {
+      const result = await this.rpcClient.raw(rpcName as RpcFunctionName, {
         p_event_id: eventId,
       });
 

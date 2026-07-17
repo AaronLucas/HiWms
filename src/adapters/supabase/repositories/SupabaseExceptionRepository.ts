@@ -85,21 +85,23 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
       p_tenant_id: params.tenantId,
       p_exception_type: params.typeCode,
       p_title: params.title,
-      p_description: params.description || null,
-      p_source_table: params.relatedEntityType || 'exceptions',
-      p_source_id: params.relatedEntityId || '',
-      p_raised_by: params.raisedBy || null,
-      p_details: params.context as any || null,
+      p_details: {
+        description: params.description,
+        ...params.context
+      } as any,
+      p_source_table: params.relatedEntityType ?? 'exceptions',
+      p_source_id: params.relatedEntityId ?? '',
+      p_raised_by: params.raisedBy ?? undefined,
     });
 
     // fn_raise_exception returns string (exception ID)
-    const exceptionId = Array.isArray(result) && result.length > 0 ? result[0] : result;
+    const exceptionId = Array.isArray(result) && result.length > 0 ? result[0] : result as string | null;
 
     // Fetch the created exception
     const { data, error } = await this.supabase.getClient()
       .from('exceptions')
       .select('*')
-      .eq('id', exceptionId)
+      .eq('id', exceptionId ?? '')
       .eq('tenant_id', params.tenantId)
       .single();
 
