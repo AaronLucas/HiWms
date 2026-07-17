@@ -44,3 +44,7 @@ export { SupabaseSyncPolicyRepository } from './SupabaseSyncPolicyRepository';
 export { SupabaseDeviceSyncStateRepository } from './SupabaseDeviceSyncStateRepository';
 export { SupabaseSyncEventRepository } from './SupabaseSyncEventRepository';
 export { SupabaseExceptionRepository } from './SupabaseExceptionRepository';
+
+// Phase 6: 同步动作扩展仓储（Layer 3）
+export { SupabaseInventoryCountPolicyRepository } from './SupabaseInventoryCountPolicyRepository';
+export { SupabasePackingTaskItemRepository } from './SupabasePackingTaskItemRepository';
