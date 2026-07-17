@@ -37,3 +37,10 @@ export { SupabaseBillingRuleRepository } from './SupabaseBillingRuleRepository';
 export { SupabaseBillingTransactionRepository } from './SupabaseBillingTransactionRepository';
 export { SupabaseUserRepository } from './SupabaseUserRepository';
 export { SupabaseAsnRepository } from './SupabaseAsnRepository';
+
+// Phase 5: 离线同步 / 统一异常领域仓储（Layer 2）
+export { SupabaseTaskClaimRepository } from './SupabaseTaskClaimRepository';
+export { SupabaseSyncPolicyRepository } from './SupabaseSyncPolicyRepository';
+export { SupabaseDeviceSyncStateRepository } from './SupabaseDeviceSyncStateRepository';
+export { SupabaseSyncEventRepository } from './SupabaseSyncEventRepository';
+export { SupabaseExceptionRepository } from './SupabaseExceptionRepository';
