@@ -12,24 +12,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import { createDeviceApiDependencies } from './di';
 import { createDeviceApiRouter } from './routes';
-import { loadDeviceApiConfig } from './config';
-
-export interface DeviceApiConfig {
-  supabase: {
-    url: string;
-    anonKey: string;
-    serviceRoleKey: string;
-  };
-  server: {
-    port: number;
-    host: string;
-  };
-  device: {
-    jwtSecret: string;
-    jwtIssuer: string;
-    jwtAudience: string;
-  };
-}
+import { loadDeviceApiConfig, type DeviceApiConfig } from './config';
+import { createDeviceAuthMiddleware } from './DeviceAuthMiddleware';
 
 export async function createDeviceApiApp(config: DeviceApiConfig): Promise<express.Application> {
   const deps = await createDeviceApiDependencies();
@@ -41,47 +25,26 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<expre
   app.use(deps.middlewareFactory.correlationId());
   app.use(deps.middlewareFactory.requestLogger());
 
+  // 创建设备认证中间件
+  const deviceAuthMiddleware = createDeviceAuthMiddleware(
+    deps.supabaseAdapters.client,
+    deps.supabaseAdapters.auth.provider,
+    deps.supabaseAdapters.auth.tenantResolver,
+    {
+      jwtSecret: config.device.jwtSecret,
+      jwtIssuer: config.device.jwtIssuer,
+      jwtAudience: config.device.jwtAudience,
+    }
+  );
+
   // 健康检查（无需认证）
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', service: 'device-api', timestamp: new Date().toISOString() });
   });
 
-  // 设备认证中间件（验证 Device JWT + API Key）
-  const deviceAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      // TODO: 实现设备 JWT 验证逻辑
-      // 1. 从 Authorization Header 或 X-Device-Token 解析 token
-      // 2. 验证签名、过期时间、issuer、audience
-      // 3. 从 token 中提取 device_id, tenant_id, user_id
-      // 4. 调用 supabaseAdapters.auth.tenantResolver.resolveTenant(device_id) 验证设备绑定租户
-      // 5. 将 device_id, tenant_id, user_id 注入 req.context
-      // 6. 设置 RLS 所需的 tenant_id header（由 ExpressMiddlewareFactory 内部处理）
-
-      // 暂时模拟通过
-      (req as any).context = {
-        deviceId: 'device-test-001',
-        tenantId: 'tenant-test-001',
-        userId: 'user-test-001',
-      };
-      next();
-    } catch (error) {
-      res.status(401).json({ error: 'Device authentication failed' });
-    }
-  };
-
-  // 受保护路由：设备认证 + 租户上下文注入
+  // 受保护路由：设备认证（JWT 或 API Key）+ 租户上下文注入
   const deviceRouter = express.Router();
-  deviceRouter.use(deviceAuthMiddleware);
-
-  // 注入 tenant_id 到请求上下文（供 RLS 使用）
-  deviceRouter.use(async (req: Request, _res: Response, next: NextFunction) => {
-    const context = (req as any).context;
-    if (context?.tenantId) {
-      // 设置请求级 tenant_id，供后续 Supabase 查询使用
-      req.headers['x-tenant-id'] = context.tenantId;
-    }
-    next();
-  });
+  deviceRouter.use(deviceAuthMiddleware.authenticate());
 
   // 挂载业务路由
   const apiRouter = createDeviceApiRouter(deps);
