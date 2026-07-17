@@ -29,8 +29,8 @@ export const syncEventSchema = z.object({
   device_id: uuidSchema,
   /** 设备端单调递增序号 */
   device_seq: positiveIntSchema,
-  /** 动作类型：PICK | PUTAWAY | COUNT | PACK */
-  action_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK']),
+  /** 动作类型：PICK | PUTAWAY | COUNT | PACK | RECEIVE | SHIP | REPLENISH | MOVE | ADJUST */
+  action_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK', 'RECEIVE', 'SHIP', 'REPLENISH', 'MOVE', 'ADJUST']),
   /** 结构化业务动作参数 */
   payload: z.record(z.string(), z.unknown()),
   /** 设备本地捕获时间 */
@@ -61,8 +61,8 @@ export type SyncPullQuery = z.infer<typeof syncPullQuerySchema>;
 
 /** GET /sync/policy 查询参数 */
 export const syncPolicyQuerySchema = z.object({
-  /** 任务类型：PICK | PUTAWAY | COUNT | PACK | RECEIVE | LOAD | INVENTORY */
-  task_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK', 'RECEIVE', 'LOAD', 'INVENTORY']).optional(),
+  /** 任务类型：PICK | PUTAWAY | COUNT | PACK | RECEIVE | LOAD | INVENTORY | MISSING_LABEL | UNIDENTIFIED */
+  task_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK', 'RECEIVE', 'LOAD', 'INVENTORY', 'MISSING_LABEL', 'UNIDENTIFIED']).optional(),
   /** 库位类型：PICK | BULK | CROSS_DOCK | STAGING | COLD | HAZMAT */
   zone_type: z.enum(['PICK', 'BULK', 'CROSS_DOCK', 'STAGING', 'COLD', 'HAZMAT']).optional(),
 });
@@ -147,9 +147,119 @@ export const exceptionParamsSchema = z.object({
 
 export type ExceptionParams = z.infer<typeof exceptionParamsSchema>;
 
-// ========== 验证中间件工厂 ==========
+// ========== Layer 3: PUTAWAY/COUNT/PACK Actions ==========
 
-import type { Request, Response, NextFunction } from 'express';
+/** PUTAWAY 动作 payload */
+export const putawayRequestSchema = z.object({
+  /** SKU ID */
+  sku_id: uuidSchema,
+  /** 库位 ID */
+  location_id: uuidSchema,
+  /** 数量 */
+  qty: positiveIntSchema,
+  /** LPN/容器 ID */
+  lpn_id: uuidSchema.optional(),
+  /** 批次/效期 */
+  batch_id: uuidSchema.optional(),
+  expiry_date: isoDateTimeSchema.optional(),
+});
+
+/** COUNT 动作 payload */
+export const countRequestSchema = z.object({
+  /** SKU ID */
+  sku_id: uuidSchema,
+  /** 库位 ID */
+  location_id: uuidSchema,
+  /** 实盘数量 */
+  actual_qty: z.number().int().nonnegative(),
+  /** 单据 ID（可选） */
+  count_task_id: uuidSchema.optional(),
+});
+
+/** PACK 动作 payload */
+export const packRequestSchema = z.object({
+  /** 装箱任务 ID */
+  packing_task_id: uuidSchema,
+  /** 容器/箱 ID */
+  container_id: uuidSchema,
+  /** SKU 明细 */
+  items: z.array(z.object({
+    sku_id: uuidSchema,
+    qty: positiveIntSchema,
+    batch_id: uuidSchema.optional(),
+    expiry_date: isoDateTimeSchema.optional(),
+  })).min(1),
+});
+
+/** RECEIVE 动作 payload */
+export const receiveRequestSchema = z.object({
+  /** 入库单 ID */
+  receipt_id: uuidSchema.optional(),
+  /** ASN ID */
+  asn_id: uuidSchema.optional(),
+  /** 明细 */
+  items: z.array(z.object({
+    sku_id: uuidSchema,
+    qty: positiveIntSchema,
+    batch_id: uuidSchema.optional(),
+    expiry_date: isoDateTimeSchema.optional(),
+    lpn_id: uuidSchema.optional(),
+  })).min(1),
+});
+
+// ========== Layer 4: Missing Label / Unidentified Goods ==========
+
+/** 生成内部 LPN 请求 */
+export const missingLabelGenerateSchema = z.object({
+  /** 异常 ID */
+  exception_id: uuidSchema,
+  /** 操作员 ID */
+  actor_user_id: uuidSchema,
+});
+
+/** 确认贴标请求 */
+export const missingLabelConfirmSchema = z.object({
+  /** 异常 ID */
+  exception_id: uuidSchema,
+  /** 解决人 ID */
+  resolver_user_id: uuidSchema,
+  /** 扫描的 LPN 码 */
+  scanned_lpn_code: z.string().min(1),
+});
+
+/** 接收未识别货物请求 */
+export const unidentifiedReceiveSchema = z.object({
+  /** 租户 ID */
+  tenant_id: uuidSchema,
+  /** 库位 ID */
+  location_id: uuidSchema,
+  /** 数量 */
+  qty: positiveIntSchema,
+  /** 备注 */
+  note: z.string().optional(),
+  /** 操作员 ID */
+  actor_user_id: uuidSchema.optional(),
+});
+
+/** 确认未识别货物身份请求 */
+export const unidentifiedIdentifySchema = z.object({
+  /** 异常 ID */
+  exception_id: uuidSchema,
+  /** 确认的商品 ID */
+  confirmed_product_id: uuidSchema,
+  /** 解决人 ID */
+  resolver_user_id: uuidSchema,
+});
+
+export type PutawayAction = z.infer<typeof putawayRequestSchema>;
+export type CountAction = z.infer<typeof countRequestSchema>;
+export type PackAction = z.infer<typeof packRequestSchema>;
+export type ReceiveAction = z.infer<typeof receiveRequestSchema>;
+
+export type GenerateInternalLpnRequest = z.infer<typeof missingLabelGenerateSchema>;
+export type ConfirmLabelAppliedRequest = z.infer<typeof missingLabelConfirmSchema>;
+export type ReceiveUnidentifiedGoodsRequest = z.infer<typeof unidentifiedReceiveSchema>;
+export type IdentifyUnidentifiedGoodsRequest = z.infer<typeof unidentifiedIdentifySchema>;
 
 /**
  * 创建请求体验证中间件
