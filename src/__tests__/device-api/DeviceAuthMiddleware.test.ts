@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDeviceAuthMiddleware } from '../../apps/device-api/DeviceAuthMiddleware';
 import { WmsSupabaseClient } from '../../adapters/supabase/SupabaseClient';
+import { ITenantResolver } from '../../core/ports/auth/ITenantResolver';
 
 // Mock Supabase client
 const mockSupabase = {
@@ -38,8 +39,10 @@ const mockAuthProvider = {
 };
 
 // Mock TenantResolver
-const mockTenantResolver = {
+const mockTenantResolver: ITenantResolver = {
   validateTenant: vi.fn(),
+  resolveFromUser: vi.fn(),
+  resolveFromRequest: vi.fn(),
 };
 
 const deviceAuthConfig = {

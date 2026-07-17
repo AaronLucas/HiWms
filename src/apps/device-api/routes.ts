@@ -11,8 +11,8 @@
  */
 import { Router, Request, Response } from 'express';
 import { DeviceApiDependencies } from './di';
-import type { Database } from '../../../types/database';
-import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
+import type { Database } from '../../types/database';
+import { SupabaseRpcClient } from '../../adapters/supabase/rpc/SupabaseRpcClient';
 import {
   validateRequest,
   syncEventsRequestSchema,
@@ -77,7 +77,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
 
         // 异步处理每个事件：调用 fn_apply_sync_event
         const results = await Promise.all(
-          events.map(async (event) => {
+          events.map(async (event: { id: string }) => {
             try {
               const result = await rpcClient.raw('fn_apply_sync_event', {
                 p_event_id: event.id,
@@ -114,8 +114,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ query: syncPullQuerySchema }),
     async (req: Request, res: Response) => {
       try {
-        const sinceSeq = req.query.since_seq as number;
-        const limit = req.query.limit as number;
+        const sinceSeq = Number(req.query.since_seq) || 0;
+        const limit = Number(req.query.limit) || 100;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
@@ -274,8 +274,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         const status = req.query.status as string | undefined;
         const domain = req.query.domain as string | undefined;
         const severity = req.query.severity as string | undefined;
-        const limit = req.query.limit as number;
-        const offset = req.query.offset as number;
+        const limit = Number(req.query.limit) || 50;
+        const offset = Number(req.query.offset) || 0;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
