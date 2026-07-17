@@ -53,7 +53,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         // 批量插入 sync_events 表（幂等键 id + device_seq 防重）
-        const eventsToInsert = events.map(event => ({
+        const eventsToInsert = events.map((event: { id: string; device_id: string; device_seq: number; action_type: string; payload: unknown; captured_at: string }) => ({
           id: event.id,
           tenant_id: tenantId,
           device_id: event.device_id,
@@ -198,6 +198,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       try {
         const { id } = req.params;
         const { user_id, device_id, lease_seconds = 300 } = req.body;
+        const leaseSeconds = Number(lease_seconds) || 300;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {

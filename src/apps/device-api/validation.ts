@@ -32,7 +32,7 @@ export const syncEventSchema = z.object({
   /** 动作类型：PICK | PUTAWAY | COUNT | PACK */
   action_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK']),
   /** 结构化业务动作参数 */
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   /** 设备本地捕获时间 */
   captured_at: isoDateTimeSchema,
 });

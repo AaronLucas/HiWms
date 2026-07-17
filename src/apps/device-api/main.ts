@@ -44,7 +44,7 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<Expre
 
   // 受保护路由：设备认证（JWT 或 API Key）+ 租户上下文注入
   const deviceRouter = express.Router();
-  deviceRouter.use(deviceAuthMiddleware.authenticate());
+  deviceRouter.use(deviceAuthMiddleware.authenticate);
 
   // 挂载业务路由
   const apiRouter = createDeviceApiRouter(deps);

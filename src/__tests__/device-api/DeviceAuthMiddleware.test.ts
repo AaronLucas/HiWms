@@ -3,7 +3,7 @@
  * 简化版，专注于核心逻辑测试
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { createDeviceAuthMiddleware } from '../../apps/device-api/DeviceAuthMiddleware';
 import { WmsSupabaseClient } from '../../adapters/supabase/SupabaseClient';
 import { ITenantResolver } from '../../core/ports/auth/ITenantResolver';
@@ -55,7 +55,7 @@ describe('DeviceAuthMiddleware', () => {
   let middleware: ReturnType<typeof createDeviceAuthMiddleware>;
   let mockReq: any;
   let mockRes: any;
-  let mockNext: vi.Mock;
+  let mockNext: Mock;
 
   function createJwtToken(payload: any): string {
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
