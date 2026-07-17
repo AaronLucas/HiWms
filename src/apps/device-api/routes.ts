@@ -8,6 +8,13 @@
  * - POST /tasks/claims/{id}/release - 释放任务租约
  * - GET  /exceptions      - 统一异常查看（设备端只读）
  * - GET  /exceptions/{id} - 异常详情
+ * - POST /putaway         - 上架动作提交 (Layer 3)
+ * - POST /count           - 盘点动作提交 (Layer 3)
+ * - POST /pack            - 打包动作提交 (Layer 3)
+ * - POST /missing-label/generate - 生成内部 LPN 码 (Layer 4)
+ * - POST /missing-label/confirm  - 确认标签已贴 (Layer 4)
+ * - POST /unidentified/receive   - 接收未识别货物 (Layer 4)
+ * - POST /unidentified/identify  - 确认未识别货物身份 (Layer 4)
  */
 import { Router, Request, Response } from 'express';
 import { DeviceApiDependencies } from './di';
@@ -22,6 +29,15 @@ import {
   taskClaimReleaseParamsSchema,
   exceptionsQuerySchema,
   exceptionParamsSchema,
+  // Layer 3: PUTAWAY/COUNT/PACK
+  putawayRequestSchema,
+  countRequestSchema,
+  packRequestSchema,
+  // Layer 4: MISSING_LABEL/UNIDENTIFIED_GOODS
+  missingLabelGenerateSchema,
+  missingLabelConfirmSchema,
+  unidentifiedReceiveSchema,
+  unidentifiedIdentifySchema,
 } from './validation';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
@@ -312,6 +328,217 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       } catch (error) {
         console.error('GET /exceptions/:id error:', error);
         res.status(500).json({ error: 'Failed to fetch exception detail' });
+      }
+    });
+
+  // ========== Layer 3: PUTAWAY/COUNT/PACK 端点 ==========
+
+  /**
+   * POST /putaway
+   * 上架动作提交
+   */
+  router.post('/putaway',
+    validateRequest({ body: putawayRequestSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { sku_id, location_id, qty, lpn_id, batch_id, expiry_date } = req.body;
+
+        // 提交为 sync_events 记录
+        const eventId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await syncEventRepo.insertBatch([{
+          id: eventId,
+          tenant_id: tenantId,
+          device_id: (req as any).context?.deviceId || 'unknown',
+          operator_user_id: (req as any).context?.userId || null,
+          device_seq: Date.now(),
+          action_type: 'PUTAWAY',
+          payload: { sku_id, location_id, qty, lpn_id, batch_id, expiry_date },
+          captured_at: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+          status: 'PENDING' as const,
+        }]);
+
+        // 处理事件
+        const result = await syncEventRepo.applyEvent(eventId);
+        res.json({ event_id: eventId, ...result });
+      } catch (error) {
+        console.error('POST /putaway error:', error);
+        res.status(500).json({ error: 'Failed to process putaway' });
+      }
+    });
+
+  /**
+   * POST /count
+   * 盘点动作提交
+   */
+  router.post('/count',
+    validateRequest({ body: countRequestSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { sku_id, location_id, actual_qty, count_task_id } = req.body;
+
+        const eventId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await syncEventRepo.insertBatch([{
+          id: eventId,
+          tenant_id: tenantId,
+          device_id: (req as any).context?.deviceId || 'unknown',
+          operator_user_id: (req as any).context?.userId || null,
+          device_seq: Date.now(),
+          action_type: 'COUNT',
+          payload: { sku_id, location_id, actual_qty, count_task_id },
+          captured_at: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+          status: 'PENDING' as const,
+        }]);
+
+        const result = await syncEventRepo.applyEvent(eventId);
+        res.json({ event_id: eventId, ...result });
+      } catch (error) {
+        console.error('POST /count error:', error);
+        res.status(500).json({ error: 'Failed to process count' });
+      }
+    });
+
+  /**
+   * POST /pack
+   * 打包动作提交
+   */
+  router.post('/pack',
+    validateRequest({ body: packRequestSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { packing_task_id, container_id, items } = req.body;
+
+        const eventId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await syncEventRepo.insertBatch([{
+          id: eventId,
+          tenant_id: tenantId,
+          device_id: (req as any).context?.deviceId || 'unknown',
+          operator_user_id: (req as any).context?.userId || null,
+          device_seq: Date.now(),
+          action_type: 'PACK',
+          payload: { packing_task_id, container_id, items },
+          captured_at: new Date().toISOString(),
+          received_at: new Date().toISOString(),
+          status: 'PENDING' as const,
+        }]);
+
+        const result = await syncEventRepo.applyEvent(eventId);
+        res.json({ event_id: eventId, ...result });
+      } catch (error) {
+        console.error('POST /pack error:', error);
+        res.status(500).json({ error: 'Failed to process pack' });
+      }
+    });
+
+  // ========== Layer 4: MISSING_LABEL / UNIDENTIFIED_GOODS 端点 ==========
+
+  /**
+   * POST /missing-label/generate
+   * 生成内部 LPN 码（用于 MISSING_LABEL 异常）
+   */
+  router.post('/missing-label/generate',
+    validateRequest({ body: missingLabelGenerateSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { exception_id, actor_user_id } = req.body;
+        const lpn = await supabaseAdapters.repositories.missingLabels.generateInternalLpn(exception_id, actor_user_id);
+        res.json({ lpn_code: lpn, exception_id });
+      } catch (error) {
+        console.error('POST /missing-label/generate error:', error);
+        res.status(500).json({ error: 'Failed to generate internal LPN' });
+      }
+    });
+
+  /**
+   * POST /missing-label/confirm
+   * 确认标签已贴
+   */
+  router.post('/missing-label/confirm',
+    validateRequest({ body: missingLabelConfirmSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { exception_id, resolver_user_id, scanned_lpn_code } = req.body;
+        const success = await supabaseAdapters.repositories.missingLabels.confirmLabelApplied(exception_id, resolver_user_id, scanned_lpn_code);
+        res.json({ success, exception_id });
+      } catch (error) {
+        console.error('POST /missing-label/confirm error:', error);
+        res.status(500).json({ error: 'Failed to confirm label applied' });
+      }
+    });
+
+  /**
+   * POST /unidentified/receive
+   * 接收未识别货物
+   */
+  router.post('/unidentified/receive',
+    validateRequest({ body: unidentifiedReceiveSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { location_id, qty, note, actor_user_id } = req.body;
+        const exceptionId = await supabaseAdapters.repositories.unidentifiedGoods.receiveUnidentifiedGoods({
+          tenantId,
+          locationId: location_id,
+          qty,
+          note,
+          actorUserId: actor_user_id,
+        });
+        res.json({ exception_id: exceptionId });
+      } catch (error) {
+        console.error('POST /unidentified/receive error:', error);
+        res.status(500).json({ error: 'Failed to receive unidentified goods' });
+      }
+    });
+
+  /**
+   * POST /unidentified/identify
+   * 确认未识别货物身份
+   */
+  router.post('/unidentified/identify',
+    validateRequest({ body: unidentifiedIdentifySchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        if (!tenantId) {
+          return res.status(400).json({ error: 'tenant_id not available in context' });
+        }
+
+        const { exception_id, confirmed_product_id, resolver_user_id } = req.body;
+        const success = await supabaseAdapters.repositories.unidentifiedGoods.identifyUnidentifiedGoods(exception_id, confirmed_product_id, resolver_user_id);
+        res.json({ success, exception_id });
+      } catch (error) {
+        console.error('POST /unidentified/identify error:', error);
+        res.status(500).json({ error: 'Failed to identify unidentified goods' });
       }
     });
 
