@@ -179,6 +179,23 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
   }
 
   /**
+   * 查找已处理事件（APPLIED 状态），按 device_seq 递增（用于 /sync/pull 增量拉取）
+   */
+  async findAppliedSince(tenantId: string, sinceSeq: number, limit?: number): Promise<SyncEventRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .gt('device_seq', sinceSeq)
+      .eq('status', 'APPLIED')
+      .order('device_seq', { ascending: true })
+      .limit(limit || 100);
+
+    if (error) throw error;
+    return (data as SyncEventRow[]) || [];
+  }
+
+  /**
    * 查找待处理事件
    */
   async findPending(tenantId: string, limit?: number): Promise<SyncEventRow[]> {

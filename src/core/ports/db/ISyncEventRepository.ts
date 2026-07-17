@@ -52,6 +52,11 @@ export interface ISyncEventRepository extends IRepository<SyncEventRow, SyncEven
   }>;
 
   /**
+   * 查找已处理事件（APPLIED 状态），按 device_seq 递增（用于 /sync/pull 增量拉取）
+   */
+  findAppliedSince(tenantId: string, sinceSeq: number, limit?: number): Promise<SyncEventRow[]>;
+
+  /**
    * 查找待处理事件
    */
   findPending(tenantId: string, limit?: number): Promise<SyncEventRow[]>;
