@@ -29,9 +29,12 @@ const mockSupabase = {
   })),
 } as unknown as WmsSupabaseClient;
 
-// Mock AuthProvider
+// Mock AuthProvider - implement all required methods
 const mockAuthProvider = {
   verifyToken: vi.fn(),
+  refreshToken: vi.fn(),
+  generateTokens: vi.fn(),
+  revokeToken: vi.fn(),
 };
 
 // Mock TenantResolver
