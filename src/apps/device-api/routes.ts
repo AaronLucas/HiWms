@@ -8,6 +8,13 @@
  * - POST /tasks/claims/{id}/release - 释放任务租约
  * - GET  /exceptions      - 统一异常查看（设备端只读）
  * - GET  /exceptions/{id} - 异常详情
+ * - POST /putaway         - 上架动作提交 (Layer 3)
+ * - POST /count           - 盘点动作提交 (Layer 3)
+ * - POST /pack            - 打包动作提交 (Layer 3)
+ * - POST /missing-label/generate - 生成内部 LPN 码 (Layer 4)
+ * - POST /missing-label/confirm  - 确认标签已贴 (Layer 4)
+ * - POST /unidentified/receive   - 接收未识别货物 (Layer 4)
+ * - POST /unidentified/identify  - 确认未识别货物身份 (Layer 4)
  */
 import { Router, Request, Response } from 'express';
 import { DeviceApiDependencies } from './di';
@@ -455,7 +462,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         const { exception_id, actor_user_id } = req.body;
-        const lpn = await (supabaseAdapters.repositories.missingLabels as any).generateInternalLpn(exception_id, actor_user_id);
+        const lpn = await supabaseAdapters.repositories.missingLabels.generateInternalLpn(exception_id, actor_user_id);
         res.json({ lpn_code: lpn, exception_id });
       } catch (error) {
         console.error('POST /missing-label/generate error:', error);
@@ -477,7 +484,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         const { exception_id, resolver_user_id, scanned_lpn_code } = req.body;
-        const success = await (supabaseAdapters.repositories.missingLabels as any).confirmLabelApplied(exception_id, resolver_user_id, scanned_lpn_code);
+        const success = await supabaseAdapters.repositories.missingLabels.confirmLabelApplied(exception_id, resolver_user_id, scanned_lpn_code);
         res.json({ success, exception_id });
       } catch (error) {
         console.error('POST /missing-label/confirm error:', error);
@@ -499,7 +506,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         const { location_id, qty, note, actor_user_id } = req.body;
-        const exceptionId = await (supabaseAdapters.repositories.unidentifiedGoods as any).receiveUnidentifiedGoods({
+        const exceptionId = await supabaseAdapters.repositories.unidentifiedGoods.receiveUnidentifiedGoods({
           tenantId,
           locationId: location_id,
           qty,
@@ -527,13 +534,18 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         const { exception_id, confirmed_product_id, resolver_user_id } = req.body;
-        const success = await (supabaseAdapters.repositories.unidentifiedGoods as any).identifyUnidentifiedGoods(exception_id, confirmed_product_id, resolver_user_id);
+        const success = await supabaseAdapters.repositories.unidentifiedGoods.identifyUnidentifiedGoods(exception_id, confirmed_product_id, resolver_user_id);
         res.json({ success, exception_id });
       } catch (error) {
         console.error('POST /unidentified/identify error:', error);
         res.status(500).json({ error: 'Failed to identify unidentified goods' });
       }
     });
-  }
 
   // ========== 健康检查 ==========
+  router.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', service: 'device-api', timestamp: new Date().toISOString() });
+  });
+
+  return router;
+}
