@@ -45,6 +45,10 @@ export { SupabaseDeviceSyncStateRepository } from './repositories/SupabaseDevice
 export { SupabaseSyncEventRepository } from './repositories/SupabaseSyncEventRepository';
 export { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRepository';
 
+// Phase 6: 同步动作扩展仓储（Layer 3）
+export { SupabaseInventoryCountPolicyRepository } from './repositories/SupabaseInventoryCountPolicyRepository';
+export { SupabasePackingTaskItemRepository } from './repositories/SupabasePackingTaskItemRepository';
+
 export { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 export { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
 export { SupabaseTenantResolver } from './auth/SupabaseTenantResolver';
@@ -94,6 +98,10 @@ import { SupabaseSyncPolicyRepository } from './repositories/SupabaseSyncPolicyR
 import { SupabaseDeviceSyncStateRepository } from './repositories/SupabaseDeviceSyncStateRepository';
 import { SupabaseSyncEventRepository } from './repositories/SupabaseSyncEventRepository';
 import { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRepository';
+
+// Phase 6: Layer 3
+import { SupabaseInventoryCountPolicyRepository } from './repositories/SupabaseInventoryCountPolicyRepository';
+import { SupabasePackingTaskItemRepository } from './repositories/SupabasePackingTaskItemRepository';
 
 import { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 import { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
@@ -146,6 +154,9 @@ export interface SupabaseAdapters {
     deviceSyncStates: SupabaseDeviceSyncStateRepository;
     syncEvents: SupabaseSyncEventRepository;
     exceptions: SupabaseExceptionRepository;
+    // Phase 6: Layer 3
+    inventoryCountPolicies: SupabaseInventoryCountPolicyRepository;
+    packingTaskItems: SupabasePackingTaskItemRepository;
   };
   auth: {
     provider: SupabaseAuthProvider;
@@ -221,6 +232,9 @@ export function createSupabaseAdapters(config: {
       deviceSyncStates: new SupabaseDeviceSyncStateRepository(client),
       syncEvents: new SupabaseSyncEventRepository(client, rpc),
       exceptions: new SupabaseExceptionRepository(client, rpc),
+      // Phase 6: Layer 3
+      inventoryCountPolicies: new SupabaseInventoryCountPolicyRepository(client, rpc),
+      packingTaskItems: new SupabasePackingTaskItemRepository(client),
     },
     auth: {
       provider: new SupabaseAuthProvider(client.getClient(), config.serviceRoleKey ? client.getAdminClient() : null),
