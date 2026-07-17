@@ -48,3 +48,8 @@ export { IExceptionRepository, type ExceptionRow, type ExceptionInsert, type Exc
 // Phase 6: 同步动作扩展仓储（Layer 3）
 export { IInventoryCountPolicyRepository, type InventoryCountPolicyRow, type InventoryCountPolicyInsert, type InventoryCountPolicyUpdate } from './IInventoryCountPolicyRepository';
 export { IPackingTaskItemRepository, type PackingTaskItemRow, type PackingTaskItemInsert, type PackingTaskItemUpdate } from './IPackingTaskItemRepository';
+
+// Phase 7: 唯一追踪策略仓储（Layer 4）
+export { ITenantTrackingPolicyRepository, type TenantTrackingPolicyRow, type TenantTrackingPolicyInsert, type TenantTrackingPolicyUpdate } from './ITenantTrackingPolicyRepository';
+export { IMissingLabelRepository, type MissingLabelRow, type MissingLabelInsert, type MissingLabelUpdate, type ContainerRow, type ContainerInsert, type ContainerUpdate } from './IMissingLabelRepository';
+export { IUnidentifiedGoodsRepository, type UnidentifiedGoodsRow, type UnidentifiedGoodsInsert, type UnidentifiedGoodsUpdate } from './IUnidentifiedGoodsRepository';

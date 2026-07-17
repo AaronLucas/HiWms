@@ -48,3 +48,8 @@ export { SupabaseExceptionRepository } from './SupabaseExceptionRepository';
 // Phase 6: 同步动作扩展仓储（Layer 3）
 export { SupabaseInventoryCountPolicyRepository } from './SupabaseInventoryCountPolicyRepository';
 export { SupabasePackingTaskItemRepository } from './SupabasePackingTaskItemRepository';
+
+// Phase 7: 唯一追踪策略仓储（Layer 4）
+export { SupabaseTenantTrackingPolicyRepository } from './SupabaseTenantTrackingPolicyRepository';
+export { SupabaseMissingLabelRepository } from './SupabaseMissingLabelRepository';
+export { SupabaseUnidentifiedGoodsRepository } from './SupabaseUnidentifiedGoodsRepository';

@@ -49,6 +49,11 @@ export { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRep
 export { SupabaseInventoryCountPolicyRepository } from './repositories/SupabaseInventoryCountPolicyRepository';
 export { SupabasePackingTaskItemRepository } from './repositories/SupabasePackingTaskItemRepository';
 
+// Phase 7: 唯一追踪策略仓储（Layer 4）
+export { SupabaseTenantTrackingPolicyRepository } from './repositories/SupabaseTenantTrackingPolicyRepository';
+export { SupabaseMissingLabelRepository } from './repositories/SupabaseMissingLabelRepository';
+export { SupabaseUnidentifiedGoodsRepository } from './repositories/SupabaseUnidentifiedGoodsRepository';
+
 export { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 export { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
 export { SupabaseTenantResolver } from './auth/SupabaseTenantResolver';
@@ -102,6 +107,11 @@ import { SupabaseExceptionRepository } from './repositories/SupabaseExceptionRep
 // Phase 6: Layer 3
 import { SupabaseInventoryCountPolicyRepository } from './repositories/SupabaseInventoryCountPolicyRepository';
 import { SupabasePackingTaskItemRepository } from './repositories/SupabasePackingTaskItemRepository';
+
+// Phase 7: Layer 4
+import { SupabaseTenantTrackingPolicyRepository } from './repositories/SupabaseTenantTrackingPolicyRepository';
+import { SupabaseMissingLabelRepository } from './repositories/SupabaseMissingLabelRepository';
+import { SupabaseUnidentifiedGoodsRepository } from './repositories/SupabaseUnidentifiedGoodsRepository';
 
 import { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 import { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
@@ -157,6 +167,10 @@ export interface SupabaseAdapters {
     // Phase 6: Layer 3
     inventoryCountPolicies: SupabaseInventoryCountPolicyRepository;
     packingTaskItems: SupabasePackingTaskItemRepository;
+    // Phase 7: Layer 4
+    tenantTrackingPolicies: SupabaseTenantTrackingPolicyRepository;
+    missingLabels: SupabaseMissingLabelRepository;
+    unidentifiedGoods: SupabaseUnidentifiedGoodsRepository;
   };
   auth: {
     provider: SupabaseAuthProvider;
@@ -235,6 +249,10 @@ export function createSupabaseAdapters(config: {
       // Phase 6: Layer 3
       inventoryCountPolicies: new SupabaseInventoryCountPolicyRepository(client, rpc),
       packingTaskItems: new SupabasePackingTaskItemRepository(client),
+      // Phase 7: Layer 4
+      tenantTrackingPolicies: new SupabaseTenantTrackingPolicyRepository(client, rpc),
+      missingLabels: new SupabaseMissingLabelRepository(client, rpc),
+      unidentifiedGoods: new SupabaseUnidentifiedGoodsRepository(client, rpc),
     },
     auth: {
       provider: new SupabaseAuthProvider(client.getClient(), config.serviceRoleKey ? client.getAdminClient() : null),
