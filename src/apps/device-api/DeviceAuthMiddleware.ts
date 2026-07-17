@@ -135,105 +135,95 @@ export function createDeviceAuthMiddleware(
     }
   }
 
+  const authenticateMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      let deviceId: string | null = null;
+      let tenantId: string | null = null;
+      let userId: string | undefined;
+      let deviceInfo: DeviceRow | null = null;
+
+      // 方式 1: Authorization: Bearer <device_jwt>
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const payload = await verifyDeviceToken(token);
+
+        if (payload) {
+          deviceId = payload.device_id;
+          tenantId = payload.tenant_id;
+          userId = payload.user_id;
+        }
+      }
+
+      // 方式 2: X-API-Key: <api_key>
+      if (!deviceId) {
+        const apiKey = req.headers['x-api-key'] as string;
+        if (apiKey) {
+          const apiKeyData = await verifyApiKey(apiKey);
+          if (apiKeyData) {
+            deviceId = apiKeyData.deviceId;
+            // API Key 方式需要从数据库查询 tenant_id
+          }
+        }
+      }
+
+      // 验证设备存在且激活
+      if (!deviceId) {
+        return res.status(401).json({ error: 'Missing or invalid device credentials' });
+      }
+
+      deviceInfo = await validateDevice(deviceId);
+      if (!deviceInfo) {
+        return res.status(401).json({ error: 'Device not found or inactive' });
+      }
+
+      // 确认租户匹配（JWT 方式）
+      if (tenantId && tenantId !== deviceInfo.tenant_id) {
+        return res.status(403).json({ error: 'Device tenant mismatch' });
+      }
+
+      // 最终确定的租户 ID
+      tenantId = deviceInfo.tenant_id;
+
+      // 验证租户有效性
+      const isValidTenant = await tenantResolver.validateTenant(tenantId);
+      if (!isValidTenant) {
+        return res.status(403).json({ error: 'Invalid or inactive tenant' });
+      }
+
+      // 注入设备上下文
+      (req as any).context = {
+        deviceId: deviceInfo.id,
+        tenantId,
+        userId,
+        deviceType: deviceInfo.device_type,
+        deviceCode: deviceInfo.device_code,
+      };
+
+      // 设置 RLS header（供 Supabase 客户端使用）
+      req.headers['x-tenant-id'] = tenantId;
+
+      next();
+    } catch (error) {
+      console.error('Device authentication error:', error);
+      res.status(500).json({ error: 'Authentication error' });
+    }
+  };
+
+  const optionalAuthenticateMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    const apiKey = req.headers['x-api-key'];
+
+    if (!authHeader?.startsWith('Bearer ') && !apiKey) {
+      return next(); // No auth provided, continue without auth
+    }
+
+    // Delegate to full authenticate
+    return authenticateMiddleware(req, res, next);
+  };
+
   return {
-    /**
-     * 认证中间件：支持 JWT 和 API Key 两种方式
-     */
-    authenticate(): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-      return async (req: Request, res: Response, next: NextFunction) => {
-        try {
-          let deviceId: string | null = null;
-          let tenantId: string | null = null;
-          let userId: string | undefined;
-          let deviceInfo: DeviceRow | null = null;
-
-          // 方式 1: Authorization: Bearer <device_jwt>
-          const authHeader = req.headers.authorization;
-          if (authHeader?.startsWith('Bearer ')) {
-            const token = authHeader.slice(7);
-            const payload = await verifyDeviceToken(token);
-
-            if (payload) {
-              deviceId = payload.device_id;
-              tenantId = payload.tenant_id;
-              userId = payload.user_id;
-            }
-          }
-
-          // 方式 2: X-API-Key: <api_key>
-          if (!deviceId) {
-            const apiKey = req.headers['x-api-key'] as string;
-            if (apiKey) {
-              const apiKeyData = await verifyApiKey(apiKey);
-              if (apiKeyData) {
-                deviceId = apiKeyData.deviceId;
-                // API Key 方式需要从数据库查询 tenant_id
-              }
-            }
-          }
-
-          // 验证设备存在且激活
-          if (!deviceId) {
-            return res.status(401).json({ error: 'Missing or invalid device credentials' });
-          }
-
-          deviceInfo = await validateDevice(deviceId);
-          if (!deviceInfo) {
-            return res.status(401).json({ error: 'Device not found or inactive' });
-          }
-
-          // 确认租户匹配（JWT 方式）
-          if (tenantId && tenantId !== deviceInfo.tenant_id) {
-            return res.status(403).json({ error: 'Device tenant mismatch' });
-          }
-
-          // 最终确定的租户 ID
-          tenantId = deviceInfo.tenant_id;
-
-          // 验证租户有效性
-          const isValidTenant = await tenantResolver.validateTenant(tenantId);
-          if (!isValidTenant) {
-            return res.status(403).json({ error: 'Invalid or inactive tenant' });
-          }
-
-          // 注入设备上下文
-          (req as any).context = {
-            deviceId: deviceInfo.id,
-            tenantId,
-            userId,
-            deviceType: deviceInfo.device_type,
-            deviceCode: deviceInfo.device_code,
-          };
-
-          // 设置 RLS header（供 Supabase 客户端使用）
-          req.headers['x-tenant-id'] = tenantId;
-
-          next();
-        } catch (error) {
-          console.error('Device authentication error:', error);
-          res.status(500).json({ error: 'Authentication error' });
-        }
-      };
-    },
+    authenticate: authenticateMiddleware,
+    optionalAuthenticate: optionalAuthenticateMiddleware,
   };
-
-  // Export the authenticate function and optionalAuthenticate
-  const middleware = {
-    authenticate: authenticate(),
-    optionalAuthenticate: () => {
-      return async (req: Request, res: Response, next: NextFunction) => {
-        const authHeader = req.headers.authorization;
-        const apiKey = req.headers['x-api-key'];
-
-        if (!authHeader?.startsWith('Bearer ') && !apiKey) {
-          return next(); // No auth provided, continue without auth
-        }
-
-        // Delegate to full authenticate
-        return authenticate()(req, res, next);
-      };
-    },
-  };
-
-  return middleware;
 }

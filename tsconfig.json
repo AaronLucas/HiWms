@@ -26,5 +26,5 @@
     "types": ["@cloudflare/workers-types", "vitest/globals"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "workflow-engine", "src/apps", "src/routes", "src/middleware", "src/services"]
+  "exclude": ["node_modules", "dist", "workflow-engine", "src/routes", "src/middleware", "src/services"]
 }

@@ -78,10 +78,10 @@ describe('DeviceAuthMiddleware', () => {
     mockNext = vi.fn();
   });
 
-  describe('authenticate() - Device JWT', () => {
+  describe('authenticate()', () => {
     it('should return 401 when Authorization header missing', async () => {
       mockReq.headers = {};
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -92,7 +92,7 @@ describe('DeviceAuthMiddleware', () => {
 
     it('should return 401 when Authorization header is not Bearer', async () => {
       mockReq.headers = { authorization: 'Basic token' };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -102,7 +102,7 @@ describe('DeviceAuthMiddleware', () => {
 
     it('should return 401 when token payload is invalid base64', async () => {
       mockReq.headers = { authorization: 'Bearer invalid.token.here' };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -122,7 +122,7 @@ describe('DeviceAuthMiddleware', () => {
       };
       const token = createJwtToken(payload);
       mockReq.headers = { authorization: `Bearer ${token}` };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -142,7 +142,7 @@ describe('DeviceAuthMiddleware', () => {
       };
       const token = createJwtToken(payload);
       mockReq.headers = { authorization: `Bearer ${token}` };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -162,7 +162,7 @@ describe('DeviceAuthMiddleware', () => {
       };
       const token = createJwtToken(payload);
       mockReq.headers = { authorization: `Bearer ${token}` };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -181,19 +181,17 @@ describe('DeviceAuthMiddleware', () => {
       };
       const token = createJwtToken(payload);
       mockReq.headers = { authorization: `Bearer ${token}` };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
       expect(mockNext).not.toHaveBeenCalled();
     });
-  });
 
-  describe('authenticate() - API Key', () => {
     it('should return 401 when API Key format is invalid', async () => {
       mockReq.headers = { 'x-api-key': 'invalid-format' };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -204,7 +202,7 @@ describe('DeviceAuthMiddleware', () => {
 
     it('should return 401 when API Key prefix is wrong', async () => {
       mockReq.headers = { 'x-api-key': 'wrong_prefix_device_secret' };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -214,7 +212,7 @@ describe('DeviceAuthMiddleware', () => {
 
     it('should return 401 when device not found or inactive', async () => {
       mockReq.headers = { 'x-api-key': 'wms7_dev_123e4567-e89b-12d3-a456-426614174000_secret' };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
@@ -222,15 +220,13 @@ describe('DeviceAuthMiddleware', () => {
       expect(mockRes.json).toHaveBeenCalledWith({ error: 'Device not found or inactive' });
       expect(mockNext).not.toHaveBeenCalled();
     });
-  });
 
-  describe('authenticate() - priority', () => {
     it('should prefer JWT over API Key when both present', async () => {
       mockReq.headers = {
         authorization: 'Bearer invalid.token.here',
         'x-api-key': 'wms7_dev_123e4567-e89b-12d3-a456-426614174000_secret',
       };
-      const authenticate = middleware.authenticate();
+      const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
