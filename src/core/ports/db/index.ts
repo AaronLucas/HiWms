@@ -37,3 +37,10 @@ export { IBillingRuleRepository } from './IBillingRuleRepository';
 export { IBillingTransactionRepository } from './IBillingTransactionRepository';
 export { IUserRepository } from './IUserRepository';
 export { IAsnRepository } from './IAsnRepository';
+
+// Phase 5: 离线同步 / 统一异常领域仓储（Layer 2）
+export { ITaskClaimRepository, type TaskClaimRow, type TaskClaimInsert, type TaskClaimUpdate } from './ITaskClaimRepository';
+export { ISyncPolicyRepository, type SyncPolicyRow, type SyncPolicyInsert, type SyncPolicyUpdate } from './ISyncPolicyRepository';
+export { IDeviceSyncStateRepository, type DeviceSyncStateRow, type DeviceSyncStateInsert, type DeviceSyncStateUpdate } from './IDeviceSyncStateRepository';
+export { ISyncEventRepository, type SyncEventRow, type SyncEventInsert, type SyncEventUpdate, type SyncEventStatus, type SyncActionType } from './ISyncEventRepository';
+export { IExceptionRepository, type ExceptionRow, type ExceptionInsert, type ExceptionUpdate, type ExceptionEventRow, type ExceptionEventInsert, type ExceptionTypeCatalogRow, type ExceptionStatus, type ExceptionDomain, type ExceptionSeverity } from './IExceptionRepository';
