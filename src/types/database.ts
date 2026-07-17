@@ -289,6 +289,7 @@ export type Database = {
           is_sealed: boolean | null
           last_opened_at: string | null
           lpn_code: string
+          lpn_source: string
           parent_container_id: string | null
           status: string | null
           updated_at: string | null
@@ -301,6 +302,7 @@ export type Database = {
           is_sealed?: boolean | null
           last_opened_at?: string | null
           lpn_code: string
+          lpn_source?: string
           parent_container_id?: string | null
           status?: string | null
           updated_at?: string | null
@@ -313,6 +315,7 @@ export type Database = {
           is_sealed?: boolean | null
           last_opened_at?: string | null
           lpn_code?: string
+          lpn_source?: string
           parent_container_id?: string | null
           status?: string | null
           updated_at?: string | null
@@ -968,6 +971,48 @@ export type Database = {
           },
         ]
       }
+      inventory_count_policies: {
+        Row: {
+          created_at: string | null
+          id: string
+          product_id: string | null
+          tenant_id: string | null
+          tolerance_qty: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          product_id?: string | null
+          tenant_id?: string | null
+          tolerance_qty?: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          product_id?: string | null
+          tenant_id?: string | null
+          tolerance_qty?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_count_policies_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_policies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_history: {
         Row: {
           after_qty: number
@@ -1295,6 +1340,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string | null
+          force_unique_tracking: boolean
           id: string
           is_active: boolean | null
           is_frozen: boolean | null
@@ -1311,6 +1357,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string | null
+          force_unique_tracking?: boolean
           id?: string
           is_active?: boolean | null
           is_frozen?: boolean | null
@@ -1327,6 +1374,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string | null
+          force_unique_tracking?: boolean
           id?: string
           is_active?: boolean | null
           is_frozen?: boolean | null
@@ -1520,6 +1568,78 @@ export type Database = {
           },
         ]
       }
+      packing_task_items: {
+        Row: {
+          container_id: string | null
+          created_at: string | null
+          id: string
+          order_line_id: string | null
+          packing_task_id: string | null
+          product_id: string | null
+          qty: number
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          container_id?: string | null
+          created_at?: string | null
+          id?: string
+          order_line_id?: string | null
+          packing_task_id?: string | null
+          product_id?: string | null
+          qty: number
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          container_id?: string | null
+          created_at?: string | null
+          id?: string
+          order_line_id?: string | null
+          packing_task_id?: string | null
+          product_id?: string | null
+          qty?: number
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "packing_task_items_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "packing_task_items_order_line_id_fkey"
+            columns: ["order_line_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "packing_task_items_packing_task_id_fkey"
+            columns: ["packing_task_id"]
+            isOneToOne: false
+            referencedRelation: "packing_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "packing_task_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "packing_task_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       packing_tasks: {
         Row: {
           boxes_packed: number | null
@@ -1676,6 +1796,7 @@ export type Database = {
           must_scan_sn: boolean | null
           product_id: string
           required_zone_type: string | null
+          requires_unique_tracking: boolean | null
           storage_temp_range: string | null
           updated_at: string | null
         }
@@ -1688,6 +1809,7 @@ export type Database = {
           must_scan_sn?: boolean | null
           product_id: string
           required_zone_type?: string | null
+          requires_unique_tracking?: boolean | null
           storage_temp_range?: string | null
           updated_at?: string | null
         }
@@ -1700,6 +1822,7 @@ export type Database = {
           must_scan_sn?: boolean | null
           product_id?: string
           required_zone_type?: string | null
+          requires_unique_tracking?: boolean | null
           storage_temp_range?: string | null
           updated_at?: string | null
         }
@@ -2493,6 +2616,41 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_tracking_policies: {
+        Row: {
+          abc_class: string
+          created_at: string | null
+          id: string
+          requires_unique_tracking: boolean
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          abc_class: string
+          created_at?: string | null
+          id?: string
+          requires_unique_tracking: boolean
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          abc_class?: string
+          created_at?: string | null
+          id?: string
+          requires_unique_tracking?: boolean
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_tracking_policies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -3418,6 +3576,22 @@ export type Database = {
           has_permission: boolean
         }[]
       }
+      fn_adjust_inventory_at_location: {
+        Args: {
+          p_batch_no?: string
+          p_container_id?: string
+          p_delta: number
+          p_exp_date?: string
+          p_location_id: string
+          p_mfg_date?: string
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          id: string
+          quantity: number
+        }[]
+      }
       fn_allocate_chute: {
         Args: { p_sku_id: string; p_wave_id: string }
         Returns: {
@@ -3426,7 +3600,10 @@ export type Database = {
           chute_id: string
         }[]
       }
+      fn_apply_count_action: { Args: { p_event_id: string }; Returns: string }
+      fn_apply_pack_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_pick_action: { Args: { p_event_id: string }; Returns: string }
+      fn_apply_putaway_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_sync_event: { Args: { p_event_id: string }; Returns: string }
       fn_claim_task: {
         Args: {
@@ -3445,9 +3622,21 @@ export type Database = {
         Args: { p_exception_id: string; p_resolution_details: Json }
         Returns: undefined
       }
+      fn_confirm_label_applied: {
+        Args: {
+          p_exception_id: string
+          p_resolver_user_id: string
+          p_scanned_lpn_code: string
+        }
+        Returns: boolean
+      }
       fn_cross_dock_timeout_sweep: { Args: never; Returns: number }
       fn_current_tenant_id: { Args: never; Returns: string }
       fn_expire_task_claims: { Args: never; Returns: number }
+      fn_generate_internal_lpn: {
+        Args: { p_actor_user_id: string; p_exception_id: string }
+        Returns: string
+      }
       fn_get_active_billing_rule: {
         Args: { p_tenant_id: string }
         Returns: {
@@ -3456,6 +3645,10 @@ export type Database = {
           rule_name: string
           source: string
         }[]
+      }
+      fn_get_count_tolerance: {
+        Args: { p_product_id: string; p_tenant_id: string }
+        Returns: number
       }
       fn_get_sync_policy: {
         Args: {
@@ -3467,6 +3660,18 @@ export type Database = {
           max_offline_duration_seconds: number
           offline_mode: string
         }[]
+      }
+      fn_get_tenant_abc_tracking_default: {
+        Args: { p_abc_class: string; p_tenant_id: string }
+        Returns: boolean
+      }
+      fn_identify_unidentified_goods: {
+        Args: {
+          p_confirmed_product_id: string
+          p_exception_id: string
+          p_resolver_user_id: string
+        }
+        Returns: boolean
       }
       fn_logic_resolve_blackbox_box: {
         Args: {
@@ -3512,7 +3717,37 @@ export type Database = {
         }
         Returns: string
       }
+      fn_receive_unidentified_goods: {
+        Args: {
+          p_actor_user_id?: string
+          p_location_id: string
+          p_note: string
+          p_qty: number
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      fn_reconcile_location_count: {
+        Args: {
+          p_diff: number
+          p_location_id: string
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          id: string
+          quantity: number
+        }[]
+      }
       fn_release_task_claim: { Args: { p_claim_id: string }; Returns: boolean }
+      fn_requires_unique_tracking: {
+        Args: {
+          p_location_id: string
+          p_product_id: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
       fn_resolve_exception: {
         Args: {
           p_exception_id: string
