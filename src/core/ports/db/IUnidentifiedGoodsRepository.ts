@@ -3,7 +3,6 @@
  * 封装 fn_receive_unidentified_goods / fn_identify_unidentified_goods
  * 对应表：exceptions (UNIDENTIFIED_GOODS 域)，containers
  */
-import { IRepository } from './IRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
 
 export type UnidentifiedGoodsRow = Tables<'exceptions'>; // 复用 exceptions 表，domain = 'UNIDENTIFIED_GOODS'
@@ -14,7 +13,7 @@ export type ContainerRow = Tables<'containers'>;
 export type ContainerInsert = TablesInsert<'containers'>;
 export type ContainerUpdate = TablesUpdate<'containers'>;
 
-export interface IUnidentifiedGoodsRepository extends IRepository<UnidentifiedGoodsRow, UnidentifiedGoodsInsert, UnidentifiedGoodsUpdate> {
+export interface IUnidentifiedGoodsRepository {
   /**
    * 接收未识别货物（入库时不知道是什么商品）
    * 封装 RPC fn_receive_unidentified_goods(p_tenant_id, p_location_id, p_qty, p_note, p_actor_user_id)
@@ -45,4 +44,19 @@ export interface IUnidentifiedGoodsRepository extends IRepository<UnidentifiedGo
    * 获取未识别货物的容器信息
    */
   findContainerByException(exceptionId: string, tenantId: string): Promise<ContainerRow | null>;
+
+  /**
+   * 创建容器记录（用于 SYSTEM_GENERATED LPN）
+   */
+  createContainer(container: ContainerInsert): Promise<ContainerRow>;
+
+  /**
+   * 按 LPN 查找容器
+   */
+  findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null>;
+
+  /**
+   * 查找系统生成的容器
+   */
+  findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]>;
 }

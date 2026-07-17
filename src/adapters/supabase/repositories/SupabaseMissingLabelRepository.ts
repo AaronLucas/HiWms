@@ -67,7 +67,7 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
       .from('exceptions')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('type_code', 'MISSING_LABEL')
+      .eq('exception_type', 'MISSING_LABEL')
       .order('created_at', { ascending: false });
 
     if (status) {
@@ -124,118 +124,5 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
 
     if (error) throw error;
     return (data as ContainerRow[]) || [];
-  }
-
-  // ========== IRepository 接口实现（代理到容器表）==========
-
-  async findById(id: string): Promise<ContainerRow | null> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq(this.idColumn, id)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') return null;
-      throw error;
-    }
-    return data as ContainerRow;
-  }
-
-  async findAll(options: {
-    limit?: number;
-    offset?: number;
-    orderBy?: string;
-    ascending?: boolean;
-    filters?: Record<string, unknown>;
-  } = {}): Promise<ContainerRow[]> {
-    const { limit = 100, offset = 0, orderBy = 'created_at', ascending = false, filters = {} } = options;
-    let query = this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .order(orderBy, { ascending })
-      .range(offset, offset + limit - 1);
-
-    for (const [key, value] of Object.entries(filters)) {
-      if (value !== undefined && value !== null) {
-        query = query.eq(key, value);
-      }
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data as ContainerRow[]) || [];
-  }
-
-  async count(filters: Record<string, unknown> = {}): Promise<number> {
-    let query = this.getClient()
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true });
-
-    for (const [key, value] of Object.entries(filters)) {
-      if (value !== undefined && value !== null) {
-        query = query.eq(key, value);
-      }
-    }
-
-    const { count, error } = await query;
-    if (error) throw error;
-    return count ?? 0;
-  }
-
-  async create(data: ContainerInsert): Promise<ContainerRow> {
-    const { data: result, error } = await this.getClient()
-      .from(this.tableName)
-      .insert(data as any)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return result as ContainerRow;
-  }
-
-  async createMany(data: ContainerInsert[]): Promise<ContainerRow[]> {
-    const { data: result, error } = await this.getClient()
-      .from(this.tableName)
-      .insert(data as any)
-      .select();
-
-    if (error) throw error;
-    return (result as ContainerRow[]) || [];
-  }
-
-  async update(id: string, data: ContainerUpdate): Promise<ContainerRow> {
-    const { data: result, error } = await this.getClient()
-      .from(this.tableName)
-      .update(data as any)
-      .eq(this.idColumn, id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return result as ContainerRow;
-  }
-
-  async delete(id: string): Promise<void> {
-    const { error } = await this.getClient()
-      .from(this.tableName)
-      .delete()
-      .eq(this.idColumn, id);
-
-    if (error) throw error;
-  }
-
-  async exists(id: string): Promise<boolean> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select(this.idColumn)
-      .eq(this.idColumn, id)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') return false;
-      throw error;
-    }
-    return !!data;
   }
 }
