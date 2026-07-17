@@ -44,3 +44,7 @@ export { ISyncPolicyRepository, type SyncPolicyRow, type SyncPolicyInsert, type 
 export { IDeviceSyncStateRepository, type DeviceSyncStateRow, type DeviceSyncStateInsert, type DeviceSyncStateUpdate } from './IDeviceSyncStateRepository';
 export { ISyncEventRepository, type SyncEventRow, type SyncEventInsert, type SyncEventUpdate, type SyncEventStatus, type SyncActionType } from './ISyncEventRepository';
 export { IExceptionRepository, type ExceptionRow, type ExceptionInsert, type ExceptionUpdate, type ExceptionEventRow, type ExceptionEventInsert, type ExceptionTypeCatalogRow, type ExceptionStatus, type ExceptionDomain, type ExceptionSeverity } from './IExceptionRepository';
+
+// Phase 6: 同步动作扩展仓储（Layer 3）
+export { IInventoryCountPolicyRepository, type InventoryCountPolicyRow, type InventoryCountPolicyInsert, type InventoryCountPolicyUpdate } from './IInventoryCountPolicyRepository';
+export { IPackingTaskItemRepository, type PackingTaskItemRow, type PackingTaskItemInsert, type PackingTaskItemUpdate } from './IPackingTaskItemRepository';
