@@ -1,27 +1,27 @@
 /**
- * Supabase 漏码/缺码闭环仓储实现
- * 封装 fn_generate_internal_lpn / fn_confirm_label_applied
- * 对应表：containers, exceptions, exception_events (通过异常领域)
+ * Supabase 未识别货物闭环仓储实现
+ * 封装 fn_receive_unidentified_goods / fn_identify_unidentified_goods
+ * 对应表：containers, exceptions, exception_events
  */
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import {
-  IMissingLabelRepository,
-  MissingLabelRow,
-  MissingLabelInsert,
-  MissingLabelUpdate,
+  IUnidentifiedGoodsRepository,
+  UnidentifiedGoodsRow,
+  UnidentifiedGoodsInsert,
+  UnidentifiedGoodsUpdate,
   ContainerRow,
   ContainerInsert,
   ContainerUpdate,
-} from '@core/ports/db/IMissingLabelRepository';
+} from '@core/ports/db/IUnidentifiedGoodsRepository';
 import { SupabaseRpcClient } from '../rpc/SupabaseRpcClient';
 import { WmsSupabaseClient } from '../SupabaseClient';
 
-export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
+export class SupabaseUnidentifiedGoodsRepository extends SupabaseBaseRepository<
   ContainerRow,
   ContainerInsert,
   ContainerUpdate,
   string
-> implements IMissingLabelRepository {
+> implements IUnidentifiedGoodsRepository {
   protected tableName = 'containers';
   protected idColumn = 'id';
 
@@ -33,41 +33,51 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
   }
 
   /**
-   * 生成内部 LPN 码（用于 MISSING_LABEL 闭环）
-   * 封装 RPC fn_generate_internal_lpn(p_exception_id, p_actor_user_id)
-   * @returns 生成的 LPN 码
+   * 接收未识别货物（入库时不知道是什么商品）
+   * 封装 RPC fn_receive_unidentified_goods(p_tenant_id, p_location_id, p_qty, p_note, p_actor_user_id)
+   * 创建容器记录（lpn_source = 'SYSTEM_GENERATED'），登记 UNIDENTIFIED_GOODS 异常
+   * @returns 创建的异常 ID
    */
-  async generateInternalLpn(exceptionId: string, actorUserId: string): Promise<string> {
-    const result = await this.rpcClient.raw('fn_generate_internal_lpn', {
-      p_exception_id: exceptionId,
-      p_actor_user_id: actorUserId,
+  async receiveUnidentifiedGoods(params: {
+    tenantId: string;
+    locationId: string;
+    qty: number;
+    note?: string;
+    actorUserId?: string;
+  }): Promise<string> {
+    const result = await this.rpcClient.raw('fn_receive_unidentified_goods', {
+      p_tenant_id: params.tenantId,
+      p_location_id: params.locationId,
+      p_qty: params.qty,
+      p_note: params.note || null,
+      p_actor_user_id: params.actorUserId || null,
     });
     return result as string;
   }
 
   /**
-   * 确认标签已贴（MISSING_LABEL 闭环完成）
-   * 封装 RPC fn_confirm_label_applied(p_exception_id, p_resolver_user_id, p_scanned_lpn_code)
-   * @returns 确认是否成功
+   * 确认未识别货物身份（完成闭环）
+   * 封装 RPC fn_identify_unidentified_goods(p_exception_id, p_confirmed_product_id, p_resolver_user_id)
+   * 更新容器 product_id，关闭异常
    */
-  async confirmLabelApplied(exceptionId: string, resolverUserId: string, scannedLpnCode: string): Promise<boolean> {
-    const result = await this.rpcClient.raw('fn_confirm_label_applied', {
+  async identifyUnidentifiedGoods(exceptionId: string, confirmedProductId: string, resolverUserId: string): Promise<boolean> {
+    const result = await this.rpcClient.raw('fn_identify_unidentified_goods', {
       p_exception_id: exceptionId,
+      p_confirmed_product_id: confirmedProductId,
       p_resolver_user_id: resolverUserId,
-      p_scanned_lpn_code: scannedLpnCode,
     });
     return result === true;
   }
 
   /**
-   * 查找租户的 MISSING_LABEL 异常
+   * 查找租户的 UNIDENTIFIED_GOODS 异常
    */
-  async findMissingLabelExceptions(tenantId: string, status?: string): Promise<MissingLabelRow[]> {
+  async findUnidentifiedGoodsExceptions(tenantId: string, status?: string): Promise<UnidentifiedGoodsRow[]> {
     let query = this.supabase.getClient()
       .from('exceptions')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('type_code', 'MISSING_LABEL')
+      .eq('type_code', 'UNIDENTIFIED_GOODS')
       .order('created_at', { ascending: false });
 
     if (status) {
@@ -76,7 +86,25 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
 
     const { data, error } = await query;
     if (error) throw error;
-    return (data as MissingLabelRow[]) || [];
+    return (data as UnidentifiedGoodsRow[]) || [];
+  }
+
+  /**
+   * 获取未识别货物的容器信息
+   */
+  async findContainerByException(exceptionId: string, tenantId: string): Promise<ContainerRow | null> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('exception_id', exceptionId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data as ContainerRow;
   }
 
   /**
@@ -94,7 +122,7 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
   }
 
   /**
-   * 按 LPN 码查找容器
+   * 按 LPN 查找容器
    */
   async findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null> {
     const { data, error } = await this.getClient()
@@ -112,7 +140,7 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
   }
 
   /**
-   * 查找系统生成的容器
+   * 查找系统生成的容器（用于未识别货物）
    */
   async findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]> {
     const { data, error } = await this.getClient()
