@@ -11,8 +11,8 @@
  */
 import { Router, Request, Response } from 'express';
 import { DeviceApiDependencies } from './di';
-import type { Database } from '../../../types/database';
-import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
+import type { Database } from '../../types/database';
+import { SupabaseRpcClient } from '../../adapters/supabase/rpc/SupabaseRpcClient';
 import {
   validateRequest,
   syncEventsRequestSchema,
@@ -53,7 +53,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         }
 
         // 批量插入 sync_events 表（幂等键 id + device_seq 防重）
-        const eventsToInsert = events.map(event => ({
+        const eventsToInsert = events.map((event: { id: string; device_id: string; device_seq: number; action_type: string; payload: unknown; captured_at: string }) => ({
           id: event.id,
           tenant_id: tenantId,
           device_id: event.device_id,
@@ -77,7 +77,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
 
         // 异步处理每个事件：调用 fn_apply_sync_event
         const results = await Promise.all(
-          events.map(async (event) => {
+          events.map(async (event: { id: string }) => {
             try {
               const result = await rpcClient.raw('fn_apply_sync_event', {
                 p_event_id: event.id,
@@ -114,8 +114,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ query: syncPullQuerySchema }),
     async (req: Request, res: Response) => {
       try {
-        const sinceSeq = req.query.since_seq as number;
-        const limit = req.query.limit as number;
+        const sinceSeq = Number(req.query.since_seq) || 0;
+        const limit = Number(req.query.limit) || 100;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
@@ -198,6 +198,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
       try {
         const { id } = req.params;
         const { user_id, device_id, lease_seconds = 300 } = req.body;
+        const leaseSeconds = Number(lease_seconds) || 300;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
@@ -274,8 +275,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         const status = req.query.status as string | undefined;
         const domain = req.query.domain as string | undefined;
         const severity = req.query.severity as string | undefined;
-        const limit = req.query.limit as number;
-        const offset = req.query.offset as number;
+        const limit = Number(req.query.limit) || 50;
+        const offset = Number(req.query.offset) || 0;
 
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {

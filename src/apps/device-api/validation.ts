@@ -32,7 +32,7 @@ export const syncEventSchema = z.object({
   /** 动作类型：PICK | PUTAWAY | COUNT | PACK */
   action_type: z.enum(['PICK', 'PUTAWAY', 'COUNT', 'PACK']),
   /** 结构化业务动作参数 */
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   /** 设备本地捕获时间 */
   captured_at: isoDateTimeSchema,
 });
@@ -216,5 +216,18 @@ export function validateRequest(options: {
   if (options.query) middlewares.push(validateQuery(options.query));
   if (options.params) middlewares.push(validateParams(options.params));
 
-  return middlewares;
+  return (req: Request, res: Response, next: NextFunction) => {
+    let index = 0;
+    const runMiddleware = () => {
+      if (index >= middlewares.length) {
+        return next();
+      }
+      const middleware = middlewares[index++];
+      middleware(req, res, (err) => {
+        if (err) return next(err);
+        runMiddleware();
+      });
+    };
+    runMiddleware();
+  };
 }

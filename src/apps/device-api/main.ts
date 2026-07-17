@@ -9,13 +9,13 @@
  * - 编译后: `node dist/apps/device-api/main.js` (生产环境)
  * - 无其他文件导入此文件（入口文件）
  */
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction, Express } from 'express';
 import { createDeviceApiDependencies } from './di';
 import { createDeviceApiRouter } from './routes';
 import { loadDeviceApiConfig, type DeviceApiConfig } from './config';
 import { createDeviceAuthMiddleware } from './DeviceAuthMiddleware';
 
-export async function createDeviceApiApp(config: DeviceApiConfig): Promise<express.Application> {
+export async function createDeviceApiApp(config: DeviceApiConfig): Promise<Express> {
   const deps = await createDeviceApiDependencies();
 
   const app = express();
@@ -23,7 +23,7 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<expre
 
   // 全局中间件
   app.use(deps.middlewareFactory.correlationId());
-  app.use(deps.middlewareFactory.requestLogger());
+  app.use(deps.middlewareFactory.injectRlsContext());
 
   // 创建设备认证中间件
   const deviceAuthMiddleware = createDeviceAuthMiddleware(
@@ -44,7 +44,7 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<expre
 
   // 受保护路由：设备认证（JWT 或 API Key）+ 租户上下文注入
   const deviceRouter = express.Router();
-  deviceRouter.use(deviceAuthMiddleware.authenticate());
+  deviceRouter.use(deviceAuthMiddleware.authenticate);
 
   // 挂载业务路由
   const apiRouter = createDeviceApiRouter(deps);
