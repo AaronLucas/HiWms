@@ -204,6 +204,8 @@ POST   /api/work-orders/{id}/complete # 工单完成
 
 - 测试文件命名：`{module}.test.ts`
 - 使用 `describe`/`it` 结构化，命名用中文描述行为
+- **测试结构（ECC 采纳，2026-07-18）**：遵循 Arrange-Act-Assert（准备-执行-断言）三段式，用注释显式标出三段边界
+- **测试命名（ECC 采纳）**：用描述行为的完整语句，而非函数名缩写，例如"对已存在库存行的同一 (location, product, batch) 并发发起 5 个加/减请求时，最终库存等于串行执行的预期值"，不要写成"test adjust inventory"这类不描述具体行为的名字
 
 ---
 
@@ -246,6 +248,9 @@ test(billing): add unit tests for tiered pricing
 chore(deps): upgrade @supabase/supabase-js to v2.110
 ```
 
+### PR 提交流程（ECC 采纳，2026-07-18）
+详细操作步骤见 `docs/04-workflows/WORKFLOWS.md` §3.1，本节保留类型/scope 定义作为唯一事实来源，不重复维护流程细节。
+
 ---
 
 ## 8. 代码审查清单
@@ -261,6 +266,7 @@ chore(deps): upgrade @supabase/supabase-js to v2.110
 - [ ] 变更涉及 Schema 时已生成迁移脚本
 - [ ] **涉及 `.sql` 文件的 PR，必须按 `.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md` 的 8 条自查清单逐条验证并在 PR 描述中附上证据（本地空库全跑一遍零 ERROR、字段名核对、并发测试、可空唯一索引处理等）；缺失证据的 PR 评审人有权直接打回，不需要先读代码细节**（2026-07-16 新增，源于 DBA 团队评审开发团队 PR 时发现的真实 bug：语法错误、字段名凭记忆写错、并发丢单、可空唯一索引失效等）
 - [ ] 更新了相关文档（API_SPEC.md, DB_SCHEMA.md 等）
+- [ ] **严重级别分级（ECC 采纳，2026-07-18）**：评审意见按 CRITICAL（安全漏洞/数据丢失风险，必须阻断合并）/ HIGH（bug 或显著质量问题，应修复后合并）/ MEDIUM（可维护性，建议修复）/ LOW（风格建议，可选）分级，定义见 `.claude/rules/ecc/common/code-review.md`；`ci.yml` 的 lint/test/build 门禁已从"允许失败"改为硬拦截（2026-07-18 起），CRITICAL/HIGH 级问题应在合并前解决，而非依赖人工记忆
 
 ---
 
@@ -277,6 +283,70 @@ chore(deps): upgrade @supabase/supabase-js to v2.110
 
 ---
 
+## 10. 不可变性、文件组织与代码坏味道（ECC 采纳，2026-07-18）
+
+> 来源：`.claude/rules/ecc/common/coding-style.md`。§2/§3.1-3.3（命名、SRP、依赖注入、租户隔离）是本项目专属约定，ECC 未覆盖，继续保留不变；本节是现状空白处的补充，映射依据见 `docs/06-agents/AGENTS.md` §8.3.1。
+
+### 10.1 不可变性（强制）
+- 始终创建新对象，不直接修改已有对象（尤其是函数参数、Redux/状态对象）
+- 错误：`function updateUser(user) { user.name = newName; return user }`（原地修改）
+- 正确：`function updateUser(user) { return { ...user, name: newName } }`（返回新副本）
+- 理由：不可变数据避免隐藏的副作用，让调试更容易，也让并发场景更安全
+
+### 10.2 文件行数上限
+- 单文件典型 200-400 行，硬上限 800 行；超过时按职责拆分为多个小文件（高内聚低耦合），而不是继续往一个文件里堆
+
+### 10.3 代码坏味道清单
+- **深层嵌套**：超过 4 层缩进时改用提前返回（early return）
+- **魔法数字**：有业务含义的阈值/延迟/上限用命名常量，不直接写字面量
+- **长函数**：超过 50 行的函数拆分为职责更聚焦的小函数
+
+## 11. 安全检查清单（ECC 采纳，2026-07-18）
+
+> 来源：`.claude/rules/ecc/common/security.md` + `.claude/rules/ecc/typescript/security.md`。与 `.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md`（DBA 专属，聚焦 SQL/迁移安全）是并列关系，不互相替代——本清单是通用安全自检，DBA 清单是数据库变更专属自检，两者都要过。
+
+提交前必查：
+- [ ] 无硬编码密钥/密码/Token（改用环境变量：`process.env.API_KEY`，缺失时启动即抛错，不使用静默默认值兜底）
+- [ ] 所有用户输入已校验（Zod schema，见 §12.2）
+- [ ] 数据库查询使用参数化查询，无字符串拼接 SQL
+- [ ] 渲染用户输入的地方已做 XSS 防护（转义/净化）
+- [ ] 鉴权/授权逻辑已验证（路由是否漏掉权限检查）
+- [ ] 错误信息不泄露内部实现细节（堆栈、SQL 语句、内部路径）
+
+安全响应流程：发现安全问题 → 立即停止 → 用 `security-reviewer` agent 复查 → 修复 CRITICAL 级问题后才能继续 → 若密钥已泄露需轮换 → 检查代码库中是否有同类问题。
+
+## 12. TypeScript 类型设计补充（ECC 采纳，2026-07-18）
+
+> 来源：`.claude/rules/ecc/typescript/coding-style.md`。§3.5（禁用 `any`、类型安全）继续保留，本节补充现状未覆盖的细则。
+
+### 12.1 interface 与 type 的选择
+- 可能被扩展/实现的对象形状（如 Repository、Service 接口）用 `interface`
+- 联合类型、交叉类型、元组、映射类型用 `type`
+- 字符串字面量联合优先于 `enum`，除非需要与外部系统互操作
+
+### 12.2 Zod 校验（强制）
+- 所有系统边界的输入（HTTP 请求体、外部 API 响应、用户上传文件）必须用 Zod schema 校验，类型用 `z.infer<typeof schema>` 推导，不手写重复的 interface
+
+```typescript
+const userSchema = z.object({ email: z.string().email() })
+type UserInput = z.infer<typeof userSchema>
+const validated: UserInput = userSchema.parse(input)
+```
+
+## 13. 开发前调研复用（ECC 采纳，2026-07-18）
+
+> 来源：`.claude/rules/ecc/common/development-workflow.md`。现状完全空白，直接采纳。
+
+编写新实现前（尤其是新工具函数、新集成、新算法）：
+1. 先用 `gh search repos` / `gh search code` 找项目内或开源生态里是否已有可复用的实现或范式
+2. 查 npm/PyPI 等包注册表，优先用经过实战检验的库而非手写工具函数
+3. 库版本相关的行为以官方文档/Context7 为准，不凭记忆假设 API 签名
+4. 找到能覆盖 80% 需求的现成实现时，优先移植/包装，而不是从零重写
+
+---
+
 *本文档随项目演进持续更新。重大规范变更需团队评审通过。*
 
 *2026-07-15：同步 ADR-011（离线同步操作日志 + 统一异常领域）——更新 §1 目录结构约定为六边形架构实际拓扑，§5.4.2 updated_at 覆盖范围，§5.4.8 新增"全局默认+租户覆盖"字段设计约定，§7 Git scope 补充 `sync`/`exception`。*
+
+*2026-07-18：ECC 治理试点第 4 项（转正）——按 `docs/06-agents/AGENTS.md` §8.3.1 映射表，新增 §10-§13 吸收 ECC 规则中现状空白的条目（不可变性/文件组织/代码坏味道、安全检查清单、TS 类型设计补充、开发前调研复用），§6/§7/§8 追加对 ECC 规则的引用（不重复维护定义）。*

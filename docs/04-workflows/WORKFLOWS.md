@@ -77,15 +77,24 @@ graph TD
 | `release/*` | 版本预发布 | PR + CI 通过 |
 | `hotfix/*` | 紧急修复 | PR + Review |
 
-### 3.2 CI 流水线
+#### 3.1.1 PR 提交流程（ECC 采纳，2026-07-18）
+> 来源：`.claude/rules/ecc/common/git-workflow.md`。提交类型/scope 定义见 `docs/00-project/CONVENTIONS.md` §7，本节只补充操作步骤，不重复定义。
+
+1. 分析完整提交历史（不要只看最新一次 commit）：`git log`
+2. 用 `git diff <base-branch>...HEAD` 查看这个分支相对目标分支的**全部**变更，而不是相对上一个 commit
+3. PR 描述包含变更摘要 + 测试计划（以 checklist 形式列出，未做的项保留未勾选状态，不要虚报为已完成）
+4. 新分支首次推送用 `git push -u origin <branch>` 建立跟踪关系
+
+### 3.2 CI 流水线（2026-07-18 更新：与 `.github/workflows/ci.yml` 实际内容对齐）
+> **历史遗留问题**：此前本节描述的是一份从未落地的 5 阶段设计（含 ESLint/Prettier/Trivy/文档检查），与实际 `ci.yml` 一直存在脱节，ECC 治理试点冲突映射（`docs/06-agents/AGENTS.md` §8.3.2）核查时发现。以下改为如实描述当前 `ci.yml` 的 3 个 job，避免文档继续失真；扩充 lint 内容（真正接入 ESLint/Prettier）、新增 security/docs 阶段属于独立的后续工作，不在本次 ECC 治理试点范围内。
+
 ```yaml
-# .github/workflows/ci.yml 关键阶段
-stages:
-  - lint: ESLint + Prettier + TypeScript 类型检查
-  - test: Vitest 单元测试 + 覆盖率阈值
-  - build: TypeScript 构建产物 + 体积分析
-  - security: npm audit + Trivy 容器扫描
-  - docs: Markdown 链接检查 + API 文档生成
+# .github/workflows/ci.yml 实际阶段（2026-07-18 起 main/dev 均触发，lint 为硬门禁，不再 continue-on-error）
+jobs:
+  - lint: TypeScript 类型检查（`tsc --noEmit`，尚未接入 ESLint/Prettier）
+  - test: Vitest 单元测试 + 覆盖率上报（依赖 lint 通过）
+  - build: TypeScript 构建产物（依赖 lint + test 通过）
+  - ci-success: 汇总门禁，lint/test/build 任一失败则整体失败
 ```
 
 ### 3.3 CD 流水线
@@ -151,6 +160,7 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 | 1.0.0 | 2025-07-01 | 初始版本：核心业务流、CI/CD、部署策略 |
 | 1.1.0 | 2025-07-07 | 新增项目特定暂停节点、Git 分支策略细化 |
 | 1.2.0 | 2026-07-18 | 新增 §7.4 ECC 治理集成相关暂停节点，设计详见 `docs/06-agents/AGENTS.md` §8 |
+| 1.3.0 | 2026-07-18 | ECC 治理试点第 4 项（转正）：新增 §3.1.1 PR 提交流程细则；§3.2 改为如实描述 `ci.yml` 实际 3 个 job（不再是从未落地的 5 阶段设计），并记录 `ci.yml` 已改为 main/dev 双触发 + 硬门禁 |
 
 ---
 
@@ -173,6 +183,6 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 - 变更认证/授权机制前
 
 ### 7.4 ECC 治理集成相关（2026-07-18 新增，设计详见 `docs/06-agents/AGENTS.md` §8）
-- 执行"转正"提交前（把 `.claude/rules/ecc/` 与联动的文档/CI/PR 模板改动正式 `git add`+`commit`+`push`）
-- 修改 `.github/workflows/ci.yml` 触发分支范围、移除 lint job 的 `continue-on-error` 前
-- 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）
+- ~~执行"转正"提交前~~ **已于 2026-07-18 经人工确认后执行**（`.claude/rules/ecc/` 本身仍不提交；联动的 `CONVENTIONS.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板改动已提交）
+- ~~修改 `.github/workflows/ci.yml` 触发分支范围、移除 lint job 的 `continue-on-error` 前~~ **已于 2026-07-18 经人工确认后执行**：`ci.yml` 现已 `main`/`dev` 双触发，lint job 硬门禁
+- 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）——**本轮未执行**，ECC 治理试点第 5 项仍待认领，见 `docs/00-project/ROADMAP.md`
