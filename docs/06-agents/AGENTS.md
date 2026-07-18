@@ -222,13 +222,13 @@ then:
 
 ---
 
-## 8. ECC（Everything Claude Code）治理集成方案（设计记录，试点未执行，2026-07-18）
+## 8. ECC（Everything Claude Code）治理集成方案（设计记录，第 1/2 项已执行，2026-07-18）
 
-> **状态**：本节为设计记录，供开发团队认领后执行，本次不由 AI session 直接操作。执行人拿到本节后应能独立完成，无需回溯本次对话上下文。
+> **状态**：§8.2 导入、§8.4 并发测试试点已认领执行并通过验证，证据见 `docs/00-project/ROADMAP.md`"第 2 项验证记录"。§8.3 冲突映射及以后仍为设计记录，供开发团队认领执行。
 
 ### 8.1 现状核实（已确认，非假设）
 - 插件已安装：`.claude/settings.json` 含 `"enabledPlugins": {"ecc@ecc": true}`，插件缓存位于 `~/.claude/plugins/cache/ecc/ecc/2.0.0/`
-- **规则层未导入**：ECC 官方文档明确"插件安装路径不分发 `rules/` 目录，需手动拷贝"；已核实 `~/.claude/rules/ecc/` 与项目内 `.claude/rules/ecc/` 均不存在。当前所有 `ecc:*` skill/agent 能被调用，但缺少配套的规则文本（`rules/common/testing.md` 等），即 80% 覆盖率、强制 TDD 等硬标准尚未对本项目生效。
+- **规则层已导入（2026-07-18）**：按 §8.2 步骤将 `rules/common` + `rules/typescript` 拷贝至项目本地 `.claude/rules/ecc/`，共 15 个文件（`common/` 10 个 + `typescript/` 5 个），`git status` 显示为 `??` 未追踪，符合"不提交"设计。`~/.claude/rules/ecc/`（全局路径）仍不存在——按设计本轮只导入项目本地路径。
 
 ### 8.2 导入步骤（执行人操作，项目本地路径，不提交）
 ```bash
@@ -266,6 +266,7 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
   1. 测试真实发起 3-5 并发请求，非串行伪并发
   2. 断言最终库存值正确，且能在人为改回旧的非原子实现时可靠失败（证明测试有效，不是摆设）
   3. 全程在本地/CI 沙盒完成，`git diff` 不触碰 `supabase/migrations/`、`.readonly/`
+- **✅ 已完成（2026-07-18）**：新增 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`，5 个并发请求（`Promise.all`）作用于同一 `(location_id, product_id, batch_no)` 已存在库存行，断言最终值等于串行预期。三项成功标准逐条核对结果、命令与产出证据详见 `docs/00-project/ROADMAP.md`"第 2 项验证记录"，不在此重复。测试默认由 `describe.skipIf(!RUN_DB_CONCURRENCY_TESTS)` 跳过，不影响无本地 Postgres 环境下的常规 `npm run test`/CI。
 
 ### 8.5 转正（Formalization）步骤
 1. §8.4 试点验证通过（成功标准三项全部满足）
@@ -286,3 +287,4 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 |------|------|----------|
 | 1.0.0 | 2025-07-01 | 初始版本：Agent 体系、Skill 体系、MCP 集成、规则引擎、上下文管理 |
 | 1.1.0 | 2026-07-18 | 新增 §8 ECC 治理集成方案（设计记录，试点方案：规则导入、冲突映射方法论、原子库存并发测试试点、转正步骤、失败处理原则），供开发团队认领执行 |
+| 1.2.0 | 2026-07-18 | 认领并执行 §8.2（规则导入）+ §8.4（原子库存并发测试试点），验证通过；§8.3 冲突映射及以后仍待认领 |
