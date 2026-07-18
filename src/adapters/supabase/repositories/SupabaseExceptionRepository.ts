@@ -94,7 +94,9 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
       // （invalid input syntax for type uuid），必须传 null，不能用 '' 兜底。生成的 RPC
       // 类型把它标成必填 string（因为 SQL 侧没有 DEFAULT），但运行时 NULL 是合法值，
       // 这里用类型断言绕过生成类型的这个已知局限，不是绕过真实的 not-null 约束。
-      p_source_id: (params.relatedEntityId ?? null) as string,
+      // 用 || 而不是 ??：显式传空字符串（''）也要归一成 null，否则同样会被当成
+      // 非法 UUID 字面量报错——?? 只替换 null/undefined，接不住 ''。
+      p_source_id: (params.relatedEntityId || null) as string,
       p_raised_by: params.raisedBy ?? undefined,
     });
 
@@ -242,7 +244,11 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
       p_new_status: 'RESOLVED',
       p_resolution_action: params.actionTaken,
       p_resolution_details: { resolution: params.resolution, ...params.resolutionDetails } as any,
-      p_resolution_notes: params.actionTaken,
+      // 修正：之前这里传的是 params.actionTaken（一个简短动作码），导致
+      // exceptions.resolution_notes 永远存的是动作码而不是人工填写的解决说明——
+      // 对 confirmInventoryRecount 这类固定 actionTaken 的调用方，resolution_notes
+      // 会对每一条记录都存成完全相同的常量字符串，审计时毫无信息量。
+      p_resolution_notes: params.resolution,
       p_resolver_user_id: params.resolvedBy,
     });
 
@@ -278,6 +284,23 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     // confirmed_available_qty 放进 resolutionDetails（之前这里用的 key 是 recount_qty，
     // 跟 fn_confirm_inventory_recount 实际读取的 confirmed_available_qty 对不上，库存
     // 从未被真正修正过，属于同一批需要修的问题）。
+    //
+    // fn_resolve_exception 只在 exception_type = 'INVENTORY_SHORTAGE' 时才会触发这个
+    // 库存联动，对其他类型静默跳过（不报错）。这里提前查一次类型并显式拒绝，避免调用方
+    // 对着一条非库存类异常调这个方法，得到"成功"却什么都没发生的静默 no-op。
+    const { data: target, error: findError } = await this.supabase.getClient()
+      .from('exceptions')
+      .select('exception_type')
+      .eq('id', params.exceptionId)
+      .eq('tenant_id', params.tenantId)
+      .single();
+    if (findError) throw findError;
+    if (target!.exception_type !== 'INVENTORY_SHORTAGE') {
+      throw new Error(
+        `confirmInventoryRecount 只适用于 INVENTORY_SHORTAGE 类型异常，这条异常的类型是 ${target!.exception_type}`
+      );
+    }
+
     return this.resolveException({
       exceptionId: params.exceptionId,
       tenantId: params.tenantId,
@@ -297,10 +320,7 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     // exceptions.status 的 CHECK 约束里没有独立的 ESCALATED 值，"升级"在这个状态机里
     // 就是转移到 CONFLICT（见 unWMS_Offline_Sync_Exception_Domain_V1.md §4.2："处理过程中
     // 发现情况复杂需要升级"）。只允许从 PENDING_REVIEW/CONFLICT 升级，已经 RESOLVED/
-    // DISMISSED 的异常不应该被再次改动——这里没有走 fn_resolve_exception 那样的
-    // SELECT...FOR UPDATE，理论上仍有一个比 fn_resolve_exception 修复前更窄的竞态窗口
-    // （两次并发升级都可能读到同一个可升级状态），升级动作本身不触发任何库存/业务副作用，
-    // 后果只是审计轨迹重复而非数据错误，风险等级远低于 fn_resolve_exception。
+    // DISMISSED 的异常不应该被再次改动。
     const { data: current, error: findError } = await this.supabase.getClient()
       .from('exceptions')
       .select('status')
@@ -313,6 +333,11 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
       throw new Error(`该异常当前状态为 ${current!.status}，已处理完结，不能再升级`);
     }
 
+    // UPDATE 时把 status 的旧值也带进 WHERE，而不是先查后无条件写：如果查完到写之前，
+    // 这条异常被并发的 resolveException 抢先改成了 RESOLVED/DISMISSED，这里的 UPDATE
+    // 会因为 status 不再匹配而影响 0 行，用 PGRST116（.single() 在 0 行时的报错码）
+    // 兜底识别出"刚才检查完，状态已经被别人改了"，避免无条件覆盖把一条已经处理完的
+    // 异常（resolved_at/resolved_by 都已经写好）静默改回 CONFLICT。
     const { data, error } = await this.supabase.getClient()
       .from('exceptions')
       .update({
@@ -322,10 +347,16 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
       } as ExceptionUpdate)
       .eq('id', id)
       .eq('tenant_id', tenantId)
+      .eq('status', current!.status)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw new Error('该异常在升级过程中已被其他人处理，可能已被恢复，请刷新后重试');
+      }
+      throw error;
+    }
 
     // 记录升级事件
     await this.recordEvent({

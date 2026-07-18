@@ -111,6 +111,13 @@ export interface IExceptionRepository {
     resolvedBy: string;
     resolution: string;
     actionTaken: string;
+    /**
+     * 领域专属恢复数据透传（合并进 fn_resolve_exception 的 p_resolution_details）。
+     * 比如 INVENTORY_SHORTAGE 类型要靠这里的 confirmed_available_qty 才能让
+     * fn_confirm_inventory_recount 真正调整库存，不传就只是把状态标成 RESOLVED，
+     * 不会触发任何业务表联动。
+     */
+    resolutionDetails?: Record<string, unknown>;
   }): Promise<ExceptionRow>;
 
   /**
