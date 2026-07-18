@@ -90,7 +90,11 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
         ...params.context
       } as any,
       p_source_table: params.relatedEntityType ?? 'exceptions',
-      p_source_id: params.relatedEntityId ?? '',
+      // p_source_id 是 UUID 类型参数，传空字符串会被 Postgres 当成非法 UUID 字面量报错
+      // （invalid input syntax for type uuid），必须传 null，不能用 '' 兜底。生成的 RPC
+      // 类型把它标成必填 string（因为 SQL 侧没有 DEFAULT），但运行时 NULL 是合法值，
+      // 这里用类型断言绕过生成类型的这个已知局限，不是绕过真实的 not-null 约束。
+      p_source_id: (params.relatedEntityId ?? null) as string,
       p_raised_by: params.raisedBy ?? undefined,
     });
 
@@ -177,11 +181,10 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     if (error) throw error;
 
     const counts: Record<ExceptionStatus, number> = {
-      OPEN: 0,
-      INVESTIGATING: 0,
+      PENDING_REVIEW: 0,
+      CONFLICT: 0,
       RESOLVED: 0,
-      CLOSED: 0,
-      ESCALATED: 0,
+      DISMISSED: 0,
     };
 
     for (const row of (data as { status: ExceptionStatus }[]) || []) {
@@ -227,12 +230,18 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     resolvedBy: string;
     resolution: string;
     actionTaken: string;
+    // fn_resolve_exception 对 INVENTORY_SHORTAGE 类型会把 p_resolution_details 原样转给
+    // fn_confirm_inventory_recount，后者要读 details 里的 confirmed_available_qty 才会真正
+    // 调整库存（见该函数定义）。之前这里硬编码只传 {resolution}，永远不含这个 key，导致
+    // 库存不足类异常"确认解决"了，但库存数字从未被真正修正——这里开放一个透传口子，
+    // 让调用方（比如 confirmInventoryRecount）能把这类领域专属数据带进去。
+    resolutionDetails?: Record<string, unknown>;
   }): Promise<ExceptionRow> {
     const result = await this.rpcClient.raw('fn_resolve_exception', {
       p_exception_id: params.exceptionId,
       p_new_status: 'RESOLVED',
       p_resolution_action: params.actionTaken,
-      p_resolution_details: { resolution: params.resolution } as any,
+      p_resolution_details: { resolution: params.resolution, ...params.resolutionDetails } as any,
       p_resolution_notes: params.actionTaken,
       p_resolver_user_id: params.resolvedBy,
     });
@@ -261,22 +270,22 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     recountQty: number;
     notes?: string;
   }): Promise<ExceptionRow> {
-    const result = await this.rpcClient.raw('fn_confirm_inventory_recount', {
-      p_exception_id: params.exceptionId,
-      p_resolution_details: { recount_qty: params.recountQty, notes: params.notes } as any,
+    // 走统一恢复入口 fn_resolve_exception，而不是直接调 fn_confirm_inventory_recount——
+    // 直接调用会绕开权限校验、状态转移到 RESOLVED、exception_events 审计轨迹，这条异常
+    // 会一直卡在 PENDING_REVIEW，且无法通过统一恢复流程追溯"谁在什么时候确认的"。
+    // fn_resolve_exception 对 INVENTORY_SHORTAGE 类型内部会自动调用
+    // fn_confirm_inventory_recount(v_exc.id, p_resolution_details)，这里只需要把
+    // confirmed_available_qty 放进 resolutionDetails（之前这里用的 key 是 recount_qty，
+    // 跟 fn_confirm_inventory_recount 实际读取的 confirmed_available_qty 对不上，库存
+    // 从未被真正修正过，属于同一批需要修的问题）。
+    return this.resolveException({
+      exceptionId: params.exceptionId,
+      tenantId: params.tenantId,
+      resolvedBy: params.confirmedBy,
+      resolution: params.notes ?? '库存复盘确认',
+      actionTaken: 'INVENTORY_RECOUNT_CONFIRMED',
+      resolutionDetails: { confirmed_available_qty: params.recountQty, notes: params.notes },
     });
-
-    // fn_confirm_inventory_recount returns undefined
-    // Fetch the updated exception
-    const { data, error } = await this.supabase.getClient()
-      .from('exceptions')
-      .select('*')
-      .eq('id', params.exceptionId)
-      .eq('tenant_id', params.tenantId)
-      .single();
-
-    if (error) throw error;
-    return data as ExceptionRow;
   }
 
   async escalateException(
@@ -285,11 +294,29 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     escalatedTo: string,
     reason: string
   ): Promise<ExceptionRow> {
-    // 更新状态为 ESCALATED 并记录转派
+    // exceptions.status 的 CHECK 约束里没有独立的 ESCALATED 值，"升级"在这个状态机里
+    // 就是转移到 CONFLICT（见 unWMS_Offline_Sync_Exception_Domain_V1.md §4.2："处理过程中
+    // 发现情况复杂需要升级"）。只允许从 PENDING_REVIEW/CONFLICT 升级，已经 RESOLVED/
+    // DISMISSED 的异常不应该被再次改动——这里没有走 fn_resolve_exception 那样的
+    // SELECT...FOR UPDATE，理论上仍有一个比 fn_resolve_exception 修复前更窄的竞态窗口
+    // （两次并发升级都可能读到同一个可升级状态），升级动作本身不触发任何库存/业务副作用，
+    // 后果只是审计轨迹重复而非数据错误，风险等级远低于 fn_resolve_exception。
+    const { data: current, error: findError } = await this.supabase.getClient()
+      .from('exceptions')
+      .select('status')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (findError) throw findError;
+    if (current!.status === 'RESOLVED' || current!.status === 'DISMISSED') {
+      throw new Error(`该异常当前状态为 ${current!.status}，已处理完结，不能再升级`);
+    }
+
     const { data, error } = await this.supabase.getClient()
       .from('exceptions')
       .update({
-        status: 'ESCALATED' as ExceptionStatus,
+        status: 'CONFLICT' as ExceptionStatus,
         assigned_to: escalatedTo,
         updated_at: new Date().toISOString(),
       } as ExceptionUpdate)
@@ -346,6 +373,9 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
     description: string;
     metadata?: Record<string, unknown>;
   }): Promise<ExceptionEventRow> {
+    // exception_events 表实际列名是 note，不是 description（已用生成的 database.ts
+    // 类型核实）；此前这里直接写 description 会被 PostgREST 拒绝（列不存在），导致
+    // recordEvent 每次调用都必定报错，连带调用方 escalateException 也会失败。
     const { data, error } = await this.supabase.getClient()
       .from('exception_events')
       .insert({
@@ -353,7 +383,7 @@ export class SupabaseExceptionRepository implements IExceptionRepository {
         tenant_id: params.tenantId,
         actor_user_id: params.actorUserId,
         event_type: params.eventType,
-        description: params.description,
+        note: params.description,
         metadata: params.metadata as any || null,
       } as ExceptionEventInsert)
       .select()

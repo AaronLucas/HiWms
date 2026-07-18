@@ -128,7 +128,7 @@
 | 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
 | 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
 | 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19，2026-07-19 更新为回归测试）。曾有的 2 项已知问题（Bug A 并发重复扣库存、Bug E 未知 action_type 不登记异常）已由 DBA `005_concurrency_hardening_V1.sql` 修复，本地应用该迁移后连续多轮重跑验证稳定通过，详见 `BUG_REPORT_SYNC_EVENT_APPLY_FUNCTIONS_2026-07-19.md` 及 P0 第 2 项执行记录 |
-| 5 | `src/core/ports/db/IExceptionRepository.ts` | ⚠️ 已实现未验证，且已发现 1 项确认属实的缺陷 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount`。**2026-07-19 顺带发现（尚未做完整测试补齐，仅代码+真实 schema 核对）**：`IExceptionRepository.ts` 的 `ExceptionStatus` 类型（`OPEN/INVESTIGATING/RESOLVED/CLOSED/ESCALATED`）与 `exceptions.status` 的真实 `chk_exceptions_status` CHECK 约束（`PENDING_REVIEW/CONFLICT/RESOLVED/DISMISSED`，已用 `psql \d`/`pg_constraint` 核实）几乎完全对不上，只有 `RESOLVED` 一个值重合——`escalateException()` 写入的 `'ESCALATED'` 不是合法值必定抛约束违反错误；`countByStatus()` 的统计桶只认 5 个无效/半无效键，导致每条新异常默认所在的 `PENDING_REVIEW` 状态永远统计不到；`findByTenant({status:...})` 传入 TS 类型允许的值会查出空结果。与本文件之前修复的 Bug D（`SyncEventStatus`）是同一类问题，尚未处理，见下方待办 |
+| 5 | `src/core/ports/db/IExceptionRepository.ts` | ✅ 已完成 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount`。测试证据：`src/__tests__/integration/exceptions/fn_resolve_exception.concurrency.test.ts`（2026-07-19）。**2026-07-19 核对 DBA 的 `005_concurrency_hardening_V1.sql` 时顺带发现并修复 4 处缺陷**：（1）`ExceptionStatus` 类型（`OPEN/INVESTIGATING/RESOLVED/CLOSED/ESCALATED`）与 `exceptions.status` 真实 `chk_exceptions_status` CHECK 约束（`PENDING_REVIEW/CONFLICT/RESOLVED/DISMISSED`）几乎完全对不上，同 SyncEventStatus 的 Bug D 一类问题，已改为与真实约束一致；（2）`escalateException()` 写入不合法的 `'ESCALATED'`，已改为约束里真实存在的 `CONFLICT`（对应设计文档"升级"语义），并补了"已 RESOLVED/DISMISSED 不可再升级"的防护；（3）`resolveException()` 硬编码的 `p_resolution_details` 永远不含 `fn_confirm_inventory_recount` 需要的 `confirmed_available_qty`，导致 INVENTORY_SHORTAGE 异常"确认解决"后库存从未被真正修正（DBA 自查清单第 8 条点名的"函数返回成功但业务表没联动"），已开放 `resolutionDetails` 透传；（4）`confirmInventoryRecount()` 之前绕开 `fn_resolve_exception` 直接调用底层函数（跳过权限校验/状态转移/审计轨迹），且 JSON key 用的是 `recount_qty` 而不是函数实际读取的 `confirmed_available_qty`，双重原因导致库存不会被调整，已改为委托给 `resolveException()`；（5）`recordEvent()` 写入不存在的 `description` 列（真实列名 `note`），导致每次调用必定报错，连带 `escalateException()` 失败，已修正列名 |
 
 ### 5.2 Supabase 实现
 | # | 文件 | 状态 |
@@ -137,7 +137,7 @@
 | 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | 🔨 已实现未验证 |
 | 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
 | 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成（同上，见 5.1 第 4 行说明） |
-| 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ⚠️ 已实现未验证，且已发现 1 项确认属实的缺陷（同上，见 5.1 第 5 行说明） |
+| 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ✅ 已完成（同上，见 5.1 第 5 行说明） |
 
 ### 5.3 索引更新
 - [x] `src/core/ports/db/index.ts` - 导出 5 个新端口
