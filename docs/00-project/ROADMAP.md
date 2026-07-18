@@ -323,3 +323,21 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | 现有 RPC→Repository 重构止血 | ⏳ 待办（Phase 0，下一轮，需先于 Phase 1-2） | 当前工作区另有未提交、69 个 tsc 错误的重构，需先修复 |
 
 > **后续**：下一轮先完成 Phase 0（修复现有未提交重构的编译错误、补 ADR 记录该重构），再进入 Phase 1（迁移脚本）与 Phase 2（仓储层）。
+
+---
+
+## ECC（Everything Claude Code）治理试点方案设计记录 (2026-07-18)
+
+> **本节性质：设计已完成，执行待认领**——本轮只做方案设计并记录进上下文（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4），不由本次 AI session 执行任何实际操作（不导入规则文件、不写测试代码、不跑本地 Postgres）。开发团队认领后按下表顺序执行，完整设计依据见 `AGENTS.md` §8。
+
+**背景**：核查发现 ECC 插件虽已安装，但其定义"80% 覆盖率 + 强制 TDD"等硬标准的 `rules/` 目录从未按官方要求手动导入，当前项目测试覆盖率实际极薄（仅 2 个测试文件/59 用例，覆盖 Zod 校验与鉴权中间件，核心业务逻辑与 43 个仓储实现零覆盖），且 CI（`ci.yml`）只在 `dev` 分支触发、lint job 带 `continue-on-error`，实际从未拦截过任何合并到 `main` 的 PR。
+
+| 认领顺序 | 执行项 | 状态 | 详细设计位置 |
+|---------|--------|------|-------------|
+| 1 | 导入 ECC 规则（`rules/common` + `rules/typescript` → 项目本地 `.claude/rules/ecc/`，不提交） | ⏳ 待认领 | `AGENTS.md` §8.2 |
+| 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ⏳ 待认领（依赖第 1 项） | `AGENTS.md` §8.4 |
+| 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ⏳ 待认领（依赖第 2 项试点通过） | `AGENTS.md` §8.3 |
+| 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ⏳ 待认领（依赖第 3 项） | `AGENTS.md` §8.5 |
+| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项） | `AGENTS.md` §8.5 第 5 步 |
+
+> **失败/迭代处理原则**（详见 `AGENTS.md` §8.6）：环境/工具故障（本地 Postgres 起不来等）与"是否保留规则导入"无关，只需重试；设计映射做不出来不构成回退理由，应向项目负责人提出具体卡点；真正合理的回退只剩"业务判断明确不采用"或"ECC 承诺机制被证实不存在"两类客观外部因素。
