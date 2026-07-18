@@ -328,7 +328,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 ## ECC（Everything Claude Code）治理试点方案设计记录 (2026-07-18)
 
-> **本节性质：设计已完成，第 1/2/3/4 项已认领执行（2026-07-18，第 4 项经人工确认后执行）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1-4 项，详见下表证据列。**第 5 项（回溯下调 Phase 5/6/7 已完成标记）需先书面告知受影响的开发团队成员，本轮明确不做**，完整设计依据见 `AGENTS.md` §8。
+> **本节性质：设计已完成，第 1-5 项全部已认领执行（2026-07-18，第 4/5 项经人工确认后执行）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1-5 项全部，详见下表证据列。5 项均落地后，ECC 治理试点方案设计记录本身进入完成状态；后续如需对已有 43 个仓储实现（尤其 Phase 5/6/7 那 20 个"🔨已实现未验证"的文件）真正补齐测试覆盖，属于独立的、按风险优先级排期的补齐工程，不在本节 5 项任务范围内，完整设计依据见 `AGENTS.md` §8。
 
 **背景**：核查发现 ECC 插件虽已安装，但其定义"80% 覆盖率 + 强制 TDD"等硬标准的 `rules/` 目录从未按官方要求手动导入，当前项目测试覆盖率实际极薄（仅 2 个测试文件/59 用例，覆盖 Zod 校验与鉴权中间件，核心业务逻辑与 43 个仓储实现零覆盖），且 CI（`ci.yml`）只在 `dev` 分支触发、lint job 带 `continue-on-error`，实际从未拦截过任何合并到 `main` 的 PR。
 
@@ -338,7 +338,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ✅ 已完成 | `AGENTS.md` §8.4 | 新增 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`；详见本节下方"第 2 项验证记录" |
 | 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ✅ 已完成 | `AGENTS.md` §8.3 | 15 个规则文件逐份映射，见 `AGENTS.md` §8.3.1（映射表）+ §8.3.2（顺带发现的文档/CI 脱节问题） |
 | 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ✅ 已完成（人工确认后执行） | `AGENTS.md` §8.5 | `CONVENTIONS.md` 新增 §10-§13 + §6/§7/§8 追加引用；`WORKFLOWS.md` §3.1.1/§3.2 更新；`ci.yml` main/dev 双触发 + 移除 `continue-on-error`；新建 `.github/pull_request_template.md`；根 `CLAUDE.md` 新增 ECC 规则索引 |
-| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项，已满足；需先书面告知受影响开发团队成员，本轮明确不做） | `AGENTS.md` §8.5 第 5 步 | — |
+| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ✅ 已完成（人工确认后执行） | `AGENTS.md` §8.5 第 5 步 | `REPOSITORY_ROADMAP.md` 新增三档状态语义说明；Phase 5/6/7 共 20 个"✅已完成"标记下调为"🔨已实现未验证"；仓库唯一协作者即项目负责人本人，若有仓库外团队成员需告知，通知内容与是否发送由项目负责人自行决定 |
 
 #### 第 2 项验证记录（2026-07-18）
 
