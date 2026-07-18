@@ -71,11 +71,13 @@ graph TD
 ### 3.1 Git 分支策略
 | 分支 | 用途 | 保护规则 |
 |------|------|----------|
-| `main` | 生产发布 | PR + Review + CI 通过 |
-| `dev` | 集成测试 | PR + CI 通过 |
+| `main` | 生产发布 | PR + Review + CI 通过（2026-07-18 起在 GitHub 上真实生效，见下方说明） |
+| `dev` | 集成测试 | PR + CI 通过（**未生效**：`.github/rulesets/dev-branch-protection.json` 对应的 ruleset 在 GitHub 上是 `enforcement: disabled`，且其 `required_status_checks` 引用的 job 名字 `security`/`lint-docs`/`docker-build`/`notify` 已不存在于当前 `ci.yml`，是历史遗留脱节，不在本次范围内修复） |
 | `feature/*` | 功能开发 | 无 |
 | `release/*` | 版本预发布 | PR + CI 通过 |
 | `hotfix/*` | 紧急修复 | PR + Review |
+
+> **`main` 分支保护已实际生效（2026-07-18）**：通过 GitHub Rulesets API 创建并启用 `main-branch-protection`（参考文件 `.github/rulesets/main-branch-protection.json`，已用 `gh api --method POST repos/{owner}/{repo}/rulesets` 实际调用生效，非仅文档记录）——要求 PR 合并前 `Lint & TypeCheck`/`Unit Tests`/`Build`/`CI Success` 四个 check 全部通过、禁止强推/删除 `main`、要求线性历史；核实返回的 `current_user_can_bypass` 为 `"never"`，即没有账号能绕过。这是对上一轮 ECC 治理试点第 4 项遗留的 HIGH 级发现（"CI 硬拦截只在 workflow 层面成立，GitHub 层面未生效"）的补齐。
 
 #### 3.1.1 PR 提交流程（ECC 采纳，2026-07-18）
 > 来源：`.claude/rules/ecc/common/git-workflow.md`。提交类型/scope 定义见 `docs/00-project/CONVENTIONS.md` §7，本节只补充操作步骤，不重复定义。
@@ -161,6 +163,7 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 | 1.1.0 | 2025-07-07 | 新增项目特定暂停节点、Git 分支策略细化 |
 | 1.2.0 | 2026-07-18 | 新增 §7.4 ECC 治理集成相关暂停节点，设计详见 `docs/06-agents/AGENTS.md` §8 |
 | 1.3.0 | 2026-07-18 | ECC 治理试点第 4 项（转正）：新增 §3.1.1 PR 提交流程细则；§3.2 改为如实描述 `ci.yml` 实际 3 个 job（不再是从未落地的 5 阶段设计），并记录 `ci.yml` 已改为 main/dev 双触发 + 硬门禁 |
+| 1.4.0 | 2026-07-18 | §3.1 补充 `main` 分支保护实际生效记录（GitHub Rulesets API，非仅文档），同时如实记录 `dev` 分支保护 ruleset 处于 disabled 状态且 job 名字已过期（历史遗留，未修复） |
 
 ---
 

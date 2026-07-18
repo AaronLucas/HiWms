@@ -307,6 +307,9 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 - **第 4 步（有意偏离设计原文，需项目负责人后续单独确认）**：原文写"`git add .claude/rules/ecc/` <联动修改的文档>"，即设计意图是转正时把规则目录本身一并提交入库、成为全队共享标准。本轮**只提交了联动修改的文档/CI/PR 模板，未把 `.claude/rules/ecc/` 本身加入提交**——因为这是一个独立于"文档措辞"的决定（是否让 ECC 规则文本本身进入版本库、被全队 Claude Code session 自动读取），执行人认为这一决定的授权范围不够明确清晰，留给项目负责人单独拍板，而不是顺着文档字面推进
 - **第 5 步**：本轮明确不做，见 `docs/00-project/ROADMAP.md` 第 5 项状态
 
+#### 8.5.2 后续补充：`main` 分支保护实际生效（2026-07-18，PR #15 review 遗留 HIGH 的收尾）
+第 3 步把 `ci.yml` 的 lint 门禁改为硬拦截时，review 阶段发现一个 HIGH 级缺口：GitHub 上 `main` 分支当时完全没有配置分支保护规则，`ci.yml` 失败并不会真正阻止合并。经确认后已用 GitHub Rulesets API（`gh api --method POST repos/{owner}/{repo}/rulesets`，参考文件 `.github/rulesets/main-branch-protection.json`）实际创建并启用规则——非仅写文档。过程中还额外发现并修复了一个独立的、更紧急的阻塞项：`pnpm-lock.yaml` 与 `package.json` 早已脱节（缺 `zod`/`@cloudflare/workers-types` 等），此前被 `continue-on-error: true` 掩盖，第 3 步去掉这个开关后 `main` 上的 CI 第一次真实失败，已单独提交修复（详见 `docs/04-workflows/WORKFLOWS.md` §3.1 说明与 git 历史）。
+
 ### 8.6 失败/迭代处理原则
 - **环境/工具层面的失败**（本地 Postgres 起不来、agent 产出不可用）与"是否保留 `.claude/rules/ecc/` 导入"是两条独立的轴，前者只需修环境/换执行方式重试，与后者无关，不得混为一谈
 - **设计/映射做不出来**：视为方法论本身的 bug，应继续深挖或向项目负责人提出具体卡点（needs input），不构成执行人自行终止或回退的理由
@@ -322,3 +325,4 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 | 1.2.0 | 2026-07-18 | 认领并执行 §8.2（规则导入）+ §8.4（原子库存并发测试试点），验证通过；§8.3 冲突映射及以后仍待认领 |
 | 1.3.0 | 2026-07-18 | 认领并完成 §8.3 冲突映射（新增 §8.3.1 逐份映射表 + §8.3.2 顺带发现问题）；§8.5 转正因 `WORKFLOWS.md` §7.4 暂停节点待人工确认后再执行 |
 | 1.4.0 | 2026-07-18 | 经人工确认后完成 §8.5 转正第 1-4 步（新增 §8.5.1 执行记录）；`.claude/rules/ecc/` 本身是否提交入库留待项目负责人单独确认；第 5 步（回溯下调 Phase 5/6/7 状态）本轮明确不做 |
+| 1.5.0 | 2026-07-18 | 新增 §8.5.2：`main` 分支保护经人工确认后实际生效（GitHub Rulesets API），并记录顺带修复的 `pnpm-lock.yaml` 脱节问题 |
