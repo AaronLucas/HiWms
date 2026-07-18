@@ -419,7 +419,7 @@ X-Device-Id: <device_id>
 | PUTAWAY 命中追踪策略但现场无箱码（Layer 4，见 `TRACKING_POLICY_MISSING_LABEL.md`） | `EXCEPTION` | `MISSING_LABEL` | 商品身份明确，先按数量正常记账，等待补码闭环（`fn_generate_internal_lpn`/`fn_confirm_label_applied`） |
 | 操作员标记无法识别商品身份（Layer 4） | `EXCEPTION` | `UNIDENTIFIED_GOODS` | 严重度 HIGH（高于 MISSING_LABEL 的 MEDIUM），`product_id=NULL` 暂存，等待 `fn_identify_unidentified_goods` 回填 |
 
-> **Layer 3/4 现状提示**：本节新增的 `REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS` 三个异常类型与 PUTAWAY/COUNT/PACK 的修正实现，均**仅为设计文档**——本地对应迁移脚本（Layer 3 含 bug 未修正，Layer 4 尚不存在）需先与 DBA 团队协调确认才能起草/执行，详见 `docs/00-project/ROADMAP.md` Phase 1.4.1/1.4.2。
+> **Layer 3/4 现状提示（2026-07-18 更新）**：本节的 `REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS` 三个异常类型与 PUTAWAY/COUNT/PACK 的修正实现，已由 DBA 团队部署到生产环境并经开发团队接入应用层，详见 `docs/00-project/ROADMAP.md` Phase 1.4.1/1.4.2。
 
 ### 9.2 批次级错误码汇总
 
@@ -636,6 +636,7 @@ function getNextSyncDelay(config: SyncSchedulerConfig): number {
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|----------|------|
 | 2.1.0 | 2026-07-16 | 补充 Layer 3（`REFERENCE_NOT_FOUND`/`COUNT_DISCREPANCY`）与 Layer 4（`MISSING_LABEL`/`UNIDENTIFIED_GOODS`）四个新异常类型到 §9 分类表。**本次仅为文档补充，本地对应迁移脚本未修正/未创建**，需先与 DBA 团队协调确认 | DBA 团队 / 架构组 |
+| 2.2.0 | 2026-07-18 | DBA 团队确认 Layer 3/4 迁移脚本已部署到生产环境，§9 现状提示更新为已部署状态 | DBA 团队 / 架构组 |
 | 2.0.0 | 2026-07-15 | **重大变更**：DBA 团队交付新方案，废弃 v1.0.0 的状态同步模型（`LocalOperation` + `version_vector` + 服务端 `conflicts[]` + 客户端合并策略协商），改为事件同步模型（`sync_events` 幂等收件箱 + 确定性重放函数 + `APPLIED`/`EXCEPTION`/`REJECTED` 三态）。移除 `/sync/status`、`/sync/conflicts`、`/sync/conflicts/{id}/resolve`、`/sync/cursors`、`/sync/cursors/reset` 及分片/断点续传机制；新增 `/sync/events`、`/sync/pull`、`/sync/policy`、`/tasks/{work_order_id}/claim`、`/tasks/claims/{claim_id}/release`、`/exceptions`、`/exceptions/{id}`。移除 `409 SYNC_CONFLICT` 错误码。 | DBA 团队 / 架构组 |
 | 1.0.0 | 2025-07-11 | 初版：完整契约、分片、冲突、游标、限流、安全、客户端指南、测试用例（已废弃，见上） | 架构组 |
 

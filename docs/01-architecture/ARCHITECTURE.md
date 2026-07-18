@@ -318,7 +318,7 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 | **部署** | Express + PM2，边缘节点部署靠近仓库 |
 | **数据库** | Supabase (RLS) + 本地 SQLite |
 
-> ⚠️ **实现状态（2026-07-16 已核实）**：`src/apps/` 目前只有 `admin-api`，**`device-api` 应用尚不存在**——本节描述的是设计目标，不是当前可运行的代码。
+> ✅ **实现状态（2026-07-18 已核实）**：`src/apps/device-api` 已存在（`routes.ts`/`di.ts`/`DeviceAuthMiddleware.ts`/`config.ts`/`main.ts`/`validation.ts`），本节描述的核心端点（`/sync/events`、`/sync/pull`、`/sync/policy`、任务领用/释放、统一异常查看、`/putaway`/`/count`/`/pack`、`/missing-label/*`、`/unidentified/*`）均已实现并接入 Layer 2/3/4 仓储层，`tsc --noEmit` 零错误。
 
 ### 4.4 Edge Worker (Cloudflare Workers)
 | 特性 | 设计 |
@@ -418,6 +418,7 @@ Types           │             │       │          │      │         │ 
 | 2.0.0 | 2025-07-10 | 完整六边形架构、多端拓扑、数据流、安全、可观测性 |
 | 2.1.0 | 2026-07-15 | 离线同步流改为操作同步+预分工模型（ADR-011），新增统一异常领域用例模块，更新 ADR 摘要与相关文档索引 |
 | 2.2.0 | 2026-07-16 | 新增 ADR-013/ADR-014（Layer 3 同步动作扩展、Layer 4 唯一追踪策略），标注 Device API 当前实现状态（尚不存在，仅 admin-api 已实现），更新相关文档索引 |
+| 2.3.0 | 2026-07-18 | DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境，`device-api` 应用已实现（§4.3 状态更新为已核实存在），Layer 2/3/4 仓储层已全部完成 |
 
 ---
 

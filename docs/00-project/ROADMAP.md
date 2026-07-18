@@ -45,35 +45,36 @@
 >
 > **构建健康度更新（2026-07-16）**：此前记录的"现有 RPC→Repository 重构止血（Phase 0）"已被其他并行工作解决——`origin/main`（`ac3da7a` 及其之前的 `3a77d84`/`b9f7ac6`）已完成 Phase 1-3 仓储层实现，`npx tsc --noEmit` 现为**零错误**。Phase 0 不再是本节的阻塞项。
 
-> ⛔ **数据库脚本改动需要 DBA 协调，未确认前不得起草/执行/推送任何相关迁移** ⛔
-> 本节下方 Layer 2/3/4 涉及的所有迁移脚本工作（修正本地 `supabase/migrations/003_extend_sync_event_actions.sql` 的真实 bug、新增 `004_tracking_policy_missing_label.sql`），**必须先由用户与 DBA 团队完成协调确认**，才能进入起草/执行阶段。本节当前状态只是设计对齐，不代表可以直接动手改脚本。
+> ✅ **DBA 部署已确认（2026-07-18）**：DBA 团队已将 Layer 2/3/4 修正脚本部署到生产环境，内容与 `.readonly/` 参考文件一致，并协助同步了 `src/types/database.ts`。独立验证方式：`supabase gen types typescript --project-id pkthcaqsdktlhqkowhkt` 现拉取结果与本地 `src/types/database.ts` **逐字节一致**。开发团队已据此完成仓储层（Phase 5/6/7，见 REPOSITORY_ROADMAP.md）与 Device API 路由（`src/apps/device-api/routes.ts`）实现，`tsc --noEmit` 零错误、`vitest` 59/59 通过。
+>
+> ⚠️ **已知的运维细节，不影响使用**：`supabase migration list` 显示 001-004 的 remote 记录列为空——这只是迁移历史跟踪表未被写入（DBA 应为直接执行 SQL 而非走 `supabase migration up`），不代表 schema 未部署；已用 `gen types` 独立核实 schema 确实生效。今后如需对该项目执行 `supabase db push`，建议先跟 DBA 确认历史记录表状态，避免 CLI 误判需要重新执行已生效的脚本。
 
-- [ ] **迁移脚本落地（Layer 2）**：把 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表 + `inventory_reservations.work_order_id` + `order_lines.EXCEPTION` 状态固化为正式迁移脚本（并入部署流程；`supabase/` 已 `.gitignore`，脚本版本化事实来源见 DB_SCHEMA.md）
-- [ ] 补齐仓储层（Layer 2）：`IExceptionRepository`/`ISyncEventRepository`/`ITaskClaimRepository`/`ISyncPolicyRepository`/`IDeviceSyncStateRepository` 端口 + Supabase 适配器实现（见 REPOSITORY_ROADMAP.md Phase 5）
-- [ ] 部署 Device API `/sync/events`（提交动作事件）、`/sync/pull`（增量拉取）、`/sync/policy`（查询离线策略）端点 —— **注意：代码库目前只有 `src/apps/admin-api`，`device-api` 应用尚不存在，这是比迁移脚本更大的一块工作量**
-- [ ] 部署任务领用/释放端点：`POST /tasks/{id}/claim`（`fn_claim_task`）、`POST /tasks/claims/{id}/release`（`fn_release_task_claim`）
-- [ ] 部署统一异常查看端点：`GET /exceptions`、`GET /exceptions/{id}`（设备端只读）+ Web 管理端 `fn_resolve_exception` 处理入口
-- [ ] 配置 pg_cron 定时任务：`fn_expire_task_claims`（建议每 1~5 分钟，任务租约过期清扫+自动登记 `TASK_CLAIM_EXPIRED` 异常）
-- [ ] 补充权限种子数据：`permissions`/`role_permissions` 覆盖 `exception_type_catalog.required_permission_resource`（inventory_exception/compliance_exception/sync_exception/task_exception/fulfillment_exception/billing_exception/manual_exception）
+- [x] **迁移脚本落地（Layer 2）**：`task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表 + `inventory_reservations.work_order_id` + `order_lines.EXCEPTION` 状态已随 DBA 部署生效
+- [x] 补齐仓储层（Layer 2）：`IExceptionRepository`/`ISyncEventRepository`/`ITaskClaimRepository`/`ISyncPolicyRepository`/`IDeviceSyncStateRepository` 端口 + Supabase 适配器实现已完成（见 REPOSITORY_ROADMAP.md Phase 5）
+- [x] 部署 Device API `/sync/events`（提交动作事件）、`/sync/pull`（增量拉取）、`/sync/policy`（查询离线策略）端点 —— `src/apps/device-api` 应用已存在（`routes.ts`/`di.ts`/`DeviceAuthMiddleware.ts`），三个端点均已实现
+- [x] 部署任务领用/释放端点：`POST /tasks/{id}/claim`（`fn_claim_task`）、`POST /tasks/claims/{id}/release`（`fn_release_task_claim`）
+- [x] 部署统一异常查看端点：`GET /exceptions`、`GET /exceptions/{id}`（设备端只读）
+- [ ] 配置 pg_cron 定时任务：`fn_expire_task_claims`（建议每 1~5 分钟，任务租约过期清扫+自动登记 `TASK_CLAIM_EXPIRED` 异常）—— **本地迁移脚本/`supabase/` 目录内未发现 `cron.schedule` 调用，尚未配置**
+- [ ] 补充权限种子数据：`permissions`/`role_permissions` 覆盖 `exception_type_catalog.required_permission_resource`（inventory_exception/compliance_exception/sync_exception/task_exception/fulfillment_exception/billing_exception/manual_exception）—— **`supabase/seed.sql` 内未发现对应种子数据，尚未配置**
 - [ ] **待业务/合规确认（非工程任务，登记跟踪）**：危险品/冷链相关 task_type/zone_type 的 `ONLINE_ONLY` 判定与 `max_offline_duration_seconds` 具体数值，需合规负责人签字确认后录入 `sync_policies`
 
-#### 1.4.1 Layer 3：同步动作扩展 PUTAWAY/COUNT/PACK（2026-07-16 新增，DBA 对开发团队 PR 的修正重新实现）
+#### 1.4.1 Layer 3：同步动作扩展 PUTAWAY/COUNT/PACK（2026-07-18 已部署，DBA 对开发团队 PR 的修正重新实现）
 
-> 设计依据：`docs/02-api/SYNC_ACTIONS_EXTENSION.md`、`docs/01-architecture/ADR/013-sync-actions-extension.md`。**这不是新功能，是对本地已存在的 `supabase/migrations/003_extend_sync_event_actions.sql`（含真实语法错误、并发丢单 bug、表结构引用错误）的修正版重新实现**——原文件保留在本地磁盘，尚未被替换。
+> 设计依据：`docs/02-api/SYNC_ACTIONS_EXTENSION.md`、`docs/01-architecture/ADR/013-sync-actions-extension.md`。**这不是新功能，是对本地曾存在的 `supabase/migrations/003_extend_sync_event_actions.sql`（含真实语法错误、并发丢单 bug、表结构引用错误）的修正版重新实现**——本地文件现已替换为 DBA 修正版（经 `diff` 核对与 `.readonly/unWMS_Sync_Actions_Extension_V1.sql` 逐字节一致），并已随生产部署生效。
 
-- [ ] **迁移脚本修正**：用 DBA 提供的修正版逻辑重写本地 `003_extend_sync_event_actions.sql`（原子库存写入原语 `fn_adjust_inventory_at_location`/`fn_reconcile_location_count`、`inventory_count_policies` 可配置容差表、`packing_task_items` 明细行表、`REFERENCE_NOT_FOUND` 异常类型、修正后的 `fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action`）—— **需先完成与 DBA 团队的协调确认**（见上方阻塞提示），确认后先起草不执行
-- [ ] 补齐仓储层（Layer 3）：`IPackingTaskItemRepository`/`IInventoryCountPolicyRepository`（见 REPOSITORY_ROADMAP.md）
-- [ ] Device API 新增 `POST /putaway`、`POST /count`、`POST /pack` 端点（均走 `/sync/events` 统一入口，仅文档层面区分 `action_type`）
-- [ ] **业务侧确认**：`packing_task_items` 明细行粒度是否启用取决于业务是否需要"箱级追溯"，需业务侧确认后再决定是否接入
+- [x] **迁移脚本修正**：本地 `003_extend_sync_event_actions.sql` 已替换为 DBA 修正版逻辑（原子库存写入原语 `fn_adjust_inventory_at_location`/`fn_reconcile_location_count`、`inventory_count_policies` 可配置容差表、`packing_task_items` 明细行表、`REFERENCE_NOT_FOUND` 异常类型、修正后的 `fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action`），并已部署到生产环境
+- [x] 补齐仓储层（Layer 3）：`IPackingTaskItemRepository`/`IInventoryCountPolicyRepository` 端口 + Supabase 实现已完成（见 REPOSITORY_ROADMAP.md Phase 6）
+- [x] Device API 新增 `POST /putaway`、`POST /count`、`POST /pack` 端点（`src/apps/device-api/routes.ts`）
+- [ ] **业务侧确认**：`packing_task_items` 明细行粒度是否启用取决于业务是否需要"箱级追溯"，需业务侧确认（工程侧已可支持，此项为业务决策，非阻塞）
 
-#### 1.4.2 Layer 4：唯一追踪策略 + 无码/未识别货物处理（2026-07-16 新增，全新设计，本地零实现）
+#### 1.4.2 Layer 4：唯一追踪策略 + 无码/未识别货物处理（2026-07-18 已部署，全新设计）
 
-> 设计依据：`docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md`、`docs/01-architecture/ADR/014-tracking-policy-missing-label.md`。**部署顺序硬约束：必须严格在 Layer 3 之后部署**——本层会用 `CREATE OR REPLACE` 重新定义 Layer 3 的 `fn_apply_putaway_action`，颠倒顺序会导致追踪策略判断被静默覆盖且无任何报错（DBA 文档 v1.2→v1.3 修正记录的真实教训，不是理论风险）。
+> 设计依据：`docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md`、`docs/01-architecture/ADR/014-tracking-policy-missing-label.md`。**部署顺序硬约束（已遵守）：Layer 4 严格部署在 Layer 3 之后**——本层用 `CREATE OR REPLACE` 重新定义了 Layer 3 的 `fn_apply_putaway_action`，DBA 已确认按 003→004 顺序部署，未出现 v1.2→v1.3 修正记录里提到的静默覆盖风险。
 
-- [ ] **新增迁移脚本 004**：`tenant_tracking_policies` 表、`containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 三个新列、`fn_requires_unique_tracking`/`fn_generate_internal_lpn`/`fn_confirm_label_applied`/`fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` 五个函数、`fn_trg_enforce_product_constraints` 触发器范围扩展（`location_id` → `location_id, product_id`）—— **同样需先完成与 DBA 团队的协调确认**，确认后先起草不执行
-- [ ] 补齐仓储层（Layer 4）：`ITenantTrackingPolicyRepository`/`IMissingLabelRepository`/`IUnidentifiedGoodsRepository`（见 REPOSITORY_ROADMAP.md）
-- [ ] Device API 新增 `POST /missing-label/generate`、`POST /missing-label/confirm`、`POST /unidentified/receive`、`POST /unidentified/identify` 端点
-- [ ] **部署前必须完成的租户配置**：`tenant_tracking_policies` 里 B 类商品必须显式配置追踪策略，不能长期依赖系统保守兜底值；哪些库位需要 `force_unique_tracking = TRUE` 需仓库运营方按实际情况配置
+- [x] **迁移脚本 004**：`tenant_tracking_policies` 表、`containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 三个新列、`fn_requires_unique_tracking`/`fn_generate_internal_lpn`/`fn_confirm_label_applied`/`fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` 五个函数、`fn_trg_enforce_product_constraints` 触发器范围扩展（`location_id` → `location_id, product_id`）已起草并随生产部署生效（经 `diff` 核对与 `.readonly/unWMS_Tracking_Policy_Missing_Label_V1.sql` 逐字节一致）
+- [x] 补齐仓储层（Layer 4）：`ITenantTrackingPolicyRepository`/`IMissingLabelRepository`/`IUnidentifiedGoodsRepository` 端口 + Supabase 实现已完成（见 REPOSITORY_ROADMAP.md Phase 7）
+- [x] Device API 新增 `POST /missing-label/generate`、`POST /missing-label/confirm`、`POST /unidentified/receive`、`POST /unidentified/identify` 端点（`src/apps/device-api/routes.ts`）
+- [ ] **部署前必须完成的租户配置**：`tenant_tracking_policies` 里 B 类商品必须显式配置追踪策略，不能长期依赖系统保守兜底值；哪些库位需要 `force_unique_tracking = TRUE` 需仓库运营方按实际情况配置（业务配置项，非工程阻塞）
 
 ---
 
@@ -322,3 +323,21 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | 现有 RPC→Repository 重构止血 | ⏳ 待办（Phase 0，下一轮，需先于 Phase 1-2） | 当前工作区另有未提交、69 个 tsc 错误的重构，需先修复 |
 
 > **后续**：下一轮先完成 Phase 0（修复现有未提交重构的编译错误、补 ADR 记录该重构），再进入 Phase 1（迁移脚本）与 Phase 2（仓储层）。
+
+---
+
+## ECC（Everything Claude Code）治理试点方案设计记录 (2026-07-18)
+
+> **本节性质：设计已完成，执行待认领**——本轮只做方案设计并记录进上下文（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4），不由本次 AI session 执行任何实际操作（不导入规则文件、不写测试代码、不跑本地 Postgres）。开发团队认领后按下表顺序执行，完整设计依据见 `AGENTS.md` §8。
+
+**背景**：核查发现 ECC 插件虽已安装，但其定义"80% 覆盖率 + 强制 TDD"等硬标准的 `rules/` 目录从未按官方要求手动导入，当前项目测试覆盖率实际极薄（仅 2 个测试文件/59 用例，覆盖 Zod 校验与鉴权中间件，核心业务逻辑与 43 个仓储实现零覆盖），且 CI（`ci.yml`）只在 `dev` 分支触发、lint job 带 `continue-on-error`，实际从未拦截过任何合并到 `main` 的 PR。
+
+| 认领顺序 | 执行项 | 状态 | 详细设计位置 |
+|---------|--------|------|-------------|
+| 1 | 导入 ECC 规则（`rules/common` + `rules/typescript` → 项目本地 `.claude/rules/ecc/`，不提交） | ⏳ 待认领 | `AGENTS.md` §8.2 |
+| 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ⏳ 待认领（依赖第 1 项） | `AGENTS.md` §8.4 |
+| 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ⏳ 待认领（依赖第 2 项试点通过） | `AGENTS.md` §8.3 |
+| 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ⏳ 待认领（依赖第 3 项） | `AGENTS.md` §8.5 |
+| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项） | `AGENTS.md` §8.5 第 5 步 |
+
+> **失败/迭代处理原则**（详见 `AGENTS.md` §8.6）：环境/工具故障（本地 Postgres 起不来等）与"是否保留规则导入"无关，只需重试；设计映射做不出来不构成回退理由，应向项目负责人提出具体卡点；真正合理的回退只剩"业务判断明确不采用"或"ECC 承诺机制被证实不存在"两类客观外部因素。

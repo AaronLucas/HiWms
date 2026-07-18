@@ -150,6 +150,7 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 |------|------|----------|
 | 1.0.0 | 2025-07-01 | 初始版本：核心业务流、CI/CD、部署策略 |
 | 1.1.0 | 2025-07-07 | 新增项目特定暂停节点、Git 分支策略细化 |
+| 1.2.0 | 2026-07-18 | 新增 §7.4 ECC 治理集成相关暂停节点，设计详见 `docs/06-agents/AGENTS.md` §8 |
 
 ---
 
@@ -170,3 +171,8 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 - 新增/删除微服务模块前
 - 修改 Supabase Schema (表结构、函数、触发器) 前
 - 变更认证/授权机制前
+
+### 7.4 ECC 治理集成相关（2026-07-18 新增，设计详见 `docs/06-agents/AGENTS.md` §8）
+- 执行"转正"提交前（把 `.claude/rules/ecc/` 与联动的文档/CI/PR 模板改动正式 `git add`+`commit`+`push`）
+- 修改 `.github/workflows/ci.yml` 触发分支范围、移除 lint job 的 `continue-on-error` 前
+- 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）

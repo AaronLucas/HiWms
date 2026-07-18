@@ -117,75 +117,75 @@
 
 ## Phase 5: 离线同步 / 统一异常领域仓储（5个） - P0 同步配套（2026-07-15 按 ADR-011 重写，替代原 PDA 同步专用仓储规划）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。**Phase 0（止血现有 RPC→Repository 重构）已由其他并行工作解决**（`origin/main` `ac3da7a`，`npx tsc --noEmit` 现为零错误），不再是阻塞项；执行本 Phase 前仍需先完成迁移脚本落地（Phase 1，需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4）。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。**Phase 0（止血现有 RPC→Repository 重构）已由其他并行工作解决**（`origin/main` `ac3da7a`，`npx tsc --noEmit` 现为零错误），不再是阻塞项。**2026-07-18 更新：迁移脚本落地（Phase 1）已由 DBA 团队部署到生产环境确认，本 Phase 已完成实现。**
 
 ### 5.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ⏳ 待开始 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` |
-| 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | ⏳ 待开始 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
-| 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | ⏳ 待开始 | ~60 | 设备同步状态：`device_sync_state` 读写 |
-| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ⏳ 待开始 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action` |
-| 5 | `src/core/ports/db/IExceptionRepository.ts` | ⏳ 待开始 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount` |
+| 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` |
+| 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | ✅ 已完成 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
+| 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | ✅ 已完成 | ~60 | 设备同步状态：`device_sync_state` 读写 |
+| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action` |
+| 5 | `src/core/ports/db/IExceptionRepository.ts` | ✅ 已完成 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount` |
 
 ### 5.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | ⏳ 待开始 |
-| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ⏳ 待开始 |
-| 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
+| 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | ✅ 已完成 |
+| 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | ✅ 已完成 |
+| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成 |
+| 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ✅ 已完成 |
 
 ### 5.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 5 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 5 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 5 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 5 个新实现
 
 ---
 
 ## Phase 6: 同步动作扩展仓储（2个）- Layer 3 配套（2026-07-16 新增，ADR-013）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16；对应 RPC 封装见同文档 §4。**执行本 Phase 前需先完成 Layer 3 迁移脚本修正**（需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4.1），当前本地脚本仍含 bug，尚未替换。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 3 迁移脚本已由 DBA 团队修正并部署到生产环境**（本地 `003_extend_sync_event_actions.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致），本 Phase 已完成实现。
 
 ### 6.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | ⏳ 待开始 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
-| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ⏳ 待开始 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑 |
+| 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | ✅ 已完成 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
+| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ✅ 已完成 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑 |
 
 ### 6.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | ✅ 已完成 |
+| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ✅ 已完成 |
 
 ### 6.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 2 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 2 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 2 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 2 个新实现
 
 ---
 
 ## Phase 7: 唯一追踪策略仓储（3个）- Layer 4 配套（2026-07-16 新增，ADR-014）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17；对应 RPC 封装见同文档 §4。**执行本 Phase 前需先完成 Phase 6（Layer 3）与 Layer 4 迁移脚本落地**（需与 DBA 团队协调确认，见 `docs/00-project/ROADMAP.md` Phase 1.4.2），本地目前无任何 Layer 4 迁移脚本草稿。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 4 迁移脚本已由 DBA 团队起草并部署到生产环境**（本地 `004_tracking_policy_missing_label.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致，部署顺序严格排在 Layer 3 之后），本 Phase 已完成实现。
 
 ### 7.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | ⏳ 待开始 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
-| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ⏳ 待开始 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied` |
-| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | ⏳ 待开始 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
+| 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | ✅ 已完成 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
+| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ✅ 已完成 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied` |
+| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | ✅ 已完成 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
 
 ### 7.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | ✅ 已完成 |
+| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ✅ 已完成 |
+| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | ✅ 已完成 |
 
 ### 7.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 3 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 3 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
 
 ---
 
@@ -240,5 +240,5 @@
 ---
 
 *创建时间：2025-07-10*
-*状态：Phase 1/3/4 已完成（已在 origin/main 核实）；Phase 5/6/7 待开始*
-*最近更新：2026-07-16 — 新增 Phase 6（Layer 3 同步动作扩展，ADR-013）与 Phase 7（Layer 4 唯一追踪策略，ADR-014）仓储规划；核实 Phase 0 止血/Phase 1/3/4 完成状态*
+*状态：Phase 1/3/4/5/6/7 全部已完成（已在 origin/main 核实，43 个端口 + 43 个实现全部落地）*
+*最近更新：2026-07-18 — DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境，Phase 5/6/7 状态由「待开始」更新为「已完成」，`device-api` 全部路由已接入*

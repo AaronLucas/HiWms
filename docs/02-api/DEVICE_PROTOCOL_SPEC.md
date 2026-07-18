@@ -641,7 +641,7 @@ Content-Type: application/json
 | `UNIDENTIFIED_GOODS` | INVENTORY | HIGH | 操作员明确标记无法识别商品身份（Layer 4 新增）——`product_id=NULL` 暂存，严重度高于 MISSING_LABEL |
 | `MANUAL_REVIEW` | OTHER | LOW | 其他未归入以上类型的操作员标记问题，通用兜底 |
 
-> **Layer 3/4 现状提示**：`REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS` 三个类型与 PUTAWAY/COUNT/PACK 的修正细节均**仅为设计文档**，本地迁移脚本未修正/未创建，需先与 DBA 团队协调确认，详见 `docs/00-project/ROADMAP.md` Phase 1.4.1/1.4.2。
+> **Layer 3/4 现状提示（2026-07-18 更新）**：`REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS` 三个类型与 PUTAWAY/COUNT/PACK 的修正细节已由 DBA 团队部署到生产环境并经开发团队接入应用层，详见 `docs/00-project/ROADMAP.md` Phase 1.4.1/1.4.2。
 
 **响应 (200)**:
 ```json
@@ -1332,6 +1332,7 @@ Retry-After: 30  # 仅 429 时返回
 | 1.0.0 | 2025-07-11 | 初版：完整 REST/WebSocket 协议、同步契约、作业操作、错误码 | 架构组 |
 | 2.0.0 | 2026-07-15 | DBA 团队重新设计任务领用/离线策略/异常机制并替换旧版实现：① 任务领用改为基于数据库唯一索引的 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` 具体语义，废弃笼统的"服务端分布式锁"描述；② 新增 `GET /sync/policy` 显式查询 `ALLOW`/`LIMITED`/`ONLINE_ONLY` 离线策略，设备不再凭任务类型名称自行假设；③ 废弃旧版 `POST /tasks/{id}/exception`、`.../complete` 内联 `exception` 对象、盘点 `difference_reason` 字段，统一为 `POST /exceptions`（`fn_raise_exception` + 5 类异常目录）与只读 `GET /exceptions`；④ 明确冷链/危化品合规触发器在线硬阻断与离线回放异常登记的不对称行为 | DBA 团队 / 架构组 |
 | 2.1.0 | 2026-07-16 | 异常类型目录新增 `REFERENCE_NOT_FOUND`（Layer 3）、`MISSING_LABEL`/`UNIDENTIFIED_GOODS`（Layer 4），COUNT 容差说明改为引用可配置的 `fn_get_count_tolerance`。**本次仅为文档补充，本地对应迁移脚本未修正/未创建**，需先与 DBA 团队协调确认 | DBA 团队 / 架构组 |
+| 2.2.0 | 2026-07-18 | DBA 团队确认 Layer 3/4 迁移脚本已部署到生产环境，现状提示更新为已部署状态 | DBA 团队 / 架构组 |
 
 ---
 
