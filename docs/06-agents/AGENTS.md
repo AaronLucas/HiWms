@@ -222,9 +222,9 @@ then:
 
 ---
 
-## 8. ECC（Everything Claude Code）治理集成方案（设计记录，第 1/2 项已执行，2026-07-18）
+## 8. ECC（Everything Claude Code）治理集成方案（设计记录，第 1/2/3 项已执行，2026-07-18）
 
-> **状态**：§8.2 导入、§8.4 并发测试试点已认领执行并通过验证，证据见 `docs/00-project/ROADMAP.md`"第 2 项验证记录"。§8.3 冲突映射及以后仍为设计记录，供开发团队认领执行。
+> **状态**：§8.2 导入、§8.3 冲突映射、§8.4 并发测试试点均已认领执行并通过验证——§8.3 映射结果见 §8.3.1/§8.3.2，§8.4 证据见 `docs/00-project/ROADMAP.md`"第 2 项验证记录"。§8.5 转正（第 4 项）需先经 `WORKFLOWS.md` §7.4 明确的人工确认暂停节点，尚未执行。
 
 ### 8.1 现状核实（已确认，非假设）
 - 插件已安装：`.claude/settings.json` 含 `"enabledPlugins": {"ecc@ecc": true}`，插件缓存位于 `~/.claude/plugins/cache/ecc/ecc/2.0.0/`
@@ -255,6 +255,32 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
   - `rules/common/git-workflow.md` ↔ `WORKFLOWS.md` §1/§4 Git 分支与部署策略
   - `rules/typescript/testing.md`（E2E 用 Playwright）↔ 当前项目零 E2E 测试现状，需登记为新增待办
 - **若某条交集找不到映射方式**：不构成回退理由，按"needs input"原则向项目负责人提出具体卡点，而不是自行搁置或跳过。
+
+#### 8.3.1 逐份映射表（第 3 项，2026-07-18 完成）
+
+> 比对范围：`.claude/rules/ecc/{common,typescript}/*.md`（15 个文件）↔ `docs/00-project/CONVENTIONS.md`、根目录 `CLAUDE.md`、`docs/04-workflows/WORKFLOWS.md`、`.github/workflows/ci.yml`、PR 模板。**处理方式**严格限定在"保留/替换/引用"三选一；对于现有文档完全空白（不构成"冲突"，但也不是"重复"）的条目，归入**替换**（视为"用 ECC 标准替换掉空白现状"），并在说明中标注"现状空白"，不新增第四种分类。
+
+| ECC 规则文件 | 关键内容 | 现有文档对应 | 处理方式 | 说明 |
+|---|---|---|---|---|
+| `common/development-workflow.md` | 编码前强制调研复用（gh search/Context7/Exa/包注册表）→ 计划→TDD→评审→提交 | 根 `CLAUDE.md`"自动规划与拆解"；无调研步骤 | **替换**（现状空白） | 项目现状完全没有"编码前搜索是否有现成实现"这一步，直接采纳 ECC 版本，作为 `CONVENTIONS.md` 新增一节 |
+| `common/performance.md` | 模型选型（Haiku/Sonnet/Opus）、上下文预算、扩展思考 | 无对应 | **保留**（不适用） | 这是 Claude Code 协作层配置，非项目代码规范，不写入项目文档 |
+| `common/hooks.md` | Hook 类型、TodoWrite 最佳实践 | 无对应 | **保留**（不适用） | 同上，工具层配置，不写入项目文档 |
+| `common/security.md` | 提交前安全清单、密钥管理、安全响应流程 | `CONVENTIONS.md` 无独立安全清单章节 | **替换**（现状空白） | `CONVENTIONS.md` 应新增"安全检查清单"一节直接采纳；`.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md`（DBA 专属，聚焦 SQL/迁移）**保留**，并列关系不冲突 |
+| `common/agents.md` | ECC 通用 Agent 清单与调用规则 | `docs/06-agents/AGENTS.md` 全篇 | **引用** | 项目 `AGENTS.md` 是"本项目实际配置了哪些 Agent/Skill/MCP"的记录，与 ECC 通用清单范围不同，加一句"通用 Agent 调用总则见 ECC `common/agents.md`"即可，不复制表格 |
+| `common/coding-style.md` | 不可变性(强制)、KISS/DRY/YAGNI、文件行数上限(200-400/800)、代码坏味道清单 | `CONVENTIONS.md` §2/§3 有命名与 SRP/DI/租户隔离，**没有**不可变性/行数上限/坏味道清单 | **保留**+**替换**（分项） | §2 命名、§3.1-3.3(SRP/DI/租户隔离) **保留**（项目专属，ECC 未覆盖）；不可变性、文件行数上限、坏味道清单是现状空白，**替换**补入 |
+| `common/testing.md` | 80% 覆盖率+强制 TDD+AAA 结构+描述式命名 | `CONVENTIONS.md` §6 有覆盖率数字/工具/位置；`ci.yml` lint job 带 `continue-on-error`，只在 `dev` 触发 | **保留**+**替换**（分项） | §6 覆盖率目标与工具选型 **保留**（数值已定义，不冲突）；`ci.yml` 的 `continue-on-error` 与分支范围**替换**为硬门禁——这是本次治理试点最初动因；AAA 结构/描述式命名**替换**（现状空白）补入 §6 |
+| `common/patterns.md` | 骨架项目复用策略、Repository 模式、API 响应格式 | `CONVENTIONS.md` §1（六边形架构+Ports&Adapters，`I{Entity}Repository`命名对应）、§4.4（响应格式） | **保留** | 项目版本比 ECC 通用版本更具体（六边形架构落地细节、`data/meta/error.code` 响应结构），无需替换；骨架复用策略**引用** development-workflow.md 条目 |
+| `common/code-review.md` | 评审时机/清单/CRITICAL-HIGH-MEDIUM-LOW 分级/Agent 分工 | `CONVENTIONS.md` §8（8 条自检+DBA 清单引用） | **引用** | §8 保留项目自己的自检清单，末尾加一句"严重级别分级见 ECC `common/code-review.md`"，不重复定义分级标准 |
+| `common/git-workflow.md` | Conventional Commits 格式、PR 流程（`git diff base...HEAD`、测试计划、`push -u`） | `CONVENTIONS.md` §7（含项目专属 scope 表：`sync`/`exception` 等） | **保留**+**替换**（分项） | §7 类型表+scope 表**保留**（信息量更大，项目专属 scope 不应丢失）；PR 流程实操细则（完整提交历史分析、diff base 对比、测试计划 TODO）现状空白，**替换**补进 `WORKFLOWS.md` §3.1 |
+| `typescript/coding-style.md` | interface/type 选择、避免 any、React props 类型化、Zod 校验、禁 console.log | `CONVENTIONS.md` §3.5（禁用 any、类型安全）；§9（禁用 console.log） | **保留**+**替换**（分项） | §3.5/§9 已有的条目**保留**；interface/type 选择准则、Zod 强制校验规范现状空白，**替换**补入；React props 类型化**保留**（暂不适用——项目前端阶段尚未启动，ROADMAP 阶段 2 全部未完成，留待前端阶段引入时再评估） |
+| `typescript/hooks.md` | Prettier/tsc PostToolUse、console.log Stop 审计 | 无对应 | **保留**（不适用） | 工具层配置，不写入项目文档 |
+| `typescript/patterns.md` | API 响应泛型、自定义 Hook、Repository 接口 | 同 `common/patterns.md` 判断 | **保留** | 项目 Repository/响应格式设计已更具体；自定义 Hook 模式当前无 React 场景，**保留**（暂不适用） |
+| `typescript/security.md` | 密钥用环境变量+启动时校验存在性 | `.env.example` 存在，但无"启动校验必需密钥"强制模式 | **替换**（现状空白） | `CONVENTIONS.md` 新增条款，要求关键密钥启动时显式校验并抛错 |
+| `typescript/testing.md` | E2E 用 Playwright | `CONVENTIONS.md` §6 已写"E2E 测试 \| Playwright" | **保留** | 规则已一致，无需修改；但项目当前 E2E 用例数为 0（ROADMAP 阶段 3 未完成），这是执行落地缺口而非规则冲突，登记为阶段 3 待办，不在本次治理试点范围内处理 |
+
+#### 8.3.2 映射过程中顺带发现的问题（非 ECC 规则本身，供"转正"阶段一并处理）
+1. **`WORKFLOWS.md` §3.2 与 `ci.yml` 实际内容脱节**：文档描述的 CI 流水线含 `lint`(ESLint+Prettier+TypeScript)/`test`/`build`/`security`(npm audit+Trivy)/`docs`(Markdown 链接检查) 5 个阶段；实际 `ci.yml` 只有 `lint`(仅 `tsc --noEmit`，无 ESLint/Prettier)/`test`/`build` 3 个 job，没有 security/docs 阶段。这是项目自身文档与代码的历史脱节，不属于 ECC 规则映射对象，但建议第 4 项"转正"改 `ci.yml` 时一并同步修正 `WORKFLOWS.md` §3.2 描述，避免文档继续失真。
+2. **PR 模板实际不存在**：`AGENTS.md` §8.5 第 3 步原文写"修改 ... PR 模板"，但 `find .github -type f` 核实项目目前没有 `.github/pull_request_template.md` 文件。第 4 项"转正"阶段这一步实际是**新建**而非**修改**，执行人应据此调整理解，不必去找一个不存在的文件。
 
 ### 8.4 试点任务设计（原子库存并发写入测试缺口）
 - **范围**：`fn_adjust_inventory_at_location`（Layer 3，`supabase/migrations/003_extend_sync_event_actions.sql`）的并发正确性，对应仓储 `SupabaseInventoryRepository`/相关调用方
@@ -288,3 +314,4 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 | 1.0.0 | 2025-07-01 | 初始版本：Agent 体系、Skill 体系、MCP 集成、规则引擎、上下文管理 |
 | 1.1.0 | 2026-07-18 | 新增 §8 ECC 治理集成方案（设计记录，试点方案：规则导入、冲突映射方法论、原子库存并发测试试点、转正步骤、失败处理原则），供开发团队认领执行 |
 | 1.2.0 | 2026-07-18 | 认领并执行 §8.2（规则导入）+ §8.4（原子库存并发测试试点），验证通过；§8.3 冲突映射及以后仍待认领 |
+| 1.3.0 | 2026-07-18 | 认领并完成 §8.3 冲突映射（新增 §8.3.1 逐份映射表 + §8.3.2 顺带发现问题）；§8.5 转正因 `WORKFLOWS.md` §7.4 暂停节点待人工确认后再执行 |

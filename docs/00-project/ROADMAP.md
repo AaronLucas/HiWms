@@ -328,7 +328,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 ## ECC（Everything Claude Code）治理试点方案设计记录 (2026-07-18)
 
-> **本节性质：设计已完成，第 1/2 项已认领执行（2026-07-18）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1、2 项，详见下表证据列。第 3 项（冲突映射）及以后仍待认领，完整设计依据见 `AGENTS.md` §8。
+> **本节性质：设计已完成，第 1/2/3 项已认领执行（2026-07-18）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1、2、3 项，详见下表证据列。**第 4 项（转正）触发 `WORKFLOWS.md` §7.4 明确列出的人工确认暂停节点，需项目负责人明确同意后才执行**，完整设计依据见 `AGENTS.md` §8。
 
 **背景**：核查发现 ECC 插件虽已安装，但其定义"80% 覆盖率 + 强制 TDD"等硬标准的 `rules/` 目录从未按官方要求手动导入，当前项目测试覆盖率实际极薄（仅 2 个测试文件/59 用例，覆盖 Zod 校验与鉴权中间件，核心业务逻辑与 43 个仓储实现零覆盖），且 CI（`ci.yml`）只在 `dev` 分支触发、lint job 带 `continue-on-error`，实际从未拦截过任何合并到 `main` 的 PR。
 
@@ -336,8 +336,8 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 |---------|--------|------|-------------|------|
 | 1 | 导入 ECC 规则（`rules/common` + `rules/typescript` → 项目本地 `.claude/rules/ecc/`，不提交） | ✅ 已完成 | `AGENTS.md` §8.2 | `.claude/rules/ecc/{common,typescript}/` 15 个文件已就位（`git status` 显示 `??`，未追踪，符合设计） |
 | 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ✅ 已完成 | `AGENTS.md` §8.4 | 新增 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`；详见本节下方"第 2 项验证记录" |
-| 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ⏳ 待认领（依赖第 2 项试点通过，已满足） | `AGENTS.md` §8.3 | — |
-| 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ⏳ 待认领（依赖第 3 项） | `AGENTS.md` §8.5 | — |
+| 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ✅ 已完成 | `AGENTS.md` §8.3 | 15 个规则文件逐份映射，见 `AGENTS.md` §8.3.1（映射表）+ §8.3.2（顺带发现的文档/CI 脱节问题） |
+| 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ⏸️ 待人工确认（`WORKFLOWS.md` §7.4 暂停节点，依赖已满足） | `AGENTS.md` §8.5 | — |
 | 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项） | `AGENTS.md` §8.5 第 5 步 | — |
 
 #### 第 2 项验证记录（2026-07-18）
