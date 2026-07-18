@@ -95,19 +95,48 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
         p_event_id: eventId,
       });
 
-      return { success: true, result };
+      // fn_apply_sync_event 对 WMS01/OTHERS 异常是"捕获后返回一个字符串"（比如
+      // 'COMPLIANCE_EXCEPTION'/'SYSTEM_EXCEPTION'/'REJECTED_UNKNOWN_ACTION'），不是抛出
+      // ——RPC 调用本身不会 throw。如果这里只要"调用没抛错"就返回 success:true，会把
+      // 合规违规等真实业务失败错误地报告成功。用事件最终的真实 status 判断，而不是猜
+      // 返回字符串的含义（也天然兼容 SKIPPED_NOT_PENDING：如果之前已经 APPLIED 过，
+      // 重新查到的 status 仍是 APPLIED，视为成功；如果之前已经是 EXCEPTION/REJECTED，
+      // 同样如实反映）。
+      const { data: finalEvent, error: refetchError } = await this.getClient()
+        .from(this.tableName)
+        .select('status')
+        .eq('id', eventId)
+        .single();
+
+      if (refetchError) throw refetchError;
+
+      return { success: finalEvent!.status === 'APPLIED', result };
     } catch (rpcError) {
       const errorMessage = rpcError instanceof Error ? rpcError.message : 'Unknown error';
 
-      // 更新事件状态为 EXCEPTION（sync_events 表没有 error_message 列，错误信息只通过
-      // 返回值传给调用方，不做持久化）
-      await this.getClient()
+      // 只有事件仍处于 PENDING（RPC 确实没跑完）才标记为 EXCEPTION；如果状态已经不是
+      // PENDING（比如服务端其实已经提交，只是客户端这边超时/连接中断导致这里进了
+      // catch），说明 sync_events 的真实状态已经由 SQL 函数自己落定，不应该被这里覆盖
+      // 成 EXCEPTION（sync_events 表没有 error_message 列，错误信息只通过返回值传给
+      // 调用方，不做持久化）。
+      const { data: current } = await this.getClient()
         .from(this.tableName)
-        .update({
-          status: 'EXCEPTION',
-          applied_at: new Date().toISOString(),
-        } as SyncEventUpdate)
-        .eq('id', eventId);
+        .select('status')
+        .eq('id', eventId)
+        .single();
+
+      if (current?.status === 'PENDING') {
+        const { error: updateError } = await this.getClient()
+          .from(this.tableName)
+          .update({
+            status: 'EXCEPTION',
+            applied_at: new Date().toISOString(),
+          } as SyncEventUpdate)
+          .eq('id', eventId);
+        if (updateError) {
+          console.error(`applyEvent: failed to mark event ${eventId} as EXCEPTION after RPC error`, updateError);
+        }
+      }
 
       return { success: false, error: errorMessage };
     }
