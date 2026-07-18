@@ -124,7 +124,7 @@
 ### 5.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ITaskClaimRepository.ts` | 🔨 已实现未验证 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` |
+| 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`。测试证据：`src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`（2026-07-19） |
 | 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
 | 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
 | 4 | `src/core/ports/db/ISyncEventRepository.ts` | 🔨 已实现未验证 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action` |
@@ -133,7 +133,7 @@
 ### 5.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | 🔨 已实现未验证 |
+| 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
 | 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | 🔨 已实现未验证 |
 | 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
 | 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | 🔨 已实现未验证 |
@@ -218,6 +218,16 @@
 | `TaskClaimRepository` | 竞争性任务租约（`fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`）——多设备抢同一任务，租约到期清扫也是定时并发触发 | 与 `fn_adjust_inventory_at_location` 同类读改写竞态；对应的 `fn_expire_task_claims` 定时任务本身尚未配置（见 Phase 1.4 待办） |
 | `SyncEventRepository` | 封装 `fn_apply_sync_event`/`fn_apply_pick_action`——所有 PDA 离线动作（拣货/上架/盘点/打包）都走这条收件箱 | 全系统并发最密集的入口，影响面最大 |
 | `PackingTaskItemRepository` | 打包明细行 + 同箱/同码去重逻辑 | 迁移脚本注释明确记录过真实历史 bug（盘点单不指定批次导致多建一行库存），不是假设性风险 |
+
+#### P0 第 1 项执行记录（`TaskClaimRepository`，2026-07-19）
+
+- 新增 `src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`，直接实例化 `SupabaseTaskClaimRepository`（而非绕过仓储层直接调 RPC），覆盖 4 个场景：
+  1. 同一工单并发 5 个领用请求，有且仅有 1 个成功（唯一约束 `uq_task_claims_active` 生效）；
+  2. 释放租约后唯一约束放行下一次领用；
+  3. `findActiveByWorkOrder`/`findActiveByUser` 仅返回 ACTIVE 状态、释放后查不到；
+  4. `expireTaskClaims` 清扫到期租约为 `EXPIRED`，并将未完成工单标记为 `EXCEPTION`。
+- 测试有效性验证：在本地一次性沙盒中临时 `DROP INDEX uq_task_claims_active` 后重跑，场景 1 按预期失败（5 个并发请求全部成功，暴露"重复领用"退化），确认测试确实能捕捉该回归；随后 `CREATE UNIQUE INDEX` 恢复，套件转绿。此过程只操作本地 Docker Postgres 沙盒，未改动任何迁移脚本文件。
+- **附带发现（环境问题，非代码缺陷）**：本地 `supabase start`/`db reset` 出来的 Docker Postgres 镜像里，迁移脚本以 `postgres` 角色建表，其默认权限（`ALTER DEFAULT PRIVILEGES`）只授予 `anon`/`authenticated`/`service_role` 角色 `TRUNCATE/REFERENCES/TRIGGER/MAINTAIN`，**不含 `SELECT/INSERT/UPDATE/DELETE`**，导致用 `service_role` key 走 PostgREST/`supabase-js` 时报 `permission denied for table tenants`（`42501`）。生产环境未见此问题（DBA 团队此前确认迁移已在生产正常运行，Device API 也在正常调用），推测是托管 Supabase 项目对新建表有平台级默认授权，本地 CLI 镜像未复现同样的默认值。为跑通本地测试，临时对本地沙盒执行了一次性 `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;`（未写入任何迁移文件，纯本地沙盒操作，重跑 `supabase db reset` 后会失效，需要时重新执行一次）。后续 P0/P1/P2 其余项目在本地跑测试时若遇到同样报错，可直接复用这条 GRANT 命令，不必重新排查。
 
 ### P1 — 涉及库存/资金准确性，其次做
 | 仓储 | 风险点 | 依据 |
