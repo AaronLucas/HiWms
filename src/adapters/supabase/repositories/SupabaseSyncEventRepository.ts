@@ -4,7 +4,7 @@
  * 对应表：sync_events
  */
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
-import { ISyncEventRepository, SyncEventRow, SyncEventInsert, SyncEventUpdate, SyncEventStatus, SyncActionType } from '@core/ports/db/ISyncEventRepository';
+import { ISyncEventRepository, SyncEventRow, SyncEventInsert, SyncEventUpdate, SyncEventStatus } from '@core/ports/db/ISyncEventRepository';
 import { WmsSupabaseClient } from '../SupabaseClient';
 import { SupabaseRpcClient } from '../rpc/SupabaseRpcClient';
 import type { Database } from '../../../types/database';
@@ -84,51 +84,28 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
     }
 
     try {
-      // 根据 action_type 调用对应的 RPC
-      let rpcName = 'fn_apply_sync_event';
-      const actionType = event.action_type as SyncActionType;
-
-      switch (actionType) {
-        case 'PICK':
-          rpcName = 'fn_apply_pick_action';
-          break;
-        case 'PUTAWAY':
-          rpcName = 'fn_apply_putaway_action';
-          break;
-        case 'COUNT':
-          rpcName = 'fn_apply_count_action';
-          break;
-        case 'PACK':
-          rpcName = 'fn_apply_pack_action';
-          break;
-        default:
-          rpcName = 'fn_apply_sync_event';
-      }
-
-      const result = await this.rpcClient.raw(rpcName as RpcFunctionName, {
+      // 统一走 fn_apply_sync_event 分发入口，不直接调用 fn_apply_pick_action 等专用函数。
+      // 003 迁移的设计明确把 WMS01（合规）/ OTHERS（未预期错误）异常处理收敛到这一层
+      // （"异常处理只在这一处，PICK/PUTAWAY/COUNT/PACK 不再各自处理"）——各专用函数自身
+      // 已不再包含这层异常捕获。若在这里绕过 fn_apply_sync_event 直接调用专用函数，合规
+      // 违规等场景会变成未捕获的原始 Postgres 错误，永远不会在 exceptions 表登记。
+      // fn_apply_sync_event 自身在内部完成 sync_events.status 的最终落定
+      // （APPLIED/EXCEPTION/REJECTED），无需在此再补一次 UPDATE。
+      const result = await this.rpcClient.raw('fn_apply_sync_event' as RpcFunctionName, {
         p_event_id: eventId,
       });
-
-      // 更新事件状态为 APPLIED
-      await this.getClient()
-        .from(this.tableName)
-        .update({
-          status: 'APPLIED',
-          applied_at: new Date().toISOString(),
-          result_data: result as any,
-        } as SyncEventUpdate)
-        .eq('id', eventId);
 
       return { success: true, result };
     } catch (rpcError) {
       const errorMessage = rpcError instanceof Error ? rpcError.message : 'Unknown error';
 
-      // 更新事件状态为 EXCEPTION
+      // 更新事件状态为 EXCEPTION（sync_events 表没有 error_message 列，错误信息只通过
+      // 返回值传给调用方，不做持久化）
       await this.getClient()
         .from(this.tableName)
         .update({
           status: 'EXCEPTION',
-          error_message: errorMessage,
+          applied_at: new Date().toISOString(),
         } as SyncEventUpdate)
         .eq('id', eventId);
 
@@ -269,11 +246,15 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
 
   /**
    * 标记事件为重复/忽略
+   * 注：sync_events.status 的 CHECK 约束只允许 PENDING/APPLIED/EXCEPTION/REJECTED，
+   * 没有 DUPLICATE 这个值，故落库为 REJECTED（去重也是一种"不予处理"）。表也没有
+   * 存储自由文本原因的列，`reason` 目前仅用于调用方语义表达，不做持久化。
    */
   async markAsDuplicate(eventId: string, reason: string): Promise<void> {
+    void reason;
     const { error } = await this.getClient()
       .from(this.tableName)
-      .update({ status: 'DUPLICATE', error_message: reason } as SyncEventUpdate)
+      .update({ status: 'REJECTED' } as SyncEventUpdate)
       .eq('id', eventId);
 
     if (error) throw error;
@@ -285,7 +266,7 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
   async retryEvent(eventId: string): Promise<void> {
     const { error } = await this.getClient()
       .from(this.tableName)
-      .update({ status: 'PENDING', error_message: null } as SyncEventUpdate)
+      .update({ status: 'PENDING' } as SyncEventUpdate)
       .eq('id', eventId);
 
     if (error) throw error;
@@ -306,8 +287,7 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
       PENDING: 0,
       APPLIED: 0,
       EXCEPTION: 0,
-      DUPLICATE: 0,
-      IGNORED: 0,
+      REJECTED: 0,
     };
 
     for (const row of (data as { status: SyncEventStatus }[]) || []) {

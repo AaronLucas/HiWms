@@ -127,7 +127,7 @@
 | 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`。测试证据：`src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`（2026-07-19） |
 | 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
 | 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
-| 4 | `src/core/ports/db/ISyncEventRepository.ts` | 🔨 已实现未验证 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action` |
+| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19） |
 | 5 | `src/core/ports/db/IExceptionRepository.ts` | 🔨 已实现未验证 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount` |
 
 ### 5.2 Supabase 实现
@@ -136,7 +136,7 @@
 | 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
 | 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | 🔨 已实现未验证 |
 | 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
-| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | 🔨 已实现未验证 |
+| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成 |
 | 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | 🔨 已实现未验证 |
 
 ### 5.3 索引更新
@@ -228,6 +228,21 @@
   4. `expireTaskClaims` 清扫到期租约为 `EXPIRED`，并将未完成工单标记为 `EXCEPTION`。
 - 测试有效性验证：在本地一次性沙盒中临时 `DROP INDEX uq_task_claims_active` 后重跑，场景 1 按预期失败（5 个并发请求全部成功，暴露"重复领用"退化），确认测试确实能捕捉该回归；随后 `CREATE UNIQUE INDEX` 恢复，套件转绿。此过程只操作本地 Docker Postgres 沙盒，未改动任何迁移脚本文件。
 - **附带发现（环境问题，非代码缺陷）**：本地 `supabase start`/`db reset` 出来的 Docker Postgres 镜像里，迁移脚本以 `postgres` 角色建表，其默认权限（`ALTER DEFAULT PRIVILEGES`）只授予 `anon`/`authenticated`/`service_role` 角色 `TRUNCATE/REFERENCES/TRIGGER/MAINTAIN`，**不含 `SELECT/INSERT/UPDATE/DELETE`**，导致用 `service_role` key 走 PostgREST/`supabase-js` 时报 `permission denied for table tenants`（`42501`）。生产环境未见此问题（DBA 团队此前确认迁移已在生产正常运行，Device API 也在正常调用），推测是托管 Supabase 项目对新建表有平台级默认授权，本地 CLI 镜像未复现同样的默认值。为跑通本地测试，临时对本地沙盒执行了一次性 `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;`（未写入任何迁移文件，纯本地沙盒操作，重跑 `supabase db reset` 后会失效，需要时重新执行一次）。后续 P0/P1/P2 其余项目在本地跑测试时若遇到同样报错，可直接复用这条 GRANT 命令，不必重新排查。
+
+#### P0 第 2 项执行记录（`SyncEventRepository`，2026-07-19）
+
+- 新增 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`，直接实例化 `SupabaseSyncEventRepository`，覆盖 `insertBatch`/`applyEvent`/`findPending`/`findAppliedSince`/`findByIdempotencyKey`/`getMaxDeviceSeq`/`markAsDuplicate`/`retryEvent`/`getStatusStats` 全部 9 个接口方法。
+- **测试过程中发现并确认 4 个真实缺陷（非假设性风险），处理方式各不相同**：
+
+  | 编号 | 问题 | 性质 | 处理结果 |
+  |---|---|---|---|
+  | Bug A | `fn_apply_pick_action`/`fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action`（`003_extend_sync_event_actions.sql`）用普通 `SELECT ... WHERE status='PENDING'` 判断可处理性，无 `FOR UPDATE` 行锁；真实并发下同一事件可被重复 APPLIED，库存被静默重复扣减。已用手工 psql 双并发复现：100 库存 + qty=10 的 PICK 动作并发调用两次，两次都返回 `APPLIED`，最终库存 80（应为 90） | SQL/migration 层 | **未修复**，登记为已知问题。用例 `test.fails(...)` 断言正确行为（当前预期失败）；一旦 DBA 加锁修正，此用例会转为"意外通过"使套件报错，届时改回普通 `test` 即完成验收。按项目流程，migration 改动由 DBA 团队修正部署（CLAUDE.md 暂停节点 14） |
+  | Bug B | `applyEvent`（成功路径）/`markAsDuplicate`/`retryEvent` 用 `as SyncEventUpdate`/`as any` 类型断言写入 `sync_events` 表实际不存在的 `error_message`/`result_data` 列；PostgREST 报错但未检查 `error`，每次调用都静默失败 | TS 应用代码 | **已修复**：删除对不存在列的写入（`applyEvent` 成功路径本就冗余——SQL 函数已自行落定 `status`/`applied_at`） |
+  | Bug C | 003 迁移设计注释明确写了"异常处理只在 `fn_apply_sync_event` 这一处，PICK/PUTAWAY/COUNT/PACK 不再各自处理"，但 `applyEvent` 的 switch 语句为这 4 种动作直接调用专用函数，绕开了 `fn_apply_sync_event` 的统一异常处理包装；实测确认 `fn_apply_putaway_action`（004 版本）内部确实已不含 WMS01/OTHERS 异常处理——冷链违规等场景会变成未捕获的原始 Postgres 错误，永远不会在 `exceptions` 表登记 | TS 应用代码（路由设计） | **已修复**：删除 switch 路由，`applyEvent` 统一调用 `fn_apply_sync_event`；新增回归测试验证未知 `action_type` 事件能被正确标记为 `REJECTED`（该分支只有 dispatcher 自己知道，能证明确实未绕开统一入口） |
+  | Bug D | `ISyncEventRepository.ts` 的 `SyncEventStatus` 类型定义为 `PENDING/APPLIED/EXCEPTION/DUPLICATE/IGNORED`，但 `sync_events.status` 的 `chk_sync_events_status` CHECK 约束（已用 `psql \d` 核实）只允许 `PENDING/APPLIED/EXCEPTION/REJECTED`——`DUPLICATE`/`IGNORED` 不是合法值，`REJECTED` 反而未被建模；实测 `markAsDuplicate()` 在真实库上必定抛 `violates check constraint` | TS 端口接口与真实 schema 契约不一致 | **已修复**：`SyncEventStatus` 改为 `PENDING\|APPLIED\|EXCEPTION\|REJECTED`；`markAsDuplicate()` 落库为 `REJECTED`；`getStatusStats()` 统计桶同步调整 |
+
+- **本地验证环境**：复用 P0 第 1 项遗留的本地一次性 Docker Postgres 沙盒（未重新 `db reset`，Schema 状态与第 1 项一致），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑新增文件：9 个用例全部通过 + 1 个 `test.fails`（Bug A，预期失败，非红灯）。
 
 ### P1 — 涉及库存/资金准确性，其次做
 | 仓储 | 风险点 | 依据 |

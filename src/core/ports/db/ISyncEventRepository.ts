@@ -10,7 +10,8 @@ export type SyncEventRow = Tables<'sync_events'>;
 export type SyncEventInsert = TablesInsert<'sync_events'>;
 export type SyncEventUpdate = TablesUpdate<'sync_events'>;
 
-export type SyncEventStatus = 'PENDING' | 'APPLIED' | 'EXCEPTION' | 'DUPLICATE' | 'IGNORED';
+// 与 sync_events.status 的 chk_sync_events_status CHECK 约束保持一致（已用 psql \d 核实）。
+export type SyncEventStatus = 'PENDING' | 'APPLIED' | 'EXCEPTION' | 'REJECTED';
 export type SyncActionType =
   | 'PICK'
   | 'PUTAWAY'
