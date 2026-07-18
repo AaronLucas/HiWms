@@ -11,7 +11,9 @@ export type SyncEventInsert = TablesInsert<'sync_events'>;
 export type SyncEventUpdate = TablesUpdate<'sync_events'>;
 
 // 与 sync_events.status 的 chk_sync_events_status CHECK 约束保持一致（已用 psql \d 核实）。
-export type SyncEventStatus = 'PENDING' | 'APPLIED' | 'EXCEPTION' | 'REJECTED';
+// PROCESSING 由 005_concurrency_hardening_V1.sql 引入：fn_apply_sync_event 原子抢占
+// PENDING -> PROCESSING 后才继续执行业务逻辑，是"已被抢占、正在处理中"的瞬时中间态。
+export type SyncEventStatus = 'PENDING' | 'PROCESSING' | 'APPLIED' | 'EXCEPTION' | 'REJECTED';
 export type SyncActionType =
   | 'PICK'
   | 'PUTAWAY'

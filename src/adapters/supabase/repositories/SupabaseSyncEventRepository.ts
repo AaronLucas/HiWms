@@ -314,6 +314,7 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
 
     const stats: Record<SyncEventStatus, number> = {
       PENDING: 0,
+      PROCESSING: 0,
       APPLIED: 0,
       EXCEPTION: 0,
       REJECTED: 0,

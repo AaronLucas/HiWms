@@ -1,5 +1,13 @@
 # Bug 报告：`sync_events` apply 系函数（`003_extend_sync_event_actions.sql`）
 
+> **状态：已修复并验证（2026-07-19）**——DBA 团队交付 `supabase/migrations/005_concurrency_hardening_V1.sql`
+> （`.readonly/unWMS_Concurrency_Hardening_V1.sql`/`.md`）。本地应用该迁移后，本文件下方 Bug A/Bug B
+> 对应的两个 `test.fails(...)` 回归探针连续 5 轮整套重跑全部稳定"意外通过"，已改回普通 `test(...)`
+> 并入 PR #23，作为长期回归防护。DBA 顺着同一模式（"判断状态"与"转移状态"不在同一条原子语句里）
+> 额外排查全部 `.sql` 文件，一并修复了本报告未提及的 `fn_resolve_exception`（更严重——会导致库存
+> 复盘收尾动作被执行两次）、`fn_expire_task_claims`、`fn_cross_dock_timeout_sweep` 三处同类问题，
+> 详见 `unWMS_Concurrency_Hardening_V1.md`。以下内容保留作为问题原始记录。
+>
 > **提交给**：DBA 团队
 > **发现方式**：给 `SupabaseSyncEventRepository`（Phase 5 P0 第 2 项）补测试覆盖时，用本地一次性 Postgres 沙盒 + 真实并发/边界场景发现，均已复现验证，非推测。
 > **对应本次代码改动**：PR #23（`test(sync-events): backfill concurrency coverage for SyncEventRepository`），测试文件 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts` 里的两个 `test.fails(...)` 用例分别对应下面两个 bug，作为回归探针——一旦修好，这两个用例会从"预期失败"变成"意外通过"，让 CI 报错提醒把 `test.fails` 改回普通 `test`。
