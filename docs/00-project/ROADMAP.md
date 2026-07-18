@@ -338,6 +338,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ✅ 已完成 | `AGENTS.md` §8.4 | 新增 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`；详见本节下方"第 2 项验证记录" |
 | 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ⏳ 待认领（依赖第 2 项试点通过，已满足） | `AGENTS.md` §8.3 | — |
 | 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ⏳ 待认领（依赖第 3 项） | `AGENTS.md` §8.5 | — |
+| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项） | `AGENTS.md` §8.5 第 5 步 | — |
 
 #### 第 2 项验证记录（2026-07-18）
 
@@ -346,6 +347,5 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 - **有效性验证（非自证）**：将本地沙盒数据库中的函数临时替换为"去掉 `FOR UPDATE` 加锁"的旧版非原子实现（仅在运行中的本地 Postgres 会话内替换，未改动任何迁移文件），重跑同一测试可靠失败（`expected 165 to be` 实收 `80`，即 5 个并发请求中只有最后一次写入生效，验证了 lost update）；随后 `supabase db reset` 恢复正确迁移版本，测试重新转绿
 - **成功标准核对**：① 真实并发 ✅ ② 断言正确且能可靠检出退化 ✅ ③ 未触碰迁移脚本/`.readonly` ✅
 - **CI 影响**：测试默认通过 `describe.skipIf(!RUN_DB_CONCURRENCY_TESTS)` 跳过，不需要本地 Postgres 的常规 `npm run test`/CI 运行不受影响（已验证：既有 59 个用例全部通过，新测试计 1 个 skipped）
-| 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ⏳ 待认领（依赖第 4 项） | `AGENTS.md` §8.5 第 5 步 |
 
 > **失败/迭代处理原则**（详见 `AGENTS.md` §8.6）：环境/工具故障（本地 Postgres 起不来等）与"是否保留规则导入"无关，只需重试；设计映射做不出来不构成回退理由，应向项目负责人提出具体卡点；真正合理的回退只剩"业务判断明确不采用"或"ECC 承诺机制被证实不存在"两类客观外部因素。
