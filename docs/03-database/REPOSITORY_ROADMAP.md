@@ -127,7 +127,7 @@
 | 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`。测试证据：`src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`（2026-07-19） |
 | 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
 | 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
-| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19） |
+| 4 | `src/core/ports/db/ISyncEventRepository.ts` | ⚠️ 已验证，含 2 项未修复已知问题 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19）。**注意**：这不是"验证通过、可放心用"的 ✅，而是"TS 层已验证/该修的已修，但底层 SQL 函数（1）缺行锁导致真实并发下会重复扣库存、（2）未知 action_type 不登记进统一异常领域"（P0 第 2 项执行记录 Bug A/Bug E，均未修复，待 DBA，详见 `BUG_REPORT_SYNC_EVENT_APPLY_FUNCTIONS_2026-07-19.md`），生产上高并发场景仍有风险，跟踪状态见下方"测试补齐优先级排序"章节 |
 | 5 | `src/core/ports/db/IExceptionRepository.ts` | 🔨 已实现未验证 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount` |
 
 ### 5.2 Supabase 实现
@@ -136,7 +136,7 @@
 | 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
 | 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | 🔨 已实现未验证 |
 | 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
-| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成 |
+| 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ⚠️ 已验证，含 2 项未修复已知问题（同上，见 5.1 第 4 行说明） |
 | 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | 🔨 已实现未验证 |
 
 ### 5.3 索引更新
@@ -232,7 +232,7 @@
 #### P0 第 2 项执行记录（`SyncEventRepository`，2026-07-19）
 
 - 新增 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`，直接实例化 `SupabaseSyncEventRepository`，覆盖 `insertBatch`/`applyEvent`/`findPending`/`findAppliedSince`/`findByIdempotencyKey`/`getMaxDeviceSeq`/`markAsDuplicate`/`retryEvent`/`getStatusStats` 全部 9 个接口方法。
-- **测试过程中发现并确认 4 个真实缺陷（非假设性风险），处理方式各不相同**：
+- **测试过程中发现并确认 5 个真实缺陷（非假设性风险），处理方式各不相同**：
 
   | 编号 | 问题 | 性质 | 处理结果 |
   |---|---|---|---|
@@ -240,9 +240,11 @@
   | Bug B | `applyEvent`（成功路径）/`markAsDuplicate`/`retryEvent` 用 `as SyncEventUpdate`/`as any` 类型断言写入 `sync_events` 表实际不存在的 `error_message`/`result_data` 列；PostgREST 报错但未检查 `error`，每次调用都静默失败 | TS 应用代码 | **已修复**：删除对不存在列的写入（`applyEvent` 成功路径本就冗余——SQL 函数已自行落定 `status`/`applied_at`） |
   | Bug C | 003 迁移设计注释明确写了"异常处理只在 `fn_apply_sync_event` 这一处，PICK/PUTAWAY/COUNT/PACK 不再各自处理"，但 `applyEvent` 的 switch 语句为这 4 种动作直接调用专用函数，绕开了 `fn_apply_sync_event` 的统一异常处理包装；实测确认 `fn_apply_putaway_action`（004 版本）内部确实已不含 WMS01/OTHERS 异常处理——冷链违规等场景会变成未捕获的原始 Postgres 错误，永远不会在 `exceptions` 表登记 | TS 应用代码（路由设计） | **已修复**：删除 switch 路由，`applyEvent` 统一调用 `fn_apply_sync_event`；新增回归测试验证未知 `action_type` 事件能被正确标记为 `REJECTED`（该分支只有 dispatcher 自己知道，能证明确实未绕开统一入口） |
   | Bug D | `ISyncEventRepository.ts` 的 `SyncEventStatus` 类型定义为 `PENDING/APPLIED/EXCEPTION/DUPLICATE/IGNORED`，但 `sync_events.status` 的 `chk_sync_events_status` CHECK 约束（已用 `psql \d` 核实）只允许 `PENDING/APPLIED/EXCEPTION/REJECTED`——`DUPLICATE`/`IGNORED` 不是合法值，`REJECTED` 反而未被建模；实测 `markAsDuplicate()` 在真实库上必定抛 `violates check constraint` | TS 端口接口与真实 schema 契约不一致 | **已修复**：`SyncEventStatus` 改为 `PENDING\|APPLIED\|EXCEPTION\|REJECTED`；`markAsDuplicate()` 落库为 `REJECTED`；`getStatusStats()` 统计桶同步调整 |
+  | Bug E | `fn_apply_sync_event` 处理未知 `action_type` 的 `ELSE` 分支只把 `sync_events.status` 改成 `REJECTED`，没有像同一函数里 `WMS01`/`OTHERS` 两个异常分支那样调用 `fn_raise_exception`（`exception_type_catalog` 已有语义匹配的现成分类 `SYNC_APPLY_FAILURE`，不缺新能力，纯粹是这一分支漏写）——设备发送系统不认识的动作类型时会被静默拒绝，`exceptions` 表/`GET /exceptions` 完全看不到，违反"统一异常领域覆盖所有需关注场景"的设计目标 | SQL/migration 层 | **未修复**，登记为已知问题，与 Bug A 一并写入 `docs/03-database/BUG_REPORT_SYNC_EVENT_APPLY_FUNCTIONS_2026-07-19.md` 提交 DBA。同样用 `test.fails(...)` 做回归探针 |
 
+- **未采用的替代方案**：Bug E 曾考虑在 TS 层（`applyEvent` 收到 `REJECTED_UNKNOWN_ACTION` 后自行补调 `fn_raise_exception`）绕开改 migration，技术上可行但放弃——项目里所有"登记异常"的逻辑目前都收敛在 SQL 函数内部（003 迁移注释明确的设计原则），只有这一条从 TS 层外挂会破坏一致性、增加以后遗漏维护的风险，故仍归类为 SQL 层改动，交由 DBA 处理。
 - **本地验证环境**：复用 P0 第 1 项遗留的本地一次性 Docker Postgres 沙盒（未重新 `db reset`，Schema 状态与第 1 项一致），全程未连接生产库，未触碰任何迁移脚本文件。
-- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑新增文件：9 个用例全部通过 + 1 个 `test.fails`（Bug A，预期失败，非红灯）。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑新增文件：9 个用例全部通过 + 2 个 `test.fails`（Bug A、Bug E，均为预期失败，非红灯）。Bug A 的 `test.fails` 反复运行观测到约 1/7 概率"意外通过"（并发竞态测试固有的时序抖动，不代表已修复，见测试文件头部注释）。
 
 ### P1 — 涉及库存/资金准确性，其次做
 | 仓储 | 风险点 | 依据 |
