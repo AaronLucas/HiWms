@@ -334,7 +334,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 | 认领顺序 | 执行项 | 状态 | 详细设计位置 | 证据 |
 |---------|--------|------|-------------|------|
-| 1 | 导入 ECC 规则（`rules/common` + `rules/typescript` → 项目本地 `.claude/rules/ecc/`，不提交） | ✅ 已完成 | `AGENTS.md` §8.2 | `.claude/rules/ecc/{common,typescript}/` 15 个文件已就位（`git status` 显示 `??`，未追踪，符合设计） |
+| 1 | 导入 ECC 规则（`rules/common` + `rules/typescript` → 项目本地 `.claude/rules/ecc/`） | ✅ 已完成（2026-07-18 经项目负责人确认后提交入库） | `AGENTS.md` §8.2 | `.claude/rules/ecc/{common,typescript}/` 15 个文件已提交入库，成为全队 Claude Code session 自动读取的规则 |
 | 2 | 试点：原子库存并发写入测试（`fn_adjust_inventory_at_location`，本地一次性 Postgres，零 DBA/生产依赖） | ✅ 已完成 | `AGENTS.md` §8.4 | 新增 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`；详见本节下方"第 2 项验证记录" |
 | 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ✅ 已完成 | `AGENTS.md` §8.3 | 15 个规则文件逐份映射，见 `AGENTS.md` §8.3.1（映射表）+ §8.3.2（顺带发现的文档/CI 脱节问题） |
 | 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ✅ 已完成（人工确认后执行） | `AGENTS.md` §8.5 | `CONVENTIONS.md` 新增 §10-§13 + §6/§7/§8 追加引用；`WORKFLOWS.md` §3.1.1/§3.2 更新；`ci.yml` main/dev 双触发 + 移除 `continue-on-error`；新建 `.github/pull_request_template.md`；根 `CLAUDE.md` 新增 ECC 规则索引 |
