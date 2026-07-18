@@ -16,7 +16,11 @@ export type ExceptionEventInsert = TablesInsert<'exception_events'>;
 
 export type ExceptionTypeCatalogRow = Tables<'exception_type_catalog'>;
 
-export type ExceptionStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'CLOSED' | 'ESCALATED';
+// 与 exceptions.status 的 chk_exceptions_status CHECK 约束保持一致（已用 psql \d /
+// pg_constraint 核实）。生命周期见 unWMS_Offline_Sync_Exception_Domain_V1.md §4.2：
+// PENDING_REVIEW（默认起点）-> CONFLICT（处理中发现情况复杂，即"升级"）/ RESOLVED（已处理）/
+// DISMISSED（已知悉但判定不需要处理，误报）。
+export type ExceptionStatus = 'PENDING_REVIEW' | 'CONFLICT' | 'RESOLVED' | 'DISMISSED';
 export type ExceptionDomain =
   | 'inventory_exception'
   | 'compliance_exception'
@@ -107,6 +111,13 @@ export interface IExceptionRepository {
     resolvedBy: string;
     resolution: string;
     actionTaken: string;
+    /**
+     * 领域专属恢复数据透传（合并进 fn_resolve_exception 的 p_resolution_details）。
+     * 比如 INVENTORY_SHORTAGE 类型要靠这里的 confirmed_available_qty 才能让
+     * fn_confirm_inventory_recount 真正调整库存，不传就只是把状态标成 RESOLVED，
+     * 不会触发任何业务表联动。
+     */
+    resolutionDetails?: Record<string, unknown>;
   }): Promise<ExceptionRow>;
 
   /**
@@ -122,7 +133,9 @@ export interface IExceptionRepository {
   }): Promise<ExceptionRow>;
 
   /**
-   * 升级异常（转派上级/跨部门）
+   * 升级异常（转派上级/跨部门）：转移到 CONFLICT 状态（真实 CHECK 约束里没有独立的
+   * ESCALATED 值，"升级"在这个状态机里就是 PENDING_REVIEW -> CONFLICT，见 ExceptionStatus）。
+   * 只允许从 PENDING_REVIEW/CONFLICT 升级；已 RESOLVED/DISMISSED 的异常不允许再被升级。
    */
   escalateException(id: string, tenantId: string, escalatedTo: string, reason: string): Promise<ExceptionRow>;
 
