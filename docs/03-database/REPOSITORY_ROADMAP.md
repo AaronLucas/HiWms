@@ -206,6 +206,36 @@
 
 ---
 
+## 测试补齐优先级排序（Phase 5/6/7，2026-07-19）
+
+> 背景：ECC 治理试点第 5 步（见 `docs/06-agents/AGENTS.md` §8.5.3）已把 Phase 5/6/7 共 20 个仓储文件（10 端口 + 10 实现）从"✅ 已完成"下调为"🔨 已实现未验证"。给这 20 个文件真正补齐测试覆盖是独立的、较大的工程，不应一次性平推，按以下风险排序分批执行；每一组建议参照 `fn_adjust_inventory_at_location` 试点的打法（本地一次性 Postgres + 真实并发请求 + 故意退化验证测试有效性，见 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`）。
+
+**排序逻辑**：并发写入竞态 > 有真实历史 bug 记录 > 涉及合规/安全 > 涉及库存资金准确性 > 纯配置查询。
+
+### P0 — 并发/竞态高风险，优先做
+| 仓储 | 风险点 | 依据 |
+|---|---|---|
+| `TaskClaimRepository` | 竞争性任务租约（`fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`）——多设备抢同一任务，租约到期清扫也是定时并发触发 | 与 `fn_adjust_inventory_at_location` 同类读改写竞态；对应的 `fn_expire_task_claims` 定时任务本身尚未配置（见 Phase 1.4 待办） |
+| `SyncEventRepository` | 封装 `fn_apply_sync_event`/`fn_apply_pick_action`——所有 PDA 离线动作（拣货/上架/盘点/打包）都走这条收件箱 | 全系统并发最密集的入口，影响面最大 |
+| `PackingTaskItemRepository` | 打包明细行 + 同箱/同码去重逻辑 | 迁移脚本注释明确记录过真实历史 bug（盘点单不指定批次导致多建一行库存），不是假设性风险 |
+
+### P1 — 涉及库存/资金准确性，其次做
+| 仓储 | 风险点 | 依据 |
+|---|---|---|
+| `ExceptionRepository` | `fn_confirm_inventory_recount` 涉及库存盘点确认；统一异常领域是其他模块出错时的兜底安全网 | 若本身有 bug，属于"保护机制失效"级别风险 |
+| `SyncPolicyRepository` | `fn_get_sync_policy` 决定任务 `ALLOW`/`LIMITED`/`ONLINE_ONLY` | 读错会让危险品/冷链等本应强制在线的操作被当成允许离线，ADR-011 专门强调的合规/安全场景 |
+| `MissingLabelRepository` | `fn_generate_internal_lpn` 生成内部追踪码 | 编码生成类逻辑并发下容易出现唯一性冲突，直接影响漏码货物追踪链路 |
+
+### P2 — 配置类查询，风险相对低，可以放后面
+| 仓储 | 风险点 | 依据 |
+|---|---|---|
+| `InventoryCountPolicyRepository` | `fn_get_count_tolerance`，"全局默认+租户覆盖"模式 | `CONVENTIONS.md` §5.4.8 记录过此模式设计上的坑，但主要是配置读取，不涉及并发写入 |
+| `TenantTrackingPolicyRepository` | `fn_requires_unique_tracking` | 同上，策略查询类，读多写少 |
+| `UnidentifiedGoodsRepository` | `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` | 未识别货物是低频边缘场景，出错影响范围小 |
+| `DeviceSyncStateRepository` | 设备同步状态读写 | 结构最简单，基本是状态标记，历史上没有 bug 记录 |
+
+---
+
 ## 执行规则
 
 ### 每个文件创建流程
