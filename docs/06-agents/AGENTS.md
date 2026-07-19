@@ -317,6 +317,10 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 
 **后续补齐工程（不在本次 5 项任务范围内）**：把 Phase 5/6/7 这 20 个"🔨已实现未验证"的文件真正补齐测试覆盖，是独立的大工程，不应该一次性平推，建议按风险优先级排期（参照 §8.4 试点思路：优先覆盖并发敏感/资金结算/历史上真实出过 bug 的仓储），具体排期留待项目负责人后续决定后再展开。
 
+#### 8.5.4 第 5 步后续状态更新（2026-07-19 补齐基础测试，2026-07-20 ECC 复核）
+- **2026-07-19**：Phase 5/6/7 共 10 个仓储（20 个文件）已补齐集成测试，新增 10 个 `src/__tests__/integration/**/*.concurrency.test.ts` 文件，直接实例化 Supabase 仓储、在本地一次性 Postgres 沙盒中运行真实并发请求，并按 ECC 测试方法论做了故意退化验证。补齐过程中发现并修复了 10+ 个真实生产缺陷（schema 列名错误、CHECK 约束不匹配、PostgREST upsert 与分区索引不兼容、去重键错误、路由字段命名错误等），详见 `docs/03-database/REPOSITORY_ROADMAP.md` §8 各执行记录。
+- **2026-07-20 经 ECC 多视角规划复核**（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析）确认：基础测试已存在，`REPOSITORY_ROADMAP.md` 详细表格已恢复为"✅ 已完成"，但文档顶部摘要与状态语义说明仍停留在"🔨 已实现未验证"，已同步修正。同时识别出下一阶段仍需处理的行为覆盖缺口与工程化缺口（`processPendingEvents` bug、CI 未启用 DB 并发测试、RLS/权限路径未覆盖、缺少 HTTP 路由层测试等），详见 `docs/03-database/REPOSITORY_ROADMAP.md` §8「剩余缺口清单」。
+
 ### 8.6 失败/迭代处理原则
 - **环境/工具层面的失败**（本地 Postgres 起不来、agent 产出不可用）与"是否保留 `.claude/rules/ecc/` 导入"是两条独立的轴，前者只需修环境/换执行方式重试，与后者无关，不得混为一谈
 - **设计/映射做不出来**：视为方法论本身的 bug，应继续深挖或向项目负责人提出具体卡点（needs input），不构成执行人自行终止或回退的理由
@@ -335,3 +339,4 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 | 1.5.0 | 2026-07-18 | 新增 §8.5.2：`main` 分支保护经人工确认后实际生效（GitHub Rulesets API），并记录顺带修复的 `pnpm-lock.yaml` 脱节问题 |
 | 1.6.0 | 2026-07-18 | 新增 §8.5.3：完成 ECC 治理试点第 5 步——`REPOSITORY_ROADMAP.md` 状态语义三档化，回溯下调 Phase 5/6/7 共 20 个"✅已完成"标记；ECC 治理试点第 1-5 项全部完成 |
 | 1.7.0 | 2026-07-18 | 项目负责人确认后，`.claude/rules/ecc/` 15 个规则文件正式提交入库，成为全队 Claude Code session 自动读取的规则（§8.5.1 第 4 步遗留决定的收尾） |
+| 1.8.0 | 2026-07-20 | 新增 §8.5.4：Phase 5/6/7 基础测试补齐完成（2026-07-19）与 ECC 多视角复核结果（2026-07-20）；文档状态不一致已修正；剩余缺口清单落地到 `REPOSITORY_ROADMAP.md` §8 |

@@ -188,4 +188,4 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 ### 7.4 ECC 治理集成相关（2026-07-18 新增，设计详见 `docs/06-agents/AGENTS.md` §8）
 - ~~执行"转正"提交前~~ **已于 2026-07-18 经人工确认后执行**（`.claude/rules/ecc/` 本身仍不提交；联动的 `CONVENTIONS.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板改动已提交）
 - ~~修改 `.github/workflows/ci.yml` 触发分支范围、移除 lint job 的 `continue-on-error` 前~~ **已于 2026-07-18 经人工确认后执行**：`ci.yml` 现已 `main`/`dev` 双触发，lint job 硬门禁
-- 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）——**本轮未执行**，ECC 治理试点第 5 项仍待认领，见 `docs/00-project/ROADMAP.md`
+- 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）——**已于 2026-07-18 经人工确认后执行**；**2026-07-19 Phase 5/6/7 已补齐基础集成测试，2026-07-20 经 ECC 多视角复核修正了文档状态不一致并识别出剩余缺口**，详见 `docs/00-project/ROADMAP.md` ECC 治理试点后续补齐工程、`docs/03-database/REPOSITORY_ROADMAP.md` §8「剩余缺口清单」

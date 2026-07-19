@@ -328,7 +328,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 ## ECC（Everything Claude Code）治理试点方案设计记录 (2026-07-18)
 
-> **本节性质：设计已完成，第 1-5 项全部已认领执行（2026-07-18，第 4/5 项经人工确认后执行）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1-5 项全部，详见下表证据列。5 项均落地后，ECC 治理试点方案设计记录本身进入完成状态；后续如需对已有 43 个仓储实现（尤其 Phase 5/6/7 那 20 个"🔨已实现未验证"的文件）真正补齐测试覆盖，属于独立的、按风险优先级排期的补齐工程，不在本节 5 项任务范围内，完整设计依据见 `AGENTS.md` §8。
+> **本节性质：设计已完成，第 1-5 项全部已认领执行（2026-07-18，第 4/5 项经人工确认后执行）**——原设计记录（本文件 + `docs/06-agents/AGENTS.md` §8 + `docs/04-workflows/WORKFLOWS.md` §7.4）不含实际操作；本次按认领顺序执行了第 1-5 项全部，详见下表证据列。**2026-07-19 Phase 5/6/7 共 20 个仓储文件已补齐基础集成测试；2026-07-20 经 ECC 多视角复核确认文档状态不一致已修正，同时识别出下一阶段行为覆盖与工程化缺口，详见 `docs/03-database/REPOSITORY_ROADMAP.md` §8「剩余缺口清单」与 `AGENTS.md` §8.5.4。** 这些缺口属于独立的、按风险优先级排期的补齐工程，不在本节 5 项任务范围内。
 
 **背景**：核查发现 ECC 插件虽已安装，但其定义"80% 覆盖率 + 强制 TDD"等硬标准的 `rules/` 目录从未按官方要求手动导入，当前项目测试覆盖率实际极薄（仅 2 个测试文件/59 用例，覆盖 Zod 校验与鉴权中间件，核心业务逻辑与 43 个仓储实现零覆盖），且 CI（`ci.yml`）只在 `dev` 分支触发、lint job 带 `continue-on-error`，实际从未拦截过任何合并到 `main` 的 PR。
 
@@ -339,6 +339,23 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | 3 | 冲突映射：`rules/common/*` + `rules/typescript/*` 逐份对照现有文档，产出"保留/替换/引用"映射表 | ✅ 已完成 | `AGENTS.md` §8.3 | 15 个规则文件逐份映射，见 `AGENTS.md` §8.3.1（映射表）+ §8.3.2（顺带发现的文档/CI 脱节问题） |
 | 4 | 转正：按映射表修改 `CONVENTIONS.md`/`CLAUDE.md`/`WORKFLOWS.md`/`ci.yml`/PR 模板，提交入库 | ✅ 已完成（人工确认后执行） | `AGENTS.md` §8.5 | `CONVENTIONS.md` 新增 §10-§13 + §6/§7/§8 追加引用；`WORKFLOWS.md` §3.1.1/§3.2 更新；`ci.yml` main/dev 双触发 + 移除 `continue-on-error`；新建 `.github/pull_request_template.md`；根 `CLAUDE.md` 新增 ECC 规则索引 |
 | 5 | `REPOSITORY_ROADMAP.md` 状态语义升级为三档（⏳/🔨/✅，✅须附测试证据），回溯核查 Phase 5/6/7 现有"✅已完成"标记 | ✅ 已完成（人工确认后执行） | `AGENTS.md` §8.5 第 5 步 | `REPOSITORY_ROADMAP.md` 新增三档状态语义说明；Phase 5/6/7 共 20 个"✅已完成"标记下调为"🔨已实现未验证"；仓库唯一协作者即项目负责人本人，若有仓库外团队成员需告知，通知内容与是否发送由项目负责人自行决定 |
+
+#### 后续补齐工程（2026-07-20 经 ECC 多视角复核识别）
+
+以上 5 项落地后，ECC 治理试点方案设计记录本身进入完成状态。Phase 5/6/7 基础测试已于 2026-07-19 补齐，但仍存在以下缺口需按风险优先级排期：
+
+| 优先级 | 任务 | 证据/详细设计 | 跟踪位置 |
+|---|---|---|---|
+| **CRITICAL** | 修复 `processPendingEvents` 实现 bug 并补测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **CRITICAL** | 在 CI 中启用本地 Postgres DB 并发测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **HIGH** | 补充 `authenticated` 角色 RLS/权限路径测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **HIGH** | 补充 `device-api` 路由层 HTTP 集成测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **HIGH** | 补齐 `TaskClaimRepository.extendLease` 并发测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **HIGH** | 修复 `SyncEventRepository.applyEvent` catch 分支并补测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **MEDIUM** | 评估 `fn_apply_pack_action` 库存扣减语义一致性 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **MEDIUM** | 文档化 `containers` 表跨租户可见性设计决策 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+
+> 处理原则：CRITICAL → HIGH → MEDIUM 分批推进；每一项修复后必须走 `/ecc:code-review` skill 评审。
 
 #### 第 2 项验证记录（2026-07-18）
 
