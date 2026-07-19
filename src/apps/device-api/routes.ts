@@ -173,19 +173,18 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
 
-        // 调用仓储层查询生效策略
-        const policy = await syncPolicyRepo.getSyncPolicy({ tenantId, taskType, zoneType });
+        // 调用仓储层查询生效策略（按优先级已在仓储层处理）
+        const policy = await syncPolicyRepo.getEffectivePolicy(tenantId, taskType, zoneType);
 
-        // 返回匹配策略（按优先级已在仓储层处理）
-        const result = policy || {
-          offlineMode: 'ALLOW',
-          maxOfflineDurationSeconds: 28800,
-          requiresTaskClaim: false,
-          conflictStrategy: 'SERVER_WINS',
-          policyId: 'default',
-        };
-
-        res.json(result);
+        // 响应字段严格对齐 SYNC_API_CONTRACT.md §5.2 文档契约（snake_case，仅这两个
+        // 字段）——与本文件其余 Device API 响应的字段命名约定一致（event_id/next_cursor/
+        // lpn_code/exception_id 等）。offline_mode 是冷链/危化品"是否必须强制在线"判定
+        // 直接依赖的字段，此前曾错误地以 camelCase（offlineMode）返回，按文档实现的客户端
+        // 读取 offline_mode 只会得到 undefined。
+        res.json({
+          offline_mode: policy.offlineMode,
+          max_offline_duration_seconds: policy.maxOfflineDurationSeconds,
+        });
       } catch (error) {
         console.error('GET /sync/policy error:', error);
         res.status(500).json({ error: 'Failed to fetch sync policy' });
