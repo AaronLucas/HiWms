@@ -3,13 +3,21 @@
 ## 项目概览
 - **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表
 - **聚合根数**：43 个
-- **已完成**：5 个（Phase 1/3/4 核心域，已在 `origin/main` 落地）
-- **待完成**：38 个（Phase 5/6/7 全部待开始）
+- **已完成**：15 个（Phase 1/3/4 核心域 5 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
+- **待完成**：28 个（Phase 1/3/4 剩余未实现 20 个 + Phase 2 出库作业 8 个，详见各 Phase 表格）
 - **分 7 个优先级阶段实施**
+
+> **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
 
 > **2026-07-15 更新说明**：Phase 5 已按 DBA 新方案（操作同步 + 预分工 + 统一异常领域，见 ADR-011）整体替换——原规划的 `SyncQueue`/`SyncSession`/`SyncConflict`/`SyncCursor`/`PendingUpload`/`DeviceState` 6 个仓储对应的是旧版状态同步设计，其表名/职责与新方案的 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exceptions` 完全不匹配，已废弃。
 >
-> **2026-07-16 更新说明（已核实，非推测）**：直接核对 `origin/main` 实际代码后确认：Phase 1/3/4（核心域仓储）已完整实现且 `npx tsc --noEmit` 零错误——此前记录的"文档滞后"提示已解决。但 **Phase 5（Layer 2 离线同步/异常领域仓储）目前 100% 未实现**——`src/types/database.ts` 里虽已有 Layer 2 的 7 张表类型，但 `src/core/ports/db/`、`src/adapters/supabase/repositories/` 里没有任何一个对应端口或实现，也没有任何设备端路由（代码库目前只有 `src/apps/admin-api`）。新增 **Phase 6（Layer 3 同步动作扩展仓储）与 Phase 7（Layer 4 唯一追踪策略仓储）**，二者在 `database.ts` 里连表类型都不存在（尚未迁移），是比 Phase 5 更前置的空白。
+> **2026-07-16 更新说明（已核实，非推测）**：直接核对 `origin/main` 实际代码后确认：Phase 1/3/4（核心域仓储）已完整实现且 `npx tsc --noEmit` 零错误——此前记录的"文档滞后"提示已解决。
+>
+> **2026-07-18 更新说明**：Phase 5/6/7 代码已实现、`npx tsc --noEmit` 零错误，但按 ECC 治理新标准（✅ 须附测试证据）当时无测试覆盖，状态暂时下调为"🔨 已实现未验证"。
+>
+> **2026-07-19 更新说明**：Phase 5/6/7 共 10 个仓储（20 个文件）已补齐集成测试证据，测试中修复了 10+ 个真实生产缺陷，状态恢复为"✅ 已完成"。
+>
+> **2026-07-20 更新说明**：经 ECC 多视角规划复核，修正了本文档顶部摘要与状态语义说明仍停留在"🔨 已实现未验证"的不一致问题；同时识别出行为覆盖缺口与工程化缺口，详见 §9「测试补齐完成记录与剩余缺口」。
 
 ---
 
@@ -117,9 +125,9 @@
 
 ## Phase 5: 离线同步 / 统一异常领域仓储（5个） - P0 同步配套（2026-07-15 按 ADR-011 重写，替代原 PDA 同步专用仓储规划）
 
-> **状态语义三档说明（2026-07-18，ECC 治理试点第 5 项，见 `docs/06-agents/AGENTS.md` §8.5 第 5 步）**：`⏳ 待开始`（代码未写）/ `🔨 已实现未验证`（`tsc` 通过、可编译运行，但没有自动化测试覆盖业务逻辑正确性）/ `✅ 已完成`（前两者之上，附带可运行的测试证据路径）。**Phase 5/6/7 全部 20 个仓储文件（10 端口 + 10 实现）此前标记为"✅ 已完成"，经核查 `src/__tests__/` 下没有任何一个文件的测试覆盖这些仓储，不符合新标准，已回溯下调为"🔨 已实现未验证"**——这不代表代码本身有问题（`npx tsc --noEmit` 仍为零错误，Device API 路由也确实在调用它们），只是此前"已完成"的判定标准里没有测试证据这一环，现在按新标准如实标注。**团队通知**：本仓库当前唯一协作者为项目负责人本人（`gh api repos/.../collaborators` 核实），若另有仓库外的团队成员需要知晓此次状态调整以避免误判为功能倒退，通知内容由项目负责人自行决定是否发送，不在本次变更中代为发出。
+> **状态语义三档说明（2026-07-18，ECC 治理试点第 5 项，见 `docs/06-agents/AGENTS.md` §8.5 第 5 步）**：`⏳ 待开始`（代码未写）/ `🔨 已实现未验证`（`tsc` 通过、可编译运行，但没有自动化测试覆盖业务逻辑正确性）/ `✅ 已完成`（前两者之上，附带可运行的测试证据路径）。**Phase 5/6/7 全部 20 个仓储文件（10 端口 + 10 实现）已于 2026-07-19 补齐集成测试证据，本表已按 ✅ 已完成 标记并附测试路径；但仍存在行为覆盖缺口与 CI 未启用本地 Postgres 并发测试等问题，详见 §9「测试补齐完成记录与剩余缺口」**。
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。**Phase 0（止血现有 RPC→Repository 重构）已由其他并行工作解决**（`origin/main` `ac3da7a`，`npx tsc --noEmit` 现为零错误），不再是阻塞项。**2026-07-18 更新：迁移脚本落地（Phase 1）已由 DBA 团队部署到生产环境确认，本 Phase 代码已实现但测试证据缺失（见上方状态语义说明）。**
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.10-2.14；对应 RPC 封装见同文档 §4。**Phase 0（止血现有 RPC→Repository 重构）已由其他并行工作解决**（`origin/main` `ac3da7a`，`npx tsc --noEmit` 现为零错误），不再是阻塞项。**2026-07-18 更新：迁移脚本落地（Phase 1）已由 DBA 团队部署到生产环境确认；2026-07-19 本 Phase 代码已补齐集成测试证据，详见 §5.1/§5.2 各条目与 §9 执行记录。**
 
 ### 5.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
@@ -147,7 +155,7 @@
 
 ## Phase 6: 同步动作扩展仓储（2个）- Layer 3 配套（2026-07-16 新增，ADR-013）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 3 迁移脚本已由 DBA 团队修正并部署到生产环境**（本地 `003_extend_sync_event_actions.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致），本 Phase 代码已实现但测试证据缺失（状态语义说明见 Phase 5 顶部）。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.15-2.16；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 3 迁移脚本已由 DBA 团队修正并部署到生产环境**（本地 `003_extend_sync_event_actions.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致），本 Phase 代码已实现并补齐集成测试证据（2026-07-19）。
 
 ### 6.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
@@ -169,7 +177,7 @@
 
 ## Phase 7: 唯一追踪策略仓储（3个）- Layer 4 配套（2026-07-16 新增，ADR-014）
 
-> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 4 迁移脚本已由 DBA 团队起草并部署到生产环境**（本地 `004_tracking_policy_missing_label.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致，部署顺序严格排在 Layer 3 之后），本 Phase 代码已实现但测试证据缺失（状态语义说明见 Phase 5 顶部）。
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.17；对应 RPC 封装见同文档 §4。**2026-07-18 更新：Layer 4 迁移脚本已由 DBA 团队起草并部署到生产环境**（本地 `004_tracking_policy_missing_label.sql` 经 `diff` 核对与 `.readonly/` 参考文件逐字节一致，部署顺序严格排在 Layer 3 之后），本 Phase 代码已实现并补齐集成测试证据（2026-07-19）。
 
 ### 7.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
@@ -206,9 +214,11 @@
 
 ---
 
-## 测试补齐优先级排序（Phase 5/6/7，2026-07-19）
+## 测试补齐完成记录与剩余缺口（Phase 5/6/7，2026-07-19 完成基础补齐，2026-07-20 复核）
 
-> 背景：ECC 治理试点第 5 步（见 `docs/06-agents/AGENTS.md` §8.5.3）已把 Phase 5/6/7 共 20 个仓储文件（10 端口 + 10 实现）从"✅ 已完成"下调为"🔨 已实现未验证"。给这 20 个文件真正补齐测试覆盖是独立的、较大的工程，不应一次性平推，按以下风险排序分批执行；每一组建议参照 `fn_adjust_inventory_at_location` 试点的打法（本地一次性 Postgres + 真实并发请求 + 故意退化验证测试有效性，见 `src/__tests__/integration/inventory/fn_adjust_inventory_at_location.concurrency.test.ts`）。
+> 背景：ECC 治理试点第 5 步（见 `docs/06-agents/AGENTS.md` §8.5.3）曾于 2026-07-18 把 Phase 5/6/7 共 20 个仓储文件（10 端口 + 10 实现）从"✅ 已完成"下调为"🔨 已实现未验证"。随后于 **2026-07-19 完成基础测试补齐**，新增 10 个集成测试文件直接实例化各 Supabase 仓储，在本地一次性 Postgres 沙盒中运行真实并发请求，并按 `fn_adjust_inventory_at_location` 试点的打法做了故意退化验证。补齐过程中发现并修复了 10+ 个真实生产缺陷（详见本节各执行记录）。
+>
+> **2026-07-20 经 ECC 多视角规划复核**（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析）确认：基础集成测试已存在，但仍存在**行为覆盖缺口**与**工程化缺口**，见下方「剩余缺口清单」。这些缺口按风险优先级跟踪，不应一次性平推。
 
 **排序逻辑**：并发写入竞态 > 有真实历史 bug 记录 > 涉及合规/安全 > 涉及库存资金准确性 > 纯配置查询。
 
@@ -342,6 +352,25 @@
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（10 个文件）共 66 个用例全部通过，未见跨文件相互干扰。
 - **本轮测试补齐工程（Phase 5/6/7，共 10 个仓储）至此全部完成**：P0 三项（TaskClaim/SyncEvent/PackingTaskItem）、P1 三项（Exception/SyncPolicy/MissingLabel）、P2 四项（InventoryCountPolicy/TenantTrackingPolicy/UnidentifiedGoods/DeviceSyncState）。
 
+### 剩余缺口清单（2026-07-20 ECC 多视角复核）
+
+基础集成测试虽已补齐，但 `ecc:pr-test-analyzer` 与 `ecc:database-reviewer` 指出以下缺口仍需后续排期处理。这些缺口不否定当前"✅ 已完成"状态（已有测试证据），但属于下一阶段质量加固工作：
+
+| 优先级 | 缺口 | 影响 | 建议处理方向 | 跟踪任务 |
+|---|---|---|---|---|
+| **CRITICAL** | `processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖 | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
+| **CRITICAL** | DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
+| **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
+| **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
+| **HIGH** | `SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试 | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
+| **HIGH** | `SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error` | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
+| **MEDIUM** | `fn_apply_pack_action` 仍调用旧 `adjust_inventory`（按 SKU 找最近一行扣减），而 PICK/PUTAWAY/COUNT 已改用 `fn_adjust_inventory_at_location` | 打包路径若扫描具体库位/容器，扣减可能落到不匹配库存行，造成账实不符 | 评估是否需 DBA 统一改为按 `(location_id, product_id, batch)` 精确扣减 | #5 |
+| **MEDIUM** | `containers` 表无 `tenant_id` 列且无 RLS，`lpn_code` 全局唯一 | 跨租户 LPN 冲突或扫描错误可能导致串货风险 | 文档化设计决策（跨租户共享容器资源）或评估是否需要 RLS/tenant_id | #5 |
+| **MEDIUM** | `MissingLabelRepository.generateInternalLpn` 对同一 `exception_id` 重复调用的幂等性未明确 | 可能生成孤儿容器或重复 LPN | 业务决策后补测试 | #4 |
+| **MEDIUM** | 缺乏故意退化验证的 CI 自动化 | 无法持续证明测试确实能捕捉回归 | 新增非阻塞 `test-effectiveness` job，对关键文件抽样执行"临时还原旧实现 → 测试应变红 → 恢复" | #6 |
+
+> **处理原则**：以上缺口按"CRITICAL → HIGH → MEDIUM"分批推进；CRITICAL 项必须先修复，再进入下一轮功能开发。每一项修复后必须走 `/ecc:code-review` skill 评审。
+
 ---
 
 ## 执行规则
@@ -380,5 +409,5 @@
 ---
 
 *创建时间：2025-07-10*
-*状态：Phase 1/3/4 共 25 个端口+25 个实现已完成（含测试覆盖，已在 origin/main 核实）；Phase 5/6/7 共 10 个端口+10 个实现代码已落地、`tsc` 零错误、`device-api` 全部路由已接入，但按 ECC 治理标准回溯核查后测试证据缺失，已下调为「🔨 已实现未验证」（2026-07-18，见 Phase 5 顶部状态语义说明）*
-*最近更新：2026-07-18 — ECC 治理试点第 5 项：状态语义升级为三档（⏳/🔨/✅），回溯下调 Phase 5/6/7 的 20 个「✅ 已完成」标记为「🔨 已实现未验证」（代码本身未变，`tsc`/生产部署状态不受影响，仅补测试证据要求）*
+*状态：Phase 1/3/4 共 25 个端口+25 个实现已完成（含测试覆盖，已在 origin/main 核实）；Phase 5/6/7 共 10 个端口+10 个实现代码已落地、`tsc` 零错误、`device-api` 全部路由已接入，**已于 2026-07-19 补齐集成测试证据并恢复为「✅ 已完成」**；2026-07-20 经 ECC 多视角复核修正了文档状态不一致，并识别出行为覆盖缺口与工程化缺口，详见 §9「测试补齐完成记录与剩余缺口」*
+*最近更新：2026-07-20 — ECC 多视角规划复核：修正本文档顶部/底部摘要仍停留在「🔨 已实现未验证」的不一致问题；新增 §9「剩余缺口清单」跟踪下一阶段的 CRITICAL/HIGH/MEDIUM 缺口（`processPendingEvents` bug、CI 未启用本地 Postgres 并发测试、RLS/权限路径未覆盖、HTTP 路由层测试缺失等）*
