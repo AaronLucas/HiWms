@@ -175,14 +175,14 @@
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
-| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | 🔨 已实现未验证 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied` |
+| 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ✅ 已完成 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied`。测试证据：`src/__tests__/integration/exceptions/fn_generate_internal_lpn.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实 bug**：`findContainerByLpn`/`findSystemGeneratedContainers` 过滤 `containers` 表上不存在的 `tenant_id` 列，每次调用必定报错（`42703`），详见 P1 第 3 项执行记录 |
 | 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
 
 ### 7.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 |
-| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | 🔨 已实现未验证 |
+| 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ✅ 已完成（同上，见 7.1 第 2 行说明） |
 | 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 |
 
 ### 7.3 索引更新
@@ -282,6 +282,16 @@
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 2 轮重跑，6 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2 项、P1 第 1 项既有用例；本 worktree 基于 main 分叉，不含尚未合并的 P0 第 3 项 PR）共 29 个用例全部通过，未见跨文件相互干扰。
 - **未在本次范围内处理**：`GET /sync/policy` 字段映射的路由层修复目前没有 HTTP 层回归测试覆盖——项目现有测试基建（`vitest` + 直接实例化仓储）不含 `supertest` 类的 Express 路由集成测试模式，引入新测试范式超出本次"仓储测试补齐"任务范围，修复本身已通过人工核对 `SYNC_API_CONTRACT.md`/`routes.ts`/`tsc` 确认正确性。若后续项目补充 Device API 路由层集成测试基建，应把 `GET /sync/policy` 的 snake_case 字段回归纳入覆盖范围。
+
+#### P1 第 3 项执行记录（`MissingLabelRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）**：`generateInternalLpn`/`confirmLabelApplied` 是真实生产路径（`src/apps/device-api/routes.ts` 的 `POST /missing-label/generate`/`POST /missing-label/confirm` 直接调用）；`findContainerByLpn`/`findSystemGeneratedContainers`/`createContainer` 目前无真实调用方（与 P0 第 3 项同类），仍按既定优先级补齐测试。
+- **发现并修复的真实缺陷（纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：`findContainerByLpn`/`findSystemGeneratedContainers` 原实现对 `containers` 表过滤 `.eq('tenant_id', tenantId)`，但 `containers` 表本身**没有 `tenant_id` 列**（已用 `psql \d containers` 核实：id/lpn_code/parent_container_id/container_type/current_location_id/is_sealed/last_opened_at/status/created_at/updated_at/lpn_source，无 tenant_id，无 RLS 策略——容器是跨租户共享资源，租户隔离通过 `inventory.tenant_id` 间接表达）。过滤不存在的列会被 PostgREST 拒绝（`42703 column containers.tenant_id does not exist`，已用 `curl` 直连 PostgREST 端点实测复现），两个方法此前**每次调用必定抛异常**。修复：`IMissingLabelRepository`/`SupabaseMissingLabelRepository` 去掉这两个方法上从未真实生效过的 `tenantId` 参数。**同样的 bug 复制粘贴进了 `SupabaseUnidentifiedGoodsRepository`，本次未处理，留给 P2 对应项**。
+- **测试有效性验证的特殊情况**：这次修复改变了方法签名（去掉一个参数），不是纯内部逻辑修复，经典的"还原实现、重跑同一份测试确认变红"手法在这里不完全适用——用修复后签名写的测试去调用还原后的旧实现时，JS 不校验参数个数，旧方法内部的 `tenantId` 会是 `undefined`，`.eq('tenant_id', undefined)` 被 supabase-js 静默跳过而不是真的发送 `tenant_id=eq.undefined`，因此"重跑同一测试"不会转红，不能证明有效性。改用直接对本地 PostgREST 端点发起 `curl` 请求（`containers?tenant_id=eq.<真实uuid>`）复现 `42703` 错误，作为该项修复的独立经验证据，不依赖测试文件本身的回归对比。
+- **一个记录在案、本次不处理的开放行为**：`fn_generate_internal_lpn` 对同一 `exception_id` 重复调用没有幂等保护，每次都新建容器并覆盖 `exceptions.details` 里的最新码，旧容器变孤儿。`.readonly/unWMS_Tracking_Policy_Missing_Label_V1.md` 设计文档只描述了"生成→打印→扫码确认"一次性流程，未明确讨论重复调用场景——按测试方法论第 5 步的标准，这是设计意图未覆盖的开放问题，不是确定性 bug，未推动 `.sql` 改动，测试里用一个用例如实记录当前行为供后续参考。
+- 新增 `src/__tests__/integration/exceptions/fn_generate_internal_lpn.concurrency.test.ts`，直接实例化 `SupabaseMissingLabelRepository`，覆盖 `generateInternalLpn`/`confirmLabelApplied`（含扫码不一致拒绝、未生成码时拒绝两条防护路径）/`findContainerByLpn`/`findSystemGeneratedContainers`/`createContainer` 全部方法，以及重复生成行为的记录性用例。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，7 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2 项、P1 第 1/2 项既有用例；本 worktree 基于 main 分叉，不含尚未合并的 P0 第 3 项 PR）共 30 个用例全部通过，未见跨文件相互干扰。
 
 ### P2 — 配置类查询，风险相对低，可以放后面
 | 仓储 | 风险点 | 依据 |
