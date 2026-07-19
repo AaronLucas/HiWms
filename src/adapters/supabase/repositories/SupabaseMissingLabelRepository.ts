@@ -95,13 +95,15 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
 
   /**
    * 按 LPN 码查找容器
+   * containers 表没有 tenant_id 列（已用 psql \d containers 核实，也没有 RLS 策略），
+   * lpn_code 全局唯一（UNIQUE 约束）——原实现过滤一个不存在的列，PostgREST 会报错，
+   * 每次调用必定抛异常。
    */
-  async findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null> {
+  async findContainerByLpn(lpnCode: string): Promise<ContainerRow | null> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('lpn_code', lpnCode)
-      .eq('tenant_id', tenantId)
       .single();
 
     if (error) {
@@ -112,13 +114,12 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
   }
 
   /**
-   * 查找系统生成的容器
+   * 查找系统生成的容器（同上，containers 无 tenant_id，不做租户过滤）
    */
-  async findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]> {
+  async findSystemGeneratedContainers(): Promise<ContainerRow[]> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('tenant_id', tenantId)
       .eq('lpn_source', 'SYSTEM_GENERATED')
       .order('created_at', { ascending: false });
 

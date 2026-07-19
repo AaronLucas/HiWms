@@ -37,13 +37,16 @@ export interface IMissingLabelRepository {
 
   /**
    * 按 LPN 码查找容器
+   * containers 表本身没有 tenant_id 列（已用 psql \d containers 核实，也没有 RLS 策略），
+   * lpn_code 全局唯一（UNIQUE 约束），因此本方法不做租户过滤——不是遗漏，是这张表的
+   * 真实设计如此。
    */
-  findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null>;
+  findContainerByLpn(lpnCode: string): Promise<ContainerRow | null>;
 
   /**
-   * 查找系统生成的容器
+   * 查找系统生成的容器（同上，containers 无 tenant_id，不做租户过滤）
    */
-  findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]>;
+  findSystemGeneratedContainers(): Promise<ContainerRow[]>;
 
   // ========== 异常查询 ==========
 
