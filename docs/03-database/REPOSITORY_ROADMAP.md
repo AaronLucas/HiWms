@@ -153,13 +153,13 @@
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
-| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | 🔨 已实现未验证 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑 |
+| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ✅ 已完成 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑。测试证据：`src/__tests__/integration/packing/fn_apply_pack_action.concurrency.test.ts`（2026-07-19）。测试过程中发现并修复 3 处纯 TS 应用层缺陷（去重键误用 `product_id`、`container_id` 为空时跳过去重、先查后写竞态），详见 P0 第 3 项执行记录 |
 
 ### 6.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 |
-| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | 🔨 已实现未验证 |
+| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ✅ 已完成 |
 
 ### 6.3 索引更新
 - [x] `src/core/ports/db/index.ts` - 导出 2 个新端口
@@ -245,6 +245,22 @@
 - **未采用的替代方案**：Bug E 曾考虑在 TS 层（`applyEvent` 收到 `REJECTED_UNKNOWN_ACTION` 后自行补调 `fn_raise_exception`）绕开改 migration，技术上可行但放弃——项目里所有"登记异常"的逻辑目前都收敛在 SQL 函数内部（003 迁移注释明确的设计原则），只有这一条从 TS 层外挂会破坏一致性、增加以后遗漏维护的风险，故仍归类为 SQL 层改动，交由 DBA 处理。
 - **本地验证环境**：复用 P0 第 1 项遗留的本地一次性 Docker Postgres 沙盒（未重新 `db reset`，Schema 状态与第 1 项一致），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑新增文件：9 个用例全部通过 + 2 个 `test.fails`（Bug A、Bug E，均为预期失败，非红灯）。Bug A 的 `test.fails` 反复运行观测到约 1/7 概率"意外通过"（并发竞态测试固有的时序抖动，不代表已修复，见测试文件头部注释）。
+
+#### P0 第 3 项执行记录（`PackingTaskItemRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）先于写测试进行**：全仓库搜索确认 `packingTaskItems`（该仓储 DI 注册名）在 `src/apps/device-api/routes.ts`、`src/apps/admin-api/*` 均无任何调用方。真实的 PDA 打包动作走 `syncEventRepo.insertBatch(...)` → SQL 端 `fn_apply_sync_event` → `fn_apply_pack_action`（`003_extend_sync_event_actions.sql`），后者已经在 SQL 层用 `INSERT ... ON CONFLICT (packing_task_id, order_line_id[, container_id]) DO UPDATE` 原子完成去重累加，且已由 DBA 团队本地验证过（`SYNC_ACTIONS_EXTENSION.md` §9）。也就是说本项测试的是一条当前系统里尚未被任何真实入口调用的应用层代码路径——本表 P0 排序时记录的"迁移脚本注释明确记录过真实历史 bug"，核实后是 003 迁移里 `container_id` 可空导致 `NULL <> NULL` 去重失效的那处注释（`packing_task_items` 表定义正上方），该问题已在 SQL 层用两条局部唯一索引修正（`uq_packing_task_items_no_container`/`uq_packing_task_items_with_container`），并非本仓储此前独有的未修复问题；本仓储自身的 3 个 bug（见下）是独立发现的、SQL 层已修正但 TS 应用层从未对齐的问题。
+- 新增 `src/__tests__/integration/packing/fn_apply_pack_action.concurrency.test.ts`，直接实例化 `SupabasePackingTaskItemRepository`，覆盖 `findByPackingTask`/`findByOrderLine`/`findByContainer`/`findByProduct`/`insertBatch`/`updateQty`/`assignContainer`/`getStatsByPackingTask`/`deleteByPackingTask` 全部 9 个接口方法。
+- **测试过程中发现并修复 3 个真实缺陷（均为纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：
+
+  | 编号 | 问题 | 处理结果 |
+  |---|---|---|
+  | Bug 1 | `insertBatch()` 原实现按 `product_id`（经 `findByProduct`）判断去重匹配，但真实唯一索引与 SQL 端 `fn_apply_pack_action` 的 `ON CONFLICT` 目标列都是 `order_line_id`。同一打包任务下两个不同订单行凑巧引用同一 SKU 时，原实现会把它们的数量错误合并进同一行 | **已修复**：改为按 `packing_task_id + order_line_id (+ container_id)` 查找匹配行，与真实约束/SQL 端语义对齐 |
+  | Bug 2 | 原去重条件 `dedupe && item.packing_task_id && item.product_id && item.container_id` 对 `container_id` 做真值检查——`container_id` 为 NULL（"同码/批量容器不追踪具体箱子"，文档明确的正常业务场景）时直接跳过去重分支。但该场景下真实唯一索引 `uq_packing_task_items_no_container` 依然生效，同一订单行第二次打包（不指定容器）必然撞上该索引，原实现会抛出未捕获的 PostgREST 23505 错误 | **已修复**：去重判断条件改为 `packing_task_id && order_line_id`，不再要求 `container_id` 为真值，`container_id` 为 NULL/非 NULL 两种情况均正确判定匹配 |
+  | Bug 3 | 即便命中去重分支，原实现也是"SELECT 判断是否存在 → 决定 INSERT 还是 UPDATE"的非原子读改写模式，与 P0 第 1/2 项发现的"读改写竞态"同类——真实并发下多个请求可能都在 SELECT 阶段读到"不存在"，其中落败者会直接抛出未捕获的唯一索引冲突 | **已修复**：改为乐观并发重试循环（插入撞 23505 或更新因 `updated_at` 比对失败都视为"被并发请求抢先"，重新读取后重试）。**首次实现只设 5 次重试上限，8 路真实并发测试下复现了"落败者耗尽重试次数"的失败**（根因：多个请求在同一轮读到完全相同的 `updated_at` 快照时集体重试，每轮只能保证恰好 1 个请求胜出，最坏情形所需轮数与并发请求数同量级）；追加随机退避（`Math.random() * 10 * attempt` 毫秒）打散整队重试模式，并将上限提高到 20 次后，8 路并发连续 3 轮重跑稳定全部成功 |
+
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效，`schema_migrations` 跟踪表缺 005 记录但函数体已核实包含 005 引入的 `PROCESSING` 中间态，不影响本项测试），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，9 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 5 个 DB 并发测试文件（含 P0 第 1/2 项、P1 第 1 项既有用例）共 32 个用例全部通过，未见跨文件相互干扰。
+- **测试有效性验证**：临时用 `git show HEAD:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：Bug 1 的用例最初误用 `container_id: null` 夹具、未能触发原实现里"仅当 `container_id` 为真值才进入（错误）去重分支"的条件，对照原始实现"意外通过"——据此把该用例改为两条订单行共用同一非空 `container_id`，才能真正命中 `product_id` 误判去重的路径；修正后 Bug 1/2/3 三个用例对原始实现均按预期失败（`uq_packing_task_items_no_container` 唯一索引冲突、`updateQty` 竞态崩溃各 1 处），其余 6 个用例不受影响仍通过；随后恢复修复后的实现，全部 9 个用例转绿。
 
 ### P1 — 涉及库存/资金准确性，其次做
 | 仓储 | 风险点 | 依据 |

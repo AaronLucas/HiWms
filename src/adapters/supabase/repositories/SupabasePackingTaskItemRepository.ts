@@ -88,7 +88,12 @@ export class SupabasePackingTaskItemRepository extends SupabaseBaseRepository<
 
   /**
    * 批量插入明细行（支持同箱/同码去重）
-   * 如果同一 packing_task_id + product_id + container_id 已存在，则合并数量
+   * 去重键与真实唯一索引（uq_packing_task_items_no_container /
+   * uq_packing_task_items_with_container，见 003 迁移）严格对齐：
+   * packing_task_id + order_line_id（+ container_id，为空时按 IS NULL 匹配），
+   * 不是 product_id——同一打包任务里两个不同订单行凑巧同码不应被合并。
+   * 用乐观并发重试（基于 updated_at 比对）而非"先查后写"，避免并发批量插入
+   * 命中数据库唯一索引时抛出未捕获的 23505。
    */
   async insertBatch(items: PackingTaskItemInsert[], dedupe = true): Promise<PackingTaskItemRow[]> {
     if (items.length === 0) return [];
@@ -96,18 +101,9 @@ export class SupabasePackingTaskItemRepository extends SupabaseBaseRepository<
     const results: PackingTaskItemRow[] = [];
 
     for (const item of items) {
-      if (dedupe && item.packing_task_id && item.product_id && item.container_id) {
-        // 查找是否已存在相同的 packing_task + product + container 组合
-        const existing = await this.findByProduct(item.packing_task_id, item.product_id, item.tenant_id || '');
-        const match = existing.find(e => e.container_id === item.container_id);
-
-        if (match) {
-          // 合并数量
-          const newQty = (match.qty || 0) + (item.qty || 0);
-          const updated = await this.updateQty(match.id, item.tenant_id || '', newQty);
-          if (updated) results.push(updated);
-          continue;
-        }
+      if (dedupe && item.packing_task_id && item.order_line_id) {
+        results.push(await this.upsertDedupedItem(item));
+        continue;
       }
 
       // 插入新行
@@ -122,6 +118,82 @@ export class SupabasePackingTaskItemRepository extends SupabaseBaseRepository<
     }
 
     return results;
+  }
+
+  /**
+   * 按 packing_task_id + order_line_id (+ container_id) 查找去重匹配行
+   */
+  private async findDedupMatch(
+    packingTaskId: string,
+    orderLineId: string,
+    containerId: string | null | undefined,
+    tenantId: string
+  ): Promise<PackingTaskItemRow | null> {
+    let query = this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('packing_task_id', packingTaskId)
+      .eq('order_line_id', orderLineId)
+      .eq('tenant_id', tenantId);
+
+    query = containerId ? query.eq('container_id', containerId) : query.is('container_id', null);
+
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return (data as PackingTaskItemRow) ?? null;
+  }
+
+  /**
+   * 乐观并发重试插入/合并一行：插入撞唯一索引（23505）或更新撞
+   * updated_at 比对失败（乐观锁丢失）都视为"被并发请求抢先"，重新读取后重试。
+   */
+  private async upsertDedupedItem(item: PackingTaskItemInsert): Promise<PackingTaskItemRow> {
+    const packingTaskId = item.packing_task_id as string;
+    const orderLineId = item.order_line_id as string;
+    const containerId = item.container_id ?? null;
+    const tenantId = item.tenant_id || '';
+    const qty = item.qty || 0;
+
+    // 在高并发下（多个请求同一轮读到完全相同的 updated_at 快照），每一轮重试理论上只能
+    // 保证恰好 1 个请求胜出，最坏情形下所需轮数与并发请求数同量级。用随机退避打散"所有
+    // 落败者在同一轮再次撞车"的整队重试模式，把收敛所需轮数从最坏情形拉回到期望意义上的常数级。
+    const MAX_ATTEMPTS = 20;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.random() * 10 * attempt));
+      }
+
+      const existing = await this.findDedupMatch(packingTaskId, orderLineId, containerId, tenantId);
+
+      if (!existing) {
+        const { data, error } = await this.getClient()
+          .from(this.tableName)
+          .insert(item as any)
+          .select()
+          .single();
+
+        if (!error) return data as PackingTaskItemRow;
+        if ((error as { code?: string }).code !== '23505') throw error;
+        continue; // 插入撞了唯一索引，说明并发请求已建行，回到循环重新读取后走合并
+      }
+
+      const { data, error } = await this.getClient()
+        .from(this.tableName)
+        .update({ qty: (existing.qty || 0) + qty, updated_at: new Date().toISOString() } as PackingTaskItemUpdate)
+        .eq('id', existing.id)
+        .eq('updated_at', existing.updated_at as string)
+        .select()
+        .single();
+
+      if (!error) return data as PackingTaskItemRow;
+      if ((error as { code?: string }).code !== 'PGRST116') throw error;
+      // updated_at 比对未命中（乐观锁丢失，被并发请求抢先更新），重新读取后重试
+    }
+
+    throw new Error(
+      `insertBatch: failed to reconcile duplicate packing_task_item after ${MAX_ATTEMPTS} attempts ` +
+      `(packing_task_id=${packingTaskId}, order_line_id=${orderLineId}, container_id=${containerId ?? 'NULL'})`
+    );
   }
 
   /**
