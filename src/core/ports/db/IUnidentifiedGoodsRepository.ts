@@ -42,6 +42,13 @@ export interface IUnidentifiedGoodsRepository {
 
   /**
    * 获取未识别货物的容器信息
+   * 恒返回 null——UNIDENTIFIED_GOODS 闭环（fn_receive_unidentified_goods /
+   * fn_identify_unidentified_goods，已读 SQL 源码核实）从头到尾只操作
+   * inventory 表（product_id 记为 NULL 暂存，回填时直接 UPDATE inventory），
+   * 从不创建 containers 行，与 MISSING_LABEL 闭环（会生成 SYSTEM_GENERATED
+   * 容器）是两条完全不同的路径。containers 表本身也没有 exception_id 列
+   * （已用 psql \d containers 核实），"按异常查容器"这个问题在这张表上
+   * 无解——不是可修复的列名笔误，是这个领域本就不存在容器。
    */
   findContainerByException(exceptionId: string, tenantId: string): Promise<ContainerRow | null>;
 
@@ -52,11 +59,14 @@ export interface IUnidentifiedGoodsRepository {
 
   /**
    * 按 LPN 查找容器
+   * containers 表没有 tenant_id 列（已用 psql \d containers 核实，也没有 RLS 策略），
+   * lpn_code 全局唯一（UNIQUE 约束），因此本方法不做租户过滤——不是遗漏，是这张表的
+   * 真实设计如此（与 IMissingLabelRepository.findContainerByLpn 同一类修复）。
    */
-  findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null>;
+  findContainerByLpn(lpnCode: string): Promise<ContainerRow | null>;
 
   /**
-   * 查找系统生成的容器
+   * 查找系统生成的容器（同上，containers 无 tenant_id，不做租户过滤）
    */
-  findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]>;
+  findSystemGeneratedContainers(): Promise<ContainerRow[]>;
 }
