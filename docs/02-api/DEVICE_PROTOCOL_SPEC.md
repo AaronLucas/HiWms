@@ -337,6 +337,8 @@ GET /api/v1/device/sync/policy?task_type=PICKING&zone_type=COLD_STORAGE
 }
 ```
 
+> ⚠️ **待协调：与 `SYNC_API_CONTRACT.md` §5.2 响应契约不一致（2026-07-19 测试补齐 PackingTaskItemRepository/SyncPolicyRepository 时发现）**。`SYNC_API_CONTRACT.md` §5.2 给出的响应示例是扁平 JSON `{"offline_mode": ..., "max_offline_duration_seconds": ...}`——不带本节的 `{success, data, meta}` 包裹，字段名是 `offline_mode` 而非 `policy`，且没有 `requires_claim` 字段。两份文档头部均标注"状态：草案待评审"，均非正式定稿。现状：`src/apps/device-api/routes.ts` 的实际实现（含本端点的全部兄弟端点）采用的是 `SYNC_API_CONTRACT.md` 描述的扁平版本，本节自身也写明"完整策略字段与决策表见 `SYNC_API_CONTRACT.md`"——`requires_claim` 若是真实设计意图，本质上可纯从 `offline_mode` 派生（`= offline_mode === 'ONLINE_ONLY'`），不需要额外数据来源。是否需要修订本节与 `SYNC_API_CONTRACT.md` 对齐（或反之），需架构组确认，本次未改动任一文档已定义的契约本身。
+
 策略含义：
 
 | policy | 行为 | 是否需要领用（3.2） |

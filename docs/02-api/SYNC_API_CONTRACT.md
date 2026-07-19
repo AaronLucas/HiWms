@@ -283,6 +283,8 @@ X-Device-Id: <device_id>
 
 PDA 在开始任务前应先调用本接口：若 `offline_mode = ONLINE_ONLY`，则必须先完成任务领用（第 6 节）确认在线可用后才允许进入作业界面；若为 `LIMITED`，需在本地记录离线开始时间，超过 `max_offline_duration_seconds` 后阻止继续离线提交并提示用户联网。
 
+> ⚠️ **待协调：与 `DEVICE_PROTOCOL_SPEC.md` §3.1 响应契约不一致（2026-07-19 测试补齐 PackingTaskItemRepository/SyncPolicyRepository 时发现）**。`DEVICE_PROTOCOL_SPEC.md` §3.1 给出的响应示例是 `{"success": true, "data": {"policy": ..., "max_offline_duration_seconds": ..., "requires_claim": ...}, "meta": {...}}`——套了一层本文档从未使用过的 `{success, data, meta}` 包裹，字段名是 `policy` 而非 `offline_mode`，且多出一个本文档没有的 `requires_claim` 字段。两份文档头部均标注"状态：草案待评审"，均非正式定稿。现状：`src/apps/device-api/routes.ts` 的实际实现（含本端点的全部兄弟端点）采用的是本节描述的扁平、无包裹、`offline_mode` 命名的版本，`DEVICE_PROTOCOL_SPEC.md` §3.1 自身也写明"完整策略字段与决策表见 `SYNC_API_CONTRACT.md`"。是否需要修订 `DEVICE_PROTOCOL_SPEC.md` 与本文档对齐（或反之），需架构组确认，本次未改动任一文档已定义的契约本身。
+
 ---
 
 ## 6. 任务领用 - POST /tasks/{work_order_id}/claim

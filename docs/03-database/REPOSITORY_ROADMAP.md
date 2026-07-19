@@ -125,7 +125,7 @@
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`。测试证据：`src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`（2026-07-19） |
-| 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies` |
+| 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | ✅ 已完成 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies`。测试证据：`src/__tests__/integration/sync/fn_get_sync_policy.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实生产 bug**：`GET /sync/policy` 响应字段此前是 camelCase 且含 3 个 SQL 端不存在的硬编码字段，与 `SYNC_API_CONTRACT.md` §5.2 文档契约（snake_case，仅 2 字段）不符，冷链/危化品强制在线判定字段 `offline_mode` 实际永远读不到，详见 P1 第 2 项执行记录 |
 | 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
 | 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19，2026-07-19 更新为回归测试）。曾有的 2 项已知问题（Bug A 并发重复扣库存、Bug E 未知 action_type 不登记异常）已由 DBA `005_concurrency_hardening_V1.sql` 修复，本地应用该迁移后连续多轮重跑验证稳定通过，详见 `BUG_REPORT_SYNC_EVENT_APPLY_FUNCTIONS_2026-07-19.md` 及 P0 第 2 项执行记录 |
 | 5 | `src/core/ports/db/IExceptionRepository.ts` | ✅ 已完成 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount`。测试证据：`src/__tests__/integration/exceptions/fn_resolve_exception.concurrency.test.ts`（2026-07-19）。**2026-07-19 核对 DBA 的 `005_concurrency_hardening_V1.sql` 时顺带发现并修复 4 处缺陷**：（1）`ExceptionStatus` 类型（`OPEN/INVESTIGATING/RESOLVED/CLOSED/ESCALATED`）与 `exceptions.status` 真实 `chk_exceptions_status` CHECK 约束（`PENDING_REVIEW/CONFLICT/RESOLVED/DISMISSED`）几乎完全对不上，同 SyncEventStatus 的 Bug D 一类问题，已改为与真实约束一致；（2）`escalateException()` 写入不合法的 `'ESCALATED'`，已改为约束里真实存在的 `CONFLICT`（对应设计文档"升级"语义），并补了"已 RESOLVED/DISMISSED 不可再升级"的防护；（3）`resolveException()` 硬编码的 `p_resolution_details` 永远不含 `fn_confirm_inventory_recount` 需要的 `confirmed_available_qty`，导致 INVENTORY_SHORTAGE 异常"确认解决"后库存从未被真正修正（DBA 自查清单第 8 条点名的"函数返回成功但业务表没联动"），已开放 `resolutionDetails` 透传；（4）`confirmInventoryRecount()` 之前绕开 `fn_resolve_exception` 直接调用底层函数（跳过权限校验/状态转移/审计轨迹），且 JSON key 用的是 `recount_qty` 而不是函数实际读取的 `confirmed_available_qty`，双重原因导致库存不会被调整，已改为委托给 `resolveException()`；（5）`recordEvent()` 写入不存在的 `description` 列（真实列名 `note`），导致每次调用必定报错，连带 `escalateException()` 失败，已修正列名 |
@@ -134,7 +134,7 @@
 | # | 文件 | 状态 |
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
-| 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | 🔨 已实现未验证 |
+| 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | ✅ 已完成（同上，见 5.1 第 2 行说明） |
 | 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
 | 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成（同上，见 5.1 第 4 行说明） |
 | 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ✅ 已完成（同上，见 5.1 第 5 行说明） |
@@ -153,13 +153,13 @@
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
-| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | 🔨 已实现未验证 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑 |
+| 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ✅ 已完成 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑。测试证据：`src/__tests__/integration/packing/fn_apply_pack_action.concurrency.test.ts`（2026-07-19）。测试过程中发现并修复 3 处纯 TS 应用层缺陷（去重键误用 `product_id`、`container_id` 为空时跳过去重、先查后写竞态），详见 P0 第 3 项执行记录 |
 
 ### 6.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 |
-| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | 🔨 已实现未验证 |
+| 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ✅ 已完成 |
 
 ### 6.3 索引更新
 - [x] `src/core/ports/db/index.ts` - 导出 2 个新端口
@@ -246,6 +246,22 @@
 - **本地验证环境**：复用 P0 第 1 项遗留的本地一次性 Docker Postgres 沙盒（未重新 `db reset`，Schema 状态与第 1 项一致），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑新增文件：9 个用例全部通过 + 2 个 `test.fails`（Bug A、Bug E，均为预期失败，非红灯）。Bug A 的 `test.fails` 反复运行观测到约 1/7 概率"意外通过"（并发竞态测试固有的时序抖动，不代表已修复，见测试文件头部注释）。
 
+#### P0 第 3 项执行记录（`PackingTaskItemRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）先于写测试进行**：全仓库搜索确认 `packingTaskItems`（该仓储 DI 注册名）在 `src/apps/device-api/routes.ts`、`src/apps/admin-api/*` 均无任何调用方。真实的 PDA 打包动作走 `syncEventRepo.insertBatch(...)` → SQL 端 `fn_apply_sync_event` → `fn_apply_pack_action`（`003_extend_sync_event_actions.sql`），后者已经在 SQL 层用 `INSERT ... ON CONFLICT (packing_task_id, order_line_id[, container_id]) DO UPDATE` 原子完成去重累加，且已由 DBA 团队本地验证过（`SYNC_ACTIONS_EXTENSION.md` §9）。也就是说本项测试的是一条当前系统里尚未被任何真实入口调用的应用层代码路径——本表 P0 排序时记录的"迁移脚本注释明确记录过真实历史 bug"，核实后是 003 迁移里 `container_id` 可空导致 `NULL <> NULL` 去重失效的那处注释（`packing_task_items` 表定义正上方），该问题已在 SQL 层用两条局部唯一索引修正（`uq_packing_task_items_no_container`/`uq_packing_task_items_with_container`），并非本仓储此前独有的未修复问题；本仓储自身的 3 个 bug（见下）是独立发现的、SQL 层已修正但 TS 应用层从未对齐的问题。
+- 新增 `src/__tests__/integration/packing/fn_apply_pack_action.concurrency.test.ts`，直接实例化 `SupabasePackingTaskItemRepository`，覆盖 `findByPackingTask`/`findByOrderLine`/`findByContainer`/`findByProduct`/`insertBatch`/`updateQty`/`assignContainer`/`getStatsByPackingTask`/`deleteByPackingTask` 全部 9 个接口方法。
+- **测试过程中发现并修复 3 个真实缺陷（均为纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：
+
+  | 编号 | 问题 | 处理结果 |
+  |---|---|---|
+  | Bug 1 | `insertBatch()` 原实现按 `product_id`（经 `findByProduct`）判断去重匹配，但真实唯一索引与 SQL 端 `fn_apply_pack_action` 的 `ON CONFLICT` 目标列都是 `order_line_id`。同一打包任务下两个不同订单行凑巧引用同一 SKU 时，原实现会把它们的数量错误合并进同一行 | **已修复**：改为按 `packing_task_id + order_line_id (+ container_id)` 查找匹配行，与真实约束/SQL 端语义对齐 |
+  | Bug 2 | 原去重条件 `dedupe && item.packing_task_id && item.product_id && item.container_id` 对 `container_id` 做真值检查——`container_id` 为 NULL（"同码/批量容器不追踪具体箱子"，文档明确的正常业务场景）时直接跳过去重分支。但该场景下真实唯一索引 `uq_packing_task_items_no_container` 依然生效，同一订单行第二次打包（不指定容器）必然撞上该索引，原实现会抛出未捕获的 PostgREST 23505 错误 | **已修复**：去重判断条件改为 `packing_task_id && order_line_id`，不再要求 `container_id` 为真值，`container_id` 为 NULL/非 NULL 两种情况均正确判定匹配 |
+  | Bug 3 | 即便命中去重分支，原实现也是"SELECT 判断是否存在 → 决定 INSERT 还是 UPDATE"的非原子读改写模式，与 P0 第 1/2 项发现的"读改写竞态"同类——真实并发下多个请求可能都在 SELECT 阶段读到"不存在"，其中落败者会直接抛出未捕获的唯一索引冲突 | **已修复**：改为乐观并发重试循环（插入撞 23505 或更新因 `updated_at` 比对失败都视为"被并发请求抢先"，重新读取后重试）。**首次实现只设 5 次重试上限，8 路真实并发测试下复现了"落败者耗尽重试次数"的失败**（根因：多个请求在同一轮读到完全相同的 `updated_at` 快照时集体重试，每轮只能保证恰好 1 个请求胜出，最坏情形所需轮数与并发请求数同量级）；追加随机退避（`Math.random() * 10 * attempt` 毫秒）打散整队重试模式，并将上限提高到 20 次后，8 路并发连续 3 轮重跑稳定全部成功 |
+
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效，`schema_migrations` 跟踪表缺 005 记录但函数体已核实包含 005 引入的 `PROCESSING` 中间态，不影响本项测试），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，9 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 5 个 DB 并发测试文件（含 P0 第 1/2 项、P1 第 1 项既有用例）共 32 个用例全部通过，未见跨文件相互干扰。
+- **测试有效性验证**：临时用 `git show HEAD:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：Bug 1 的用例最初误用 `container_id: null` 夹具、未能触发原实现里"仅当 `container_id` 为真值才进入（错误）去重分支"的条件，对照原始实现"意外通过"——据此把该用例改为两条订单行共用同一非空 `container_id`，才能真正命中 `product_id` 误判去重的路径；修正后 Bug 1/2/3 三个用例对原始实现均按预期失败（`uq_packing_task_items_no_container` 唯一索引冲突、`updateQty` 竞态崩溃各 1 处），其余 6 个用例不受影响仍通过；随后恢复修复后的实现，全部 9 个用例转绿。
+
 ### P1 — 涉及库存/资金准确性，其次做
 | 仓储 | 风险点 | 依据 |
 |---|---|---|
@@ -253,11 +269,25 @@
 | `SyncPolicyRepository` | `fn_get_sync_policy` 决定任务 `ALLOW`/`LIMITED`/`ONLINE_ONLY` | 读错会让危险品/冷链等本应强制在线的操作被当成允许离线，ADR-011 专门强调的合规/安全场景 |
 | `MissingLabelRepository` | `fn_generate_internal_lpn` 生成内部追踪码 | 编码生成类逻辑并发下容易出现唯一性冲突，直接影响漏码货物追踪链路 |
 
+#### P1 第 2 项执行记录（`SyncPolicyRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）先于写测试进行，结论与 P0 第 3 项相反**：`src/apps/device-api/routes.ts` 的 `GET /sync/policy` 端点直接调用本仓储——这是**真实生产路径**，PDA 设备在开始任务前必须先查询这个端点判定该任务/库位是否必须强制在线（冷链/危化品合规场景，本表排序依据本身就点名了这个风险）。
+- **可达性核查过程中发现一个比"读改写竞态"更严重的问题：响应字段命名与合规判定不一致**。`SYNC_API_CONTRACT.md` §5.2 明确文档化 `GET /sync/policy` 响应契约为 `{"offline_mode": ..., "max_offline_duration_seconds": ...}`（snake_case，与同文件里其余全部 Device API 响应字段命名约定一致：`event_id`/`next_cursor`/`lpn_code`/`exception_id` 等）。但原实现 `SupabaseSyncPolicyRepository.getSyncPolicy()`（不在 `ISyncPolicyRepository` 接口上、却是 `routes.ts` 实际调用的方法）返回的是 camelCase 的 `{offlineMode, maxOfflineDurationSeconds, requiresTaskClaim, conflictStrategy, policyId}`，`routes.ts` 又把这个对象原样透传（`res.json(result)`，无任何字段映射）。核实确认没有任何全局中间件做驼峰/下划线转换。按文档实现的 PDA 客户端读取 `response.offline_mode` 只会读到 `undefined`——这正是决定"该任务是否必须强制在线"的关键字段，fail-open 会让冷链/危化品的强制在线合规检查被静默绕过，不是假设性风险。另外三个字段在 `fn_get_sync_policy` 的真实返回列（仅 `offline_mode`/`max_offline_duration_seconds` 两列，已读 SQL 源码核实）里根本不存在，是永远不变的硬编码常量。
+- **修复（均为纯 TS 应用层 + 路由层代码，未触碰任何 `.sql` 文件）**：
+  1. 删除未在接口上声明的重复方法 `getSyncPolicy()`，把逻辑合并进接口方法 `getEffectivePolicy()`，返回值只保留 `offlineMode`/`maxOfflineDurationSeconds` 两个真实存在的字段。
+  2. `routes.ts` 改为调用 `getEffectivePolicy()` 并显式映射为 `{offline_mode, max_offline_duration_seconds}` 的 snake_case 响应，对齐文档契约与其余端点的命名约定。
+  3. **次要缺陷**：数据库 CHECK 约束 `chk_sync_policies_limited_duration` 只强制 `LIMITED` 策略行必须填写 `max_offline_duration_seconds`，`ONLINE_ONLY` 行允许该列为 NULL；原实现对 NULL 简单做 `|| 28800` 兜底，会让 `ONLINE_ONLY` 策略被上报成"最长可离线 8 小时"，与文档"ONLINE_ONLY 时为 0"的约定矛盾，且 `getMaxOfflineDuration()` 对已算出的合法 `0` 值还会再做一次 `|| 28800`，把 `0` 当 falsy 错误改写。已改为 `getEffectivePolicy()` 内部对 `ONLINE_ONLY` 直接归一化为 0，`getMaxOfflineDuration()` 不再做二次兜底。
+- 新增 `src/__tests__/integration/sync/fn_get_sync_policy.concurrency.test.ts`，直接实例化 `SupabaseSyncPolicyRepository`，覆盖 `getEffectivePolicy`（含四维优先级匹配：租户+任务+库位 > 租户+任务 > 租户+库位 > 租户默认、未配置时的安全默认值、ONLINE_ONLY 归一化、返回字段形状回归防护）/`isOfflineAllowed`/`getMaxOfflineDuration`/`findByTenant`/`findByTaskType`/`findByZoneType` 全部方法。
+- **测试有效性验证**：临时用 `git show HEAD:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：6 个用例中 4 个按预期失败（安全默认值多出 `policyId` 字段、优先级匹配用例的 `ONLINE_ONLY` 结果 `maxOfflineDurationSeconds` 为 `null` 而非 `0`、归一化回归用例、字段形状回归用例），另外 2 个不受这两处改动影响的用例（`isOfflineAllowed`、`findByTenant`/`findByTaskType`/`findByZoneType`）保持通过——失败集合精确对应修复范围，随后恢复修复后的实现，全部 6 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 2 轮重跑，6 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2 项、P1 第 1 项既有用例；本 worktree 基于 main 分叉，不含尚未合并的 P0 第 3 项 PR）共 29 个用例全部通过，未见跨文件相互干扰。
+- **未在本次范围内处理**：`GET /sync/policy` 字段映射的路由层修复目前没有 HTTP 层回归测试覆盖——项目现有测试基建（`vitest` + 直接实例化仓储）不含 `supertest` 类的 Express 路由集成测试模式，引入新测试范式超出本次"仓储测试补齐"任务范围，修复本身已通过人工核对 `SYNC_API_CONTRACT.md`/`routes.ts`/`tsc` 确认正确性。若后续项目补充 Device API 路由层集成测试基建，应把 `GET /sync/policy` 的 snake_case 字段回归纳入覆盖范围。
+
 #### P1 第 3 项执行记录（`MissingLabelRepository`，2026-07-19）
 
 - **可达性核查（测试方法论第 6 步）**：`generateInternalLpn`/`confirmLabelApplied` 是真实生产路径（`src/apps/device-api/routes.ts` 的 `POST /missing-label/generate`/`POST /missing-label/confirm` 直接调用）；`findContainerByLpn`/`findSystemGeneratedContainers`/`createContainer` 目前无真实调用方（与 P0 第 3 项同类），仍按既定优先级补齐测试。
 - **发现并修复的真实缺陷（纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：`findContainerByLpn`/`findSystemGeneratedContainers` 原实现对 `containers` 表过滤 `.eq('tenant_id', tenantId)`，但 `containers` 表本身**没有 `tenant_id` 列**（已用 `psql \d containers` 核实：id/lpn_code/parent_container_id/container_type/current_location_id/is_sealed/last_opened_at/status/created_at/updated_at/lpn_source，无 tenant_id，无 RLS 策略——容器是跨租户共享资源，租户隔离通过 `inventory.tenant_id` 间接表达）。过滤不存在的列会被 PostgREST 拒绝（`42703 column containers.tenant_id does not exist`，已用 `curl` 直连 PostgREST 端点实测复现），两个方法此前**每次调用必定抛异常**。修复：`IMissingLabelRepository`/`SupabaseMissingLabelRepository` 去掉这两个方法上从未真实生效过的 `tenantId` 参数。**同样的 bug 复制粘贴进了 `SupabaseUnidentifiedGoodsRepository`，本次未处理，留给 P2 对应项**。
-- **测试有效性验证的特殊情况**：这次修复改变了方法签名（去掉一个参数），不是纯内部逻辑修复，经典的"还原实现、重跑同一份测试确认变红"手法在这里不完全适用——用修复后签名写的测试去调用还原后的旧实现时，JS 不校验参数个数，旧方法内部的 `tenantId` 会是 `undefined`，`.eq('tenant_id', undefined)` 被 supabase-js 静默跳过而不是真的发送 `tenant_id=eq.undefined`，因此“重跑同一测试”不会转红，不能证明有效性。改用直接对本地 PostgREST 端点发起 `curl` 请求（`containers?tenant_id=eq.<真实uuid>`）复现 `42703` 错误，作为该项修复的独立经验证据，不依赖测试文件本身的回归对比。
+- **测试有效性验证的特殊情况**：这次修复改变了方法签名（去掉一个参数），不是纯内部逻辑修复，经典的"还原实现、重跑同一份测试确认变红"手法在这里不完全适用——用修复后签名写的测试去调用还原后的旧实现时，JS 不校验参数个数，旧方法内部的 `tenantId` 会是 `undefined`，`.eq('tenant_id', undefined)` 被 supabase-js 静默跳过而不是真的发送 `tenant_id=eq.undefined`，因此"重跑同一测试"不会转红，不能证明有效性。改用直接对本地 PostgREST 端点发起 `curl` 请求（`containers?tenant_id=eq.<真实uuid>`）复现 `42703` 错误，作为该项修复的独立经验证据，不依赖测试文件本身的回归对比。
 - **一个记录在案、本次不处理的开放行为**：`fn_generate_internal_lpn` 对同一 `exception_id` 重复调用没有幂等保护，每次都新建容器并覆盖 `exceptions.details` 里的最新码，旧容器变孤儿。`.readonly/unWMS_Tracking_Policy_Missing_Label_V1.md` 设计文档只描述了"生成→打印→扫码确认"一次性流程，未明确讨论重复调用场景——按测试方法论第 5 步的标准，这是设计意图未覆盖的开放问题，不是确定性 bug，未推动 `.sql` 改动，测试里用一个用例如实记录当前行为供后续参考。
 - 新增 `src/__tests__/integration/exceptions/fn_generate_internal_lpn.concurrency.test.ts`，直接实例化 `SupabaseMissingLabelRepository`，覆盖 `generateInternalLpn`/`confirmLabelApplied`（含扫码不一致拒绝、未生成码时拒绝两条防护路径）/`findContainerByLpn`/`findSystemGeneratedContainers`/`createContainer` 全部方法，以及重复生成行为的记录性用例。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
