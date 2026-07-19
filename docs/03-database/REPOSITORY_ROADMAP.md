@@ -152,13 +152,13 @@
 ### 6.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance` |
+| 1 | `src/core/ports/db/IInventoryCountPolicyRepository.ts` | ✅ 已完成 | ~60 | 盘点容差策略：CRUD `inventory_count_policies`，封装 `fn_get_count_tolerance`。测试证据：`src/__tests__/integration/inventory/fn_get_count_tolerance.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实 bug**：`upsertBatch`/`upsertPolicy` 用 PostgREST `onConflict` 定位一个只有局部唯一索引、没有普通唯一约束的组合，每次调用必定报 `42P10`，详见 P2 第 1 项执行记录 |
 | 2 | `src/core/ports/db/IPackingTaskItemRepository.ts` | ✅ 已完成 | ~80 | 打包明细行：`packing_task_items` CRUD、同箱/同码去重逻辑。测试证据：`src/__tests__/integration/packing/fn_apply_pack_action.concurrency.test.ts`（2026-07-19）。测试过程中发现并修复 3 处纯 TS 应用层缺陷（去重键误用 `product_id`、`container_id` 为空时跳过去重、先查后写竞态），详见 P0 第 3 项执行记录 |
 
 ### 6.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | 🔨 已实现未验证 |
+| 1 | `src/adapters/supabase/repositories/SupabaseInventoryCountPolicyRepository.ts` | ✅ 已完成（同上，见 6.1 第 1 行说明） |
 | 2 | `src/adapters/supabase/repositories/SupabasePackingTaskItemRepository.ts` | ✅ 已完成 |
 
 ### 6.3 索引更新
@@ -301,13 +301,22 @@
 | `UnidentifiedGoodsRepository` | `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` | 未识别货物是低频边缘场景，出错影响范围小 |
 | `DeviceSyncStateRepository` | 设备同步状态读写 | 结构最简单，基本是状态标记，历史上没有 bug 记录 |
 
+#### P2 第 1 项执行记录（`InventoryCountPolicyRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）**：全仓库搜索确认 `inventoryCountPolicies`（DI 注册名）在 `device-api`/`admin-api` 均无任何调用方。真实的盘点动作走 SQL 层 `fn_apply_count_action`，直接调用 `fn_get_count_tolerance`，不经过本仓储——与 P0 第 3 项 PackingTaskItemRepository 同类，仍按既定优先级补齐测试。
+- **发现并修复的真实缺陷（纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：`upsertBatch`/`upsertPolicy` 原实现用 PostgREST 的 `.upsert(data, { onConflict: 'tenant_id,product_id' })`。但 `inventory_count_policies` 表上只有两条局部唯一索引（`uq_count_policy_tenant_default (tenant_id) WHERE product_id IS NULL` / `uq_count_policy_tenant_product (tenant_id, product_id) WHERE product_id IS NOT NULL`，已用 `psql \d inventory_count_policies` 核实），没有覆盖 `(tenant_id, product_id)` 的普通唯一约束——这正是 `CONVENTIONS.md` §5.4.8 本身记录的"全局默认+租户覆盖"设计模式（不把可空覆盖字段放进单一唯一约束）。PostgREST 的 `on_conflict` 只能匹配非分区唯一索引，对分区索引必定报 `42P10 there is no unique or exclusion constraint matching the ON CONFLICT specification`（已用 `curl` 直连本地 PostgREST 端点实测复现）。也就是说原实现的 `upsertBatch`/`upsertPolicy` **每次调用都会失败**，与本表在 P2 排序依据里点名的"设计上的坑"完全对应，不是假设性风险。修复：改为查找后写入（`product_id` 为 NULL 时按 IS NULL 匹配，否则按等值匹配）+ 乐观并发重试，与 P0 第 3 项 PackingTaskItemRepository 的 `insertBatch` 同一类根因（PostgREST upsert 与真实分区唯一索引设计不兼容）、同一种修法。
+- 新增 `src/__tests__/integration/inventory/fn_get_count_tolerance.concurrency.test.ts`，直接实例化 `SupabaseInventoryCountPolicyRepository`，覆盖 `upsertPolicy`/`upsertBatch`/`getCountTolerance`（含商品级覆盖>租户默认>安全默认值 0 的优先级）/`getDefaultTolerance`/`findByTenant`/`findByProduct`，以及 5 路并发 `upsertPolicy` 用例。
+- **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：7 个用例全部按预期失败，其中 6 个精确报出 `there is no unique or exclusion constraint matching the ON CONFLICT specification`，并发用例报 5 个请求全部 rejected——与预期的失败原因完全对应；随后恢复修复后的实现，全部 7 个用例转绿，连续 2 轮重跑稳定。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2/3 项、P1 第 1/2/3 项既有用例）共 45 个用例全部通过，未见跨文件相互干扰。
+
 #### P2 第 2 项执行记录（`TenantTrackingPolicyRepository`，2026-07-19）
 
 - **可达性核查（测试方法论第 6 步）**：全仓库搜索确认 `tenantTrackingPolicies`（DI 注册名）在 `device-api`/`admin-api` 均无任何调用方。真实的追踪策略判定走 SQL 层内部调用 `fn_requires_unique_tracking`，不经过本仓储——与 P0 第 3 项同类，仍按既定优先级补齐测试。
 - **与 P0 第 3 项 / P2 第 1 项不同：本项未发现需要修复的真实缺陷**。`upsertBatch` 用的 `.upsert(data, { onConflict: 'tenant_id,abc_class' })` 这次是正确的——`tenant_tracking_policies` 表上有真实的**非分区**唯一约束 `tenant_tracking_policies_tenant_id_abc_class_key UNIQUE (tenant_id, abc_class)`（已用 `psql \d` 核实，`abc_class` 是 `NOT NULL`，不是 P2 第 1 项那种"全局默认+租户覆盖"的可空覆盖字段模式），已用 `curl` 直连本地 PostgREST 端点实测确认 upsert 正常工作，不是理论推测。纯粹测试补齐，不含代码修复，验证了排序依据表里"读多写少、风险相对低"的判断是准确的。
 - 新增 `src/__tests__/integration/inventory/fn_requires_unique_tracking.concurrency.test.ts`，直接实例化 `SupabaseTenantTrackingPolicyRepository`，覆盖 `upsertBatch`（含二次调用更新而非重复行）/`getDefaultTracking`（含 A→true/C→false/B→true 保守兜底的未配置行为）/`requiresUniqueTracking`（商品级覆盖 > 租户 ABC 默认，库位强制追踪可把结果从 false 升级为 true 但不能反向覆盖）/`findByTenant`/`findByTenantAndClass`/`deletePolicy` 全部方法。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
-- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，6 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（本 worktree 基于 main 分叉，不含尚未合并的 P2 第 1 项 PR）共 51 个用例全部通过，未见跨文件相互干扰。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，6 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件共 51 个用例全部通过，未见跨文件相互干扰。
 
 ---
 
