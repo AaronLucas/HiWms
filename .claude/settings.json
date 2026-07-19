@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "ecc@ecc": true
+  },
+  "env": {
+    "ECC_HOOK_PROFILE": "standard"
   }
 }
