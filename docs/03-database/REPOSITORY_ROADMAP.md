@@ -174,14 +174,14 @@
 ### 7.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 说明 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
+| 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | ✅ 已完成 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default`。测试证据：`src/__tests__/integration/inventory/fn_requires_unique_tracking.concurrency.test.ts`（2026-07-19）。未发现需要修复的真实 bug，详见 P2 第 2 项执行记录 |
 | 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ✅ 已完成 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied`。测试证据：`src/__tests__/integration/exceptions/fn_generate_internal_lpn.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实 bug**：`findContainerByLpn`/`findSystemGeneratedContainers` 过滤 `containers` 表上不存在的 `tenant_id` 列，每次调用必定报错（`42703`），详见 P1 第 3 项执行记录 |
 | 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
 
 ### 7.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 |
+| 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | ✅ 已完成（同上，见 7.1 第 1 行说明） |
 | 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ✅ 已完成（同上，见 7.1 第 2 行说明） |
 | 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 |
 
@@ -309,6 +309,14 @@
 - **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：7 个用例全部按预期失败，其中 6 个精确报出 `there is no unique or exclusion constraint matching the ON CONFLICT specification`，并发用例报 5 个请求全部 rejected——与预期的失败原因完全对应；随后恢复修复后的实现，全部 7 个用例转绿，连续 2 轮重跑稳定。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2/3 项、P1 第 1/2/3 项既有用例）共 45 个用例全部通过，未见跨文件相互干扰。
+
+#### P2 第 2 项执行记录（`TenantTrackingPolicyRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）**：全仓库搜索确认 `tenantTrackingPolicies`（DI 注册名）在 `device-api`/`admin-api` 均无任何调用方。真实的追踪策略判定走 SQL 层内部调用 `fn_requires_unique_tracking`，不经过本仓储——与 P0 第 3 项同类，仍按既定优先级补齐测试。
+- **与 P0 第 3 项 / P2 第 1 项不同：本项未发现需要修复的真实缺陷**。`upsertBatch` 用的 `.upsert(data, { onConflict: 'tenant_id,abc_class' })` 这次是正确的——`tenant_tracking_policies` 表上有真实的**非分区**唯一约束 `tenant_tracking_policies_tenant_id_abc_class_key UNIQUE (tenant_id, abc_class)`（已用 `psql \d` 核实，`abc_class` 是 `NOT NULL`，不是 P2 第 1 项那种"全局默认+租户覆盖"的可空覆盖字段模式），已用 `curl` 直连本地 PostgREST 端点实测确认 upsert 正常工作，不是理论推测。纯粹测试补齐，不含代码修复，验证了排序依据表里"读多写少、风险相对低"的判断是准确的。
+- 新增 `src/__tests__/integration/inventory/fn_requires_unique_tracking.concurrency.test.ts`，直接实例化 `SupabaseTenantTrackingPolicyRepository`，覆盖 `upsertBatch`（含二次调用更新而非重复行）/`getDefaultTracking`（含 A→true/C→false/B→true 保守兜底的未配置行为）/`requiresUniqueTracking`（商品级覆盖 > 租户 ABC 默认，库位强制追踪可把结果从 false 升级为 true 但不能反向覆盖）/`findByTenant`/`findByTenantAndClass`/`deletePolicy` 全部方法。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑新增文件连续 3 轮重跑，6 个用例全部稳定通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件共 51 个用例全部通过，未见跨文件相互干扰。
 
 ---
 
