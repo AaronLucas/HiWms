@@ -91,20 +91,14 @@ export class SupabaseUnidentifiedGoodsRepository extends SupabaseBaseRepository<
 
   /**
    * 获取未识别货物的容器信息
+   * 恒返回 null——UNIDENTIFIED_GOODS 闭环从头到尾只操作 inventory 表，从不创建
+   * containers 行（与 MISSING_LABEL 闭环不同），containers 表也没有 exception_id
+   * 列，"按异常查容器"在这张表上无解，见 IUnidentifiedGoodsRepository 接口注释。
+   * 原实现对不存在的 exception_id/tenant_id 两列做过滤，每次调用必定抛
+   * PostgREST 列不存在错误。
    */
-  async findContainerByException(exceptionId: string, tenantId: string): Promise<ContainerRow | null> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('exception_id', exceptionId)
-      .eq('tenant_id', tenantId)
-      .single();
-
-    if (error) {
-      if (error.code === 'PGRST116') return null;
-      throw error;
-    }
-    return data as ContainerRow;
+  async findContainerByException(_exceptionId: string, _tenantId: string): Promise<ContainerRow | null> {
+    return null;
   }
 
   /**
@@ -123,13 +117,14 @@ export class SupabaseUnidentifiedGoodsRepository extends SupabaseBaseRepository<
 
   /**
    * 按 LPN 查找容器
+   * containers 表没有 tenant_id 列（已用 psql \d containers 核实，也没有 RLS 策略），
+   * lpn_code 全局唯一（UNIQUE 约束）——原实现过滤一个不存在的列，每次调用必定抛错。
    */
-  async findContainerByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null> {
+  async findContainerByLpn(lpnCode: string): Promise<ContainerRow | null> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('lpn_code', lpnCode)
-      .eq('tenant_id', tenantId)
       .single();
 
     if (error) {
@@ -140,13 +135,12 @@ export class SupabaseUnidentifiedGoodsRepository extends SupabaseBaseRepository<
   }
 
   /**
-   * 查找系统生成的容器（用于未识别货物）
+   * 查找系统生成的容器（同上，containers 无 tenant_id，不做租户过滤）
    */
-  async findSystemGeneratedContainers(tenantId: string): Promise<ContainerRow[]> {
+  async findSystemGeneratedContainers(): Promise<ContainerRow[]> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('tenant_id', tenantId)
       .eq('lpn_source', 'SYSTEM_GENERATED')
       .order('created_at', { ascending: false });
 

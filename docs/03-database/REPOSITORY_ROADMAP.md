@@ -176,14 +176,14 @@
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/ITenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 | ~70 | 租户追踪策略：CRUD `tenant_tracking_policies`，封装 `fn_requires_unique_tracking`/`fn_get_tenant_abc_tracking_default` |
 | 2 | `src/core/ports/db/IMissingLabelRepository.ts` | ✅ 已完成 | ~70 | 漏码闭环：封装 `fn_generate_internal_lpn`/`fn_confirm_label_applied`。测试证据：`src/__tests__/integration/exceptions/fn_generate_internal_lpn.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实 bug**：`findContainerByLpn`/`findSystemGeneratedContainers` 过滤 `containers` 表上不存在的 `tenant_id` 列，每次调用必定报错（`42703`），详见 P1 第 3 项执行记录 |
-| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` |
+| 3 | `src/core/ports/db/IUnidentifiedGoodsRepository.ts` | ✅ 已完成 | ~70 | 未识别货物闭环：封装 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods`。测试证据：`src/__tests__/integration/exceptions/fn_receive_unidentified_goods.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复 2 处真实 bug**：`findContainerByException` 查询的是本领域根本不存在的容器概念（该闭环从不创建 containers 行），`findContainerByLpn`/`findSystemGeneratedContainers` 过滤不存在的 `tenant_id` 列，详见 P2 第 3 项执行记录 |
 
 ### 7.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseTenantTrackingPolicyRepository.ts` | 🔨 已实现未验证 |
 | 2 | `src/adapters/supabase/repositories/SupabaseMissingLabelRepository.ts` | ✅ 已完成（同上，见 7.1 第 2 行说明） |
-| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | 🔨 已实现未验证 |
+| 3 | `src/adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository.ts` | ✅ 已完成（同上，见 7.1 第 3 行说明） |
 
 ### 7.3 索引更新
 - [x] `src/core/ports/db/index.ts` - 导出 3 个新端口
@@ -309,6 +309,17 @@
 - **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：7 个用例全部按预期失败，其中 6 个精确报出 `there is no unique or exclusion constraint matching the ON CONFLICT specification`，并发用例报 5 个请求全部 rejected——与预期的失败原因完全对应；随后恢复修复后的实现，全部 7 个用例转绿，连续 2 轮重跑稳定。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（含 P0 第 1/2/3 项、P1 第 1/2/3 项既有用例）共 45 个用例全部通过，未见跨文件相互干扰。
+
+#### P2 第 3 项执行记录（`UnidentifiedGoodsRepository`，2026-07-19）
+
+- **可达性核查（测试方法论第 6 步）**：`receiveUnidentifiedGoods`/`identifyUnidentifiedGoods` 是真实生产路径（`src/apps/device-api/routes.ts` 的 `POST /unidentified/receive`/`POST /unidentified/identify` 直接调用）；`findContainerByException`/`createContainer`/`findContainerByLpn`/`findSystemGeneratedContainers` 目前无真实调用方。
+- **发现并修复的真实缺陷（纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：
+  1. **比 P1 第 3 项更严重：不是列名笔误，是整个方法的领域模型错误**。`findContainerByException` 原实现对 `containers` 表过滤 `.eq('exception_id', exceptionId).eq('tenant_id', tenantId)`。但读 `fn_receive_unidentified_goods`/`fn_identify_unidentified_goods` SQL 源码确认：UNIDENTIFIED_GOODS 闭环从头到尾只操作 `inventory` 表（`product_id` 记为 NULL 暂存，回填时直接 `UPDATE inventory`），**从不创建 `containers` 行**——与 MISSING_LABEL 闭环（会生成 `SYSTEM_GENERATED` 容器）是完全不同的两条路径（见 `.readonly/unWMS_Tracking_Policy_Missing_Label_V1.md` §3"两条完全不同的异常路径"）。`containers` 表本身也没有 `exception_id` 列（已用 `psql \d containers` 核实）。也就是说"按异常查容器"这个问题在真实数据模型里没有答案，不是可以通过改列名修好的 bug——修复为恒返回 `null` 并在代码注释里说明原因，而不是编一个跨表 join 到 `inventory` 的新查询逻辑（那会改变方法返回类型语义，属于需要人工确认的接口设计变更，不在本次测试补齐范围内）。
+  2. **与 P1 第 3 项同一类**：`findContainerByLpn`/`findSystemGeneratedContainers` 过滤 `containers` 表上不存在的 `tenant_id` 列，每次调用必定抛 `42703`。修复：去掉这两个方法上从未真实生效过的 `tenantId` 参数——与 `IMissingLabelRepository` 的同名方法完全同一类根因（P1 第 3 项执行记录里已预告"复制粘贴进了本仓储，留给 P2 对应项处理"，本次即为该项）。
+- 新增 `src/__tests__/integration/exceptions/fn_receive_unidentified_goods.concurrency.test.ts`，直接实例化 `SupabaseUnidentifiedGoodsRepository`，覆盖 `receiveUnidentifiedGoods`（含库存暂存 `product_id=NULL` 与异常登记）/`identifyUnidentifiedGoods`（回填 `product_id` + 通过 `fn_resolve_exception` 关闭异常）/`findUnidentifiedGoodsExceptions`/`findContainerByException`（回归防护恒 null）/`findContainerByLpn`/`findSystemGeneratedContainers`（回归防护不再因不存在的列报错）。
+- **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：2 个回归防护用例精确报出 `column containers.exception_id does not exist`/`column containers.tenant_id does not exist`，其余 3 个不受这两处改动影响的用例保持通过——失败集合精确对应修复范围；随后恢复修复后的实现，全部 5 个用例转绿，连续 3 轮重跑稳定。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件共 57 个用例全部通过，未见跨文件相互干扰。
 
 ---
 
