@@ -126,7 +126,7 @@
 |---|------|------|---------|------|
 | 1 | `src/core/ports/db/ITaskClaimRepository.ts` | ✅ 已完成 | ~90 | 竞争性任务租约：封装 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims`。测试证据：`src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`（2026-07-19） |
 | 2 | `src/core/ports/db/ISyncPolicyRepository.ts` | ✅ 已完成 | ~60 | 离线策略配置：封装 `fn_get_sync_policy`，CRUD `sync_policies`。测试证据：`src/__tests__/integration/sync/fn_get_sync_policy.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复真实生产 bug**：`GET /sync/policy` 响应字段此前是 camelCase 且含 3 个 SQL 端不存在的硬编码字段，与 `SYNC_API_CONTRACT.md` §5.2 文档契约（snake_case，仅 2 字段）不符，冷链/危化品强制在线判定字段 `offline_mode` 实际永远读不到，详见 P1 第 2 项执行记录 |
-| 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | 🔨 已实现未验证 | ~60 | 设备同步状态：`device_sync_state` 读写 |
+| 3 | `src/core/ports/db/IDeviceSyncStateRepository.ts` | ✅ 已完成 | ~60 | 设备同步状态：`device_sync_state` 读写。测试证据：`src/__tests__/integration/sync/fn_update_device_sync_cursor.concurrency.test.ts`（2026-07-19）。**测试过程中发现并修复本轮测试补齐工程里最严重的真实生产 bug**：`updateCursor`（`GET /sync/pull` 的必经路径）原实现写的列名/主键假设与真实 schema 完全对不上，每次有新事件要返回时拉取请求都会 500，详见 P2 第 4 项执行记录 |
 | 4 | `src/core/ports/db/ISyncEventRepository.ts` | ✅ 已完成 | ~100 | 同步事件收件箱：`sync_events` 写入 + 封装 `fn_apply_sync_event`/`fn_apply_pick_action`。测试证据：`src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`（2026-07-19，2026-07-19 更新为回归测试）。曾有的 2 项已知问题（Bug A 并发重复扣库存、Bug E 未知 action_type 不登记异常）已由 DBA `005_concurrency_hardening_V1.sql` 修复，本地应用该迁移后连续多轮重跑验证稳定通过，详见 `BUG_REPORT_SYNC_EVENT_APPLY_FUNCTIONS_2026-07-19.md` 及 P0 第 2 项执行记录 |
 | 5 | `src/core/ports/db/IExceptionRepository.ts` | ✅ 已完成 | ~110 | 统一异常领域：`exception_type_catalog`/`exceptions`/`exception_events`，封装 `fn_raise_exception`/`fn_resolve_exception`/`fn_confirm_inventory_recount`。测试证据：`src/__tests__/integration/exceptions/fn_resolve_exception.concurrency.test.ts`（2026-07-19）。**2026-07-19 核对 DBA 的 `005_concurrency_hardening_V1.sql` 时顺带发现并修复 4 处缺陷**：（1）`ExceptionStatus` 类型（`OPEN/INVESTIGATING/RESOLVED/CLOSED/ESCALATED`）与 `exceptions.status` 真实 `chk_exceptions_status` CHECK 约束（`PENDING_REVIEW/CONFLICT/RESOLVED/DISMISSED`）几乎完全对不上，同 SyncEventStatus 的 Bug D 一类问题，已改为与真实约束一致；（2）`escalateException()` 写入不合法的 `'ESCALATED'`，已改为约束里真实存在的 `CONFLICT`（对应设计文档"升级"语义），并补了"已 RESOLVED/DISMISSED 不可再升级"的防护；（3）`resolveException()` 硬编码的 `p_resolution_details` 永远不含 `fn_confirm_inventory_recount` 需要的 `confirmed_available_qty`，导致 INVENTORY_SHORTAGE 异常"确认解决"后库存从未被真正修正（DBA 自查清单第 8 条点名的"函数返回成功但业务表没联动"），已开放 `resolutionDetails` 透传；（4）`confirmInventoryRecount()` 之前绕开 `fn_resolve_exception` 直接调用底层函数（跳过权限校验/状态转移/审计轨迹），且 JSON key 用的是 `recount_qty` 而不是函数实际读取的 `confirmed_available_qty`，双重原因导致库存不会被调整，已改为委托给 `resolveException()`；（5）`recordEvent()` 写入不存在的 `description` 列（真实列名 `note`），导致每次调用必定报错，连带 `escalateException()` 失败，已修正列名 |
 
@@ -135,7 +135,7 @@
 |---|------|------|
 | 1 | `src/adapters/supabase/repositories/SupabaseTaskClaimRepository.ts` | ✅ 已完成 |
 | 2 | `src/adapters/supabase/repositories/SupabaseSyncPolicyRepository.ts` | ✅ 已完成（同上，见 5.1 第 2 行说明） |
-| 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | 🔨 已实现未验证 |
+| 3 | `src/adapters/supabase/repositories/SupabaseDeviceSyncStateRepository.ts` | ✅ 已完成（同上，见 5.1 第 3 行说明） |
 | 4 | `src/adapters/supabase/repositories/SupabaseSyncEventRepository.ts` | ✅ 已完成（同上，见 5.1 第 4 行说明） |
 | 5 | `src/adapters/supabase/repositories/SupabaseExceptionRepository.ts` | ✅ 已完成（同上，见 5.1 第 5 行说明） |
 
@@ -328,6 +328,19 @@
 - **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：2 个回归防护用例精确报出 `column containers.exception_id does not exist`/`column containers.tenant_id does not exist`，其余 3 个不受这两处改动影响的用例保持通过——失败集合精确对应修复范围；随后恢复修复后的实现，全部 5 个用例转绿，连续 3 轮重跑稳定。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件共 57 个用例全部通过，未见跨文件相互干扰。
+
+#### P2 第 4 项执行记录（`DeviceSyncStateRepository`，2026-07-19，本轮测试补齐工程最后一项）
+
+- **可达性核查（测试方法论第 6 步）**：`updateCursor` 是真实生产路径——`GET /sync/pull`（PDA 增量拉取的核心端点）只要本次有新事件要返回就会调用它。`recordSyncFailure`/`findAllByTenant`/`findStaleDevices`/`resetDeviceState` 目前无真实调用方。
+- **发现并修复的真实缺陷（本轮测试补齐工程里最严重的一项，纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：原实现整个仓储写的是一套跟真实 schema 对不上的列名/主键假设（已用 `psql \d device_sync_state` 核实真实结构：主键只有 `device_id`，不是 `(device_id, tenant_id)` 复合键；列是 `last_applied_seq`/`last_pull_at`/`last_push_at`/`last_seen_online_at`，没有原实现写过的 `last_pulled_seq`/`last_sync_at`/`sync_status`/`error_message`）：
+  1. `updateCursor`：`onConflict: 'device_id,tenant_id'` 找不到匹配的唯一约束（`42P10`）；即便约束对了，写入的四个字段全部不存在（`42703`）。**这是唯一真实调用方 `GET /sync/pull` 的必经路径**——测试补齐前，任何一次有新事件要返回的拉取请求都会因为这个方法报错而整体 500，原先"结构最简单，历史上没有 bug 记录"的排序依据判断与实际情况相反。修复：`onConflict` 改为 `device_id`；写入真实存在的 `last_applied_seq`/`last_pull_at`。
+  2. `recordSyncFailure`：同样引用不存在的列；真实表也没有任何列可以承载"失败原因"（不是列名笔误，是这张表设计上就不含错误追踪能力）。修复：改为只更新 `last_seen_online_at`（表示设备至少还联系得上，只是没能成功同步），不修改 `last_applied_seq`/`last_pull_at`，避免把失败误报成成功；若确实需要保留失败原因用于告警，需要 DBA 协调加列，不在本次范围内。
+  3. `findAllByTenant`/`findStaleDevices`：排序/过滤依据的 `last_sync_at` 列不存在。修复：`findAllByTenant` 改按 `updated_at` 排序；`findStaleDevices` 改按 `last_pull_at` 判断，并把"从未成功拉取过"（`last_pull_at IS NULL`）的设备也一并纳入"该关注"范围，而不是被 `.lt()` 天然排除在外。
+- 新增 `src/__tests__/integration/sync/fn_update_device_sync_cursor.concurrency.test.ts`，直接实例化 `SupabaseDeviceSyncStateRepository`，覆盖全部 7 个接口方法，含 5 路并发 `updateCursor` 用例。
+- **测试有效性验证**：临时还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：8 个用例中 7 个按预期失败（`Could not find the 'error_message' column`/并发用例 5 个请求全部 rejected），唯一不受影响的 `findByDevice` 查不到时返回 null 用例保持通过——失败集合精确对应修复范围；随后恢复修复后的实现，全部 8 个用例转绿，连续 3 轮重跑稳定。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-004 迁移已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 DB 并发测试文件（10 个文件）共 66 个用例全部通过，未见跨文件相互干扰。
+- **本轮测试补齐工程（Phase 5/6/7，共 10 个仓储）至此全部完成**：P0 三项（TaskClaim/SyncEvent/PackingTaskItem）、P1 三项（Exception/SyncPolicy/MissingLabel）、P2 四项（InventoryCountPolicy/TenantTrackingPolicy/UnidentifiedGoods/DeviceSyncState）。
 
 ---
 
