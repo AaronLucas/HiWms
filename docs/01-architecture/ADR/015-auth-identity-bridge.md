@@ -60,7 +60,7 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 三个独立但配套的改动：
 
 1. **数据库侧**：`public.users` 桥接到 `auth.users`（详细设计见
-   `.readonly/unWMS_Auth_Identity_Bridge_V1.md`，本 ADR 不重复）。
+   `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md`，本 ADR 不重复）。
 2. **应用代码侧**：修正 `SupabaseAuthProvider`/`IAuthProvider` 端口契约（本 ADR 详细设计）。
 3. **连接层**：仓储查询改为按请求携带用户 access_token（本 ADR 详细设计），解决问题 4。
 
@@ -84,7 +84,7 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 ## 详细设计
 
 ### 1. 数据库侧
-详见 `.readonly/unWMS_Auth_Identity_Bridge_V1.md`（`public.users` 桥接 `auth.users`、
+详见 `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md`（`public.users` 桥接 `auth.users`、
 `handle_new_user` 触发器、`app_metadata.tenant_id` 写入设计、开放问题清单）。**该文档尚未
 产出配套 `.sql`，需先评审设计再编写迁移脚本**，迁移脚本 PR 必须按
 `.readonly/unWMS_PR_Pre_Submission_Checklist_V1.md` 逐条自查。
@@ -120,7 +120,7 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 ### 负面/风险
 - `SupabaseBaseRepository`/仓储调用方式改动面较大，涉及所有仓储的实例化/调用路径，需要仔细
   设计以避免大范围重构引入回归；建议先在一个仓储上做验证性改造，再推广。
-- 数据库侧改动（`.readonly/unWMS_Auth_Identity_Bridge_V1.md` 第六节）有多个业务规则尚未确认
+- 数据库侧改动（`docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md` 第六节）有多个业务规则尚未确认
   （新租户重名策略、`email` 唯一性范围、现有超管账号迁移），必须先拍板才能编写迁移脚本。
 - `admin-api` 超管登录路径需要一次性数据迁移验证，不能默认"顺带兼容"。
 
@@ -129,7 +129,7 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 > 按项目负责人要求，本阶段只产出设计与计划，不修改任何代码/迁移文件。以下步骤供后续排期，
 > 每一步完成后仍需走 `/ecc:code-review` skill 评审（按 `.claude/rules/ecc/common/code-review.md`）。
 
-1. 确认 `.readonly/unWMS_Auth_Identity_Bridge_V1.md` 第六节 5 个开放问题（产品/DBA/项目负责人）。
+1. 确认 `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md` 第六节 5 个开放问题（产品/DBA/项目负责人）。
 2. 数据库侧：按确认后的设计编写 `unWMS_Auth_Identity_Bridge_V1.sql`，按 PR 自查清单验证，DBA 评审。
 3. 应用代码侧（可与步骤 2 并行设计、但需等步骤 2 迁移落地后才能联调）：
    a. `IAuthProvider` 端口补充 `signIn`/`signUp` 声明。
@@ -141,7 +141,7 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 5. 现有 `admin-api` 超管登录路径回归验证。
 
 ## 关联文档
-- `.readonly/unWMS_Auth_Identity_Bridge_V1.md` —— 数据库侧详细设计与开放问题
+- `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md` —— 数据库侧详细设计与开放问题
 - `docs/01-architecture/ADR/ADR-001-multi-tenant-rls.md` —— RLS 设计原意
 - `docs/01-architecture/ADR/010-middleware-factory.md` —— 需要同步更新的过时描述（第 112 行）
 - `docs/01-architecture/ADR/007-hexagonal-ports-adapters.md` —— 端口/适配器契约
