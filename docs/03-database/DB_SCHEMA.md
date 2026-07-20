@@ -411,9 +411,61 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 
 > A/C 有系统建议默认值（`fn_get_tenant_abc_tracking_default`：A=需要追踪，C=不需要），**B 类无系统默认值**，未配置时保守按"需要追踪"处理，部署前必须显式配置（详见 `TRACKING_POLICY_MISSING_LABEL.md` §2）。完整解析优先级：商品级覆盖（`product_constraints.requires_unique_tracking`）> 库位级强制（`locations.force_unique_tracking`，只能调严）> 本表租户 ABC 默认值，由 `fn_requires_unique_tracking` 统一解析。
 
+### 2.18 zones (库区，Layer 7)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| code | varchar(50) | NOT NULL | 库区编号，如 `A`/`COLD-1` |
+| name | varchar(200) | | 库区人读名 |
+| zone_type | varchar(20) | | 语义与既有 `locations.zone_type` 一致 |
+| max_capacity_weight / max_capacity_volume | decimal(14,2) | | 容量上限，目前仅字段预留，无容量占用统计逻辑（本次未实现） |
+| is_active | boolean | DEFAULT TRUE | |
+| UNIQUE(tenant_id, code) | | | |
+
+> `locations.zone_type` 未删除（大量既有函数/索引引用它），改为挂了 `zone_id` 后由触发器 `fn_trg_sync_location_zone_type`（`BEFORE INSERT OR UPDATE OF zone_id ON locations`）自动从所属库区同步——**目前只覆盖 location→zone 方向**，反向修改 `zones.zone_type` 不会级联，是 `DBA_ADDENDUM_REQUEST_2026-07-20.md` 第 2 项请求修复的问题。未挂库区的库位仍可独立设置 `zone_type`。
+
+### 2.19 locations 新列（Layer 7）
+在既有 `locations` 表基础上新增：`zone_id`（FK→zones(id)，ON DELETE SET NULL）、`name`（人读名，与扫描码 `code` 分开）、`aisle`/`bay`/`level`/`position`（结构化层级字段，全部可为空，不强制所有库位填写）。
+
+### 2.20 inventory_units (序列化商品持久追踪，Layer 7)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE | |
+| product_id | uuid | FK→products(id) CASCADE | |
+| serial_number | varchar(200) | NOT NULL | |
+| location_id | uuid | FK→locations(id) SET NULL | |
+| container_id | uuid | FK→containers(id) SET NULL | |
+| batch_no / mfg_date / exp_date | | | |
+| status | varchar(20) | NOT NULL DEFAULT 'IN_STOCK', CHECK IN ('IN_STOCK','RESERVED','PICKED','PACKED','SHIPPED','RETURNED','SCRAPPED') | |
+| order_line_id | uuid | FK→order_lines(id) SET NULL | 出库后指向订单行，供保修/召回查询 |
+| UNIQUE(tenant_id, product_id, serial_number) | | | |
+
+> `products.is_serial_required = TRUE` 的商品用本表做唯一真源，贯穿入库→在库→拣货→出库全生命周期；非序列化商品继续用 `inventory` 表的数量聚合模型，两条路径**不做双向同步**（刻意取舍，避免额外一致性维护成本）。`fn_apply_putaway_action`/`fn_apply_pick_action` 内部按 `is_serial_required` 分流，对 TS 应用层透明。**已知局限**：序列化商品入库不经过 `inventory` 表，因此不会触发 `fn_trg_enforce_product_constraints` 合规校验（该触发器挂在 `inventory` 表上）。
+
+### 2.21 storage_management_policies (分层存储管理策略，Layer 8)
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK | |
+| tenant_id | uuid | FK→tenants(id) CASCADE，**可为空** | NULL = 平台默认，非空 = 租户专属覆盖 |
+| budget_tier | varchar(20) | DEFAULT 'FREE' | 仅供报表/审计参考，不驱动逻辑分支 |
+| warn_threshold_pct / critical_threshold_pct | decimal(5,2) | DEFAULT 70 / 85，CHECK warn < critical | 数据库容量占比预警/临界阈值 |
+| hot_retention_days | int | DEFAULT 30 | 明细数据保留窗口 |
+| aggregate_before_purge | boolean | DEFAULT TRUE | 清理前是否先聚合汇总（默认开启，不做纯硬删除） |
+| archive_enabled | boolean | DEFAULT FALSE | 是否需要在清理前导出外部对象存储——**数据库层面做不到自动对接，这个开关目前只是意图标记，本次未实现导出逻辑，需应用层配合** |
+| is_active | boolean | DEFAULT TRUE | |
+
+> 读写权限边界：**读**——任何租户可见"当前适用于自己的策略"（`view_applicable_storage_policy` RLS，`tenant_id = fn_current_tenant_id() OR tenant_id IS NULL`）；**写**——只有平台超级管理员（`fn_is_platform_admin()`）能改，租户管理员即使是自己租户专属那一行也改不了（`platform_admin_manage_storage_policy` RLS）。平台管理员复用既有 RBAC（`roles.tenant_id IS NULL` 表达平台级角色），不是新机制。
+
+### 2.22 inventory_history_daily_summary / wo_action_logs_daily_summary (归档聚合表，Layer 8)
+两表结构类似：`tenant_id`、`summary_date`、维度列（`product_id`/`change_type` 或 `work_order_id`/`action_type`）、计数/累计列、`UNIQUE(tenant_id, summary_date, ...)`。由 `fn_archive_and_purge_inventory_history`/`fn_archive_and_purge_wo_action_logs` 在删除超过 `hot_retention_days` 的明细行前，先按租户+日期+维度 `INSERT ... ON CONFLICT DO UPDATE` 聚合写入。
+
+> **两表目前均无 `updated_at` 列/触发器**，但会被维护任务反复 `ON CONFLICT DO UPDATE`——违反本项目"会被 UPDATE 的表必须有 updated_at"的既有约定（`unWMS_PR_Pre_Submission_Checklist_V1.md` 第 7 条），是 `DBA_ADDENDUM_REQUEST_2026-07-20.md` 第 3 项请求修复的问题。
+
 ---
 
-## 3. 视图（10 个只读分析视图）
+## 3. 视图（11 个只读分析视图）
 
 | 视图 | 说明 | 核心指标 |
 |------|------|----------|
@@ -427,10 +479,25 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `v_packing_efficiency` | 打包效率 | packer 级：任务数、箱数、面单数、平均耗时、总重量 |
 | `v_loading_utilization` | 装车载重利用率 | vehicle 级：计划/实载重体积、重量/体积利用率 |
 | `v_cross_dock_efficiency` | 直通效率 | tenant 级：总作业数、发运/降级/超时数、平均前置时长、发运率 |
+| `v_serial_lookup` | 序列号一站式查询（Layer 7） | serial_number, status, location_code, container_code, order_line_id, external_order_id——供保修/召回场景直接用，不需每次手写多表 join |
 
 ---
 
-## 4. 核心 RPC 函数（37 个：17 个 V2.1 核心函数 + 9 个 Layer 2 离线同步/异常领域函数 + 6 个 Layer 3 同步动作扩展函数 + 6 个 Layer 4 追踪策略函数）
+## 4. 核心 RPC 函数（44 个：17 个 V2.1 核心函数 + 9 个 Layer 2 离线同步/异常领域函数 + 6 个 Layer 3 同步动作扩展函数 + 6 个 Layer 4 追踪策略函数 + 6 个 Layer 7/8 库区序列号/存储管理函数）
+
+**Layer 5-6（并发加固/跨租户归属修复）说明**：不新增函数，仅 `CREATE OR REPLACE` 重写 `fn_apply_pick_action`/`fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action`/`fn_apply_sync_event`/`fn_resolve_exception`/`fn_expire_task_claims`/`fn_cross_dock_timeout_sweep`——`sync_events.status` 新增 `PROCESSING` 中间态，四个动作子函数内部去掉各自的 `status='PENDING'` 复检（假定已经过 dispatcher 原子认领），`fn_apply_pick_action`/`fn_apply_pack_action` 新增跨租户归属校验（`order_line_id`/`order_id` 必须属于当前事件租户，否则按 `REFERENCE_NOT_FOUND` 处理）。**已知遗留问题**：四个子函数目前仍可被绕开 dispatcher 直接以 RPC 调用（无 `EXECUTE` 权限收口），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md` 第 1 项（CRITICAL）。
+
+| 函数 | 分类 | 说明 |
+|------|------|------|
+| `fn_trg_sync_location_zone_type()` | 触发器，Layer 7 | 库位挂接/更换库区时，自动从 `zones.zone_type` 同步到 `locations.zone_type`（仅 location→zone 方向，反向未级联，见上方 §2.18） |
+| `fn_putaway_serialized_unit(...)` | Layer 7 | 序列化商品入库：`ON CONFLICT ... DO UPDATE ... WHERE status='RETURNED'`，只允许已退货序列号重新入库覆盖，其余状态一律拒绝（已验证并发安全） |
+| `fn_pick_serialized_unit(...)` | Layer 7 | 序列化商品拣货：按序列号原子转移 `IN_STOCK→PICKED`，天然幂等（重复拣货因状态不再是 `IN_STOCK` 而查不到行，走库存不足异常闭环） |
+| `fn_is_platform_admin(p_user_id)` | 认证，Layer 8 | 包装 `check_user_permission(u, 'platform_storage_policy', 'manage')`，复用既有 RBAC，非新机制 |
+| `fn_current_user_id()` | 认证，Layer 8 | 包装 `auth.uid()`（`BEGIN/EXCEPTION` 兜底），供 `CREATE POLICY` 表达式间接引用——直接写 `auth.uid()` 会在非 Supabase 环境的 DDL 阶段报错，这是本次验证记录的一条新经验 |
+| `fn_get_storage_policy(p_tenant_id DEFAULT NULL)` | Layer 8 | 查询生效存储策略：租户专属覆盖优先，回退平台默认 |
+| `fn_check_storage_usage()` | 维护，Layer 8 | 用 `pg_database_size()` 核对真实占用 vs 阈值，超预警/临界线登记 `STORAGE_THRESHOLD_WARNING`/`STORAGE_THRESHOLD_CRITICAL`（`tenant_id` 为空，平台级，仅平台管理员可见） |
+| `fn_archive_and_purge_wo_action_logs(p_tenant_id DEFAULT NULL)` / `fn_archive_and_purge_inventory_history(...)` | 维护，Layer 8 | 清理前先按租户+日期+维度聚合写入 `*_daily_summary` 表，只删过保留窗口的明细行，不做纯硬删除 |
+| `fn_run_storage_maintenance()` | 维护，Layer 8 | 一站式：检查用量 + 两张表分别归档清理，建议挂 `pg_cron` 每天一次，取代早期 `fn_purge_old_action_logs`（后者不删除，保留作应急手动工具） |
 
 | 函数 | 分类 | 说明 |
 |------|------|------|
@@ -544,7 +611,16 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 
 ## 8. 行级安全 (RLS) 策略
 
-**启用表（38 表）**：`users`、`devices`、`products`、`locations`、`waves`、`orders`、`inventory`、`billing_transactions`、`barcode_mappings`、`work_orders`、`roles`、`inbound_receipts`、`sorting_chutes`、`sorting_tasks`、`sorting_waves`、`verification_rules`、`quality_inspections`、`package_specs`、`label_templates`、`packing_tasks`、`consumable_usages`、`vehicles`、`loading_tasks`、`shipping_documents`、`cross_dock_jobs`、`billing_rules`、`task_claims`、`sync_policies`、`device_sync_state`、`sync_events`、`exceptions`、`exception_events`（v2.2.0 新增 6 张）、`inventory_count_policies`、`packing_task_items`、`tenant_tracking_policies`（v2.3.0 新增 3 张）
+**启用表（43 表）**：`users`、`devices`、`products`、`locations`、`waves`、`orders`、`inventory`、`billing_transactions`、`barcode_mappings`、`work_orders`、`roles`、`inbound_receipts`、`sorting_chutes`、`sorting_tasks`、`sorting_waves`、`verification_rules`、`quality_inspections`、`package_specs`、`label_templates`、`packing_tasks`、`consumable_usages`、`vehicles`、`loading_tasks`、`shipping_documents`、`cross_dock_jobs`、`billing_rules`、`task_claims`、`sync_policies`、`device_sync_state`、`sync_events`、`exceptions`、`exception_events`（v2.2.0 新增 6 张）、`inventory_count_policies`、`packing_task_items`、`tenant_tracking_policies`（v2.3.0 新增 3 张）、`zones`、`inventory_units`、`storage_management_policies`、`inventory_history_daily_summary`、`wo_action_logs_daily_summary`（v2.5.0 新增 5 张）
+
+**storage_management_policies 特殊策略**（v2.5.0 新增，同 `exception_type_catalog` 一样是"全局默认 + 租户覆盖"双层结构，但读写权限不对称）：
+```sql
+CREATE POLICY view_applicable_storage_policy ON storage_management_policies
+FOR SELECT USING (tenant_id = fn_current_tenant_id() OR tenant_id IS NULL);
+
+CREATE POLICY platform_admin_manage_storage_policy ON storage_management_policies
+FOR ALL USING (fn_is_platform_admin(fn_current_user_id()));
+```
 
 **exception_type_catalog 特殊策略**（v2.2.0 新增，需同时看到"本租户覆盖配置"与"全局默认配置"两部分，不能用标准模板）：
 ```sql
@@ -614,7 +690,11 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 
 ## 11. 迁移脚本对应关系
 
-> **重要提示**：`supabase/` 目录（含 `supabase/migrations/`）已加入 `.gitignore`，不再纳入本仓库版本管理（历史备份目录 `supabase/migrations.backup.*` 同样被忽略）。因此下表记录的是**设计层面**的脚本对应关系，实际 SQL 文件由部署流程在仓库之外维护；本文档才是表结构的版本化事实来源。
+> **重要提示（2026-07-20 更新）**：迁移脚本的权威版本与提交历史已迁到独立仓库
+> [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理，见
+> `docs/01-architecture/ADR/017-dba-migration-repo-split.md`），本仓库 `supabase/`
+> 目录本身仍在 `.gitignore` 里、不纳入本仓库版本管理。下表记录的是**设计层面**的
+> 脚本对应关系；本文档才是表结构的版本化事实来源。
 
 | 迁移脚本（设计对应） | 包含表 | 状态 |
 |----------|--------|------|
@@ -622,6 +702,10 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | Layer 2：离线同步 + 统一异常领域增量扩展（本地 `002_offline_sync_exception_domain.sql`） | `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 共 7 表 + `inventory_reservations.work_order_id` + `order_lines` EXCEPTION 状态 | ✅ 本地脚本与设计文档逐字一致（已核对）；✅ 应用层（仓储 5 端口+5 实现、Device API 路由）已实现，见 ROADMAP.md Phase 1.4 |
 | Layer 3：同步动作扩展 PUTAWAY/COUNT/PACK（本地 `003_extend_sync_event_actions.sql`） | `inventory_count_policies`、`packing_task_items` 2 表 + `adjust_inventory`/`fn_adjust_inventory_at_location`/`fn_reconcile_location_count`/`fn_get_count_tolerance`/`fn_apply_putaway_action`/`fn_apply_count_action`/`fn_apply_pack_action` | ✅ **本地文件已替换为 DBA 修正版**（经 `diff` 核对与 `.readonly/unWMS_Sync_Actions_Extension_V1.sql` 逐字节一致），已随生产部署生效；应用层仓储（`IInventoryCountPolicyRepository`/`IPackingTaskItemRepository`）与 Device API `/putaway`/`/count`/`/pack` 端点已实现 |
 | Layer 4：唯一追踪策略 + 无码/未识别货物处理（本地 `004_tracking_policy_missing_label.sql`） | `tenant_tracking_policies` 1 表 + `containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 3 新列 + 6 个函数 + 触发器范围扩展 | ✅ **本地文件已创建**（经 `diff` 核对与 `.readonly/unWMS_Tracking_Policy_Missing_Label_V1.sql` 逐字节一致），已随生产部署生效（见 `docs/01-architecture/TRACKING_POLICY_MISSING_LABEL.md`）。**部署顺序硬约束已遵守**：严格排在 Layer 3 之后部署（CREATE OR REPLACE 覆盖 Layer 3 的 fn_apply_putaway_action，未出现静默覆盖问题）；应用层仓储与 Device API 端点已实现 |
+| Layer 5：并发安全加固（`005_concurrency_hardening.sql`） | 不新增表；重写 `fn_apply_pick/putaway/count/pack_action`/`fn_apply_sync_event`/`fn_resolve_exception`/`fn_expire_task_claims`/`fn_cross_dock_timeout_sweep`，`sync_events.status` 新增 `PROCESSING` | ✅ 与 `.readonly/unWMS_Concurrency_Hardening_V1.sql` 逐字节一致，经 `ecc:database-reviewer` 复核（PR #37）；对 TS 应用层完全透明。⚠️ 遗留 1 项 CRITICAL（RPC EXECUTE 权限收口缺失）+ 1 项 MEDIUM（`PROCESSING` 超时清扫缺失），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md` |
+| Layer 6：跨租户归属修复（`006_tenant_ownership_fix.sql`） | 不新增表；`fn_apply_pick_action`/`fn_apply_pack_action` 新增 `order_line_id`/`order_id` 归属校验 | ✅ 与 `.readonly/unWMS_Tenant_Ownership_Fix_V1.sql` 逐字节一致，经复核确认修复完整、未被 Layer 7 的 `CREATE OR REPLACE` 意外覆盖；对 TS 应用层完全透明 |
+| Layer 7：库区建模 + 库位人读名/层级 + 序列号持久追踪（`007_zone_location_serial_tracking.sql`） | `zones`/`inventory_units` 2 新表 + `locations` 6 新列 + `v_serial_lookup` 视图 + 3 个函数/触发器 | ✅ 与 `.readonly/unWMS_Zone_Location_Serial_Tracking_V1.sql` 逐字节一致，经复核确认新表 RLS/`updated_at`/序列号并发写入正确。⚠️ 遗留 1 项 HIGH（`zone_type` 反向级联缺失），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md`。应用层：`IInventoryUnitRepository`/`IZoneRepository`/`ILocationRepository` 扩展见 `REPOSITORY_ROADMAP.md` Phase 8 |
+| Layer 8：分层存储管理（`008_storage_management.sql`） | `storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary` 3 新表 + 6 个函数 | ✅ 与 `.readonly/unWMS_Storage_Management_V1.sql` 逐字节一致，经复核确认 RLS 读写权限边界正确、两处已知坑（`auth.uid()` 间接引用、`format()` 精度占位符）修复完整。⚠️ 遗留 1 项 HIGH（两张 daily_summary 表缺 `updated_at`），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md`。应用层：`IStorageManagementPolicyRepository` 见 `REPOSITORY_ROADMAP.md` Phase 8 |
 
 ---
 
@@ -635,6 +719,7 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | **2.2.0** | **2026-07-15** | **补充离线同步 + 统一异常领域设计**（DBA 新方案替代旧状态同步/OT-CRDT 设计）：新增 `task_claims`/`sync_policies`/`device_sync_state`/`sync_events`/`exception_type_catalog`/`exceptions`/`exception_events` 7 表、9 个函数、`inventory_reservations.work_order_id`、`order_lines.EXCEPTION` 状态；修正 §11 迁移文件引用（`supabase/` 已加入 .gitignore，不再假设某个具体文件名） |
 | **2.3.0** | **2026-07-16** | **补充 Layer 3（同步动作扩展 PUTAWAY/COUNT/PACK，对开发团队 PR 的修正重新实现）+ Layer 4（唯一追踪策略+无码/未识别货物处理，全新设计）**：新增 `inventory_count_policies`/`packing_task_items`/`tenant_tracking_policies` 3 表、`containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 3 新列、11 个新函数、2 个新 CHECK 约束、1 处触发器范围扩展、3 个新异常类型（`REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS`）。**本次仅为设计文档补充，本地迁移脚本未改动**（003 现存 bug 未修正，004 不存在），修正/新增均需先与 DBA 团队协调确认 |
 | **2.4.0** | **2026-07-18** | **DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境**：003/004 本地文件均已替换/创建为 DBA 修正版，经 `diff` 核对与 `.readonly/` 参考文件逐字节一致；`src/types/database.ts` 已由 `supabase gen types` 独立核实与远程 schema 一致；应用层仓储（Layer 2/3/4 共 9 端口+9 实现）与 Device API 全部路由已实现，`tsc --noEmit` 零错误、`vitest` 59/59 通过。§0/§11 阻塞提示解除 |
+| **2.5.0** | **2026-07-20** | **补充 Layer 5-8**（并发安全加固/跨租户归属修复/库区库位序列号追踪/分层存储管理）：新增 `zones`/`inventory_units`/`storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary` 5 表、`locations` 6 新列、`v_serial_lookup` 视图、9 个新/重写函数、`sync_events.status` 新增 `PROCESSING`。经 `ecc:database-reviewer`/`ecc:architect`/`ecc:planner` 三轮分析（PR #37）核实无误的部分与遗留问题（1 CRITICAL + 2 HIGH + 1 MEDIUM，已提交 `DBA_ADDENDUM_REQUEST_2026-07-20.md`）均已记录。**迁移脚本本身随本次改动迁出本仓库**，权威版本见独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（`docs/01-architecture/ADR/017-dba-migration-repo-split.md`） |
 
 ---
 

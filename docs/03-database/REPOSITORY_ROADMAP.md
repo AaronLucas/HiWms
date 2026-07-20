@@ -199,6 +199,40 @@
 
 ---
 
+## Phase 8: 库区/序列号追踪/存储管理仓储（3个）- Layer 7/8 配套（2026-07-20 新增，ADR-016）
+
+> 对应表见 `docs/03-database/DB_SCHEMA.md` §2.18-2.22；对应 RPC 封装见同文档 §4。Layer 5/6（并发加固、跨租户归属修复）核实对现有仓储层**完全透明**，不产生新的 Phase 条目——详见 ADR-016 决策 1。状态语义同 §5 说明的三档：⏳待开始 / 🔨已实现未验证 / ✅已完成（附测试证据）。
+
+### 8.1 端口定义
+| # | 文件 | 状态 | 说明 |
+|---|------|------|------|
+| 1 | `src/core/ports/db/IInventoryUnitRepository.ts` | 🔨 本 PR 集成中 | 序列化商品只读查询：`findBySerial`/`findByLocation`/`findByStatus`/`findByOrderLine`/`serialLookup`（封装 `v_serial_lookup`）。写路径留在 SQL 函数内部原子完成，不在本仓储职责内 |
+| 2 | `src/core/ports/db/IStorageManagementPolicyRepository.ts` | 🔨 本 PR 集成中 | `getEffectivePolicy`/`checkStorageUsage`/`runMaintenance`（RPC 封装）+ 平台管理员 CRUD。写方法仅限 admin-api 调用（RLS 层已强制平台管理员边界，TS 层遵循同一分层原则） |
+| 3 | `src/core/ports/db/IZoneRepository.ts` | 🔨 本 PR 集成中 | 库区 CRUD：`create`/`update`/`findById`/`findByCode`/`findByTenant`/`findActive` |
+| — | `src/core/ports/db/ILocationRepository.ts`（扩展，非新文件） | 🔨 本 PR 集成中 | 补 `zone_id`/`name`/`aisle`/`bay`/`level`/`position` + 新增 `findByZone(zoneId)` |
+| — | `src/core/ports/auth/ITenantResolver.ts`（扩展，非新文件） | 🔨 本 PR 集成中 | 补声明 `isPlatformAdmin`（具体实现已存在，端口契约补全，ADR-007/ADR-016 决策 3） |
+
+### 8.2 Supabase 实现
+| # | 文件 | 状态 |
+|---|------|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseInventoryUnitRepository.ts` | 🔨 本 PR 集成中 |
+| 2 | `src/adapters/supabase/repositories/SupabaseStorageManagementPolicyRepository.ts` | 🔨 本 PR 集成中 |
+| 3 | `src/adapters/supabase/repositories/SupabaseZoneRepository.ts` | 🔨 本 PR 集成中 |
+| — | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts`（扩展） | 🔨 本 PR 集成中 |
+
+### 8.3 附带修复（非新仓储，随本 Phase 一并处理）
+- `SupabaseInventoryReservationRepository`：`createReservation()` 缺租户/所有权校验 + `findActiveByTenant()`/`getReservationStats()` 引用不存在列（`tenant_id`/`is_active`/`quantity`，实为按 join 判断归属/`status`/`reserved_qty`）——目前因 `ReserveInventoryUseCase.execute()` 是 stub 未被触发，本轮趁便修复，避免真正接线后重演 Layer 6 同类真实数据泄露
+
+### 8.4 索引更新
+- [ ] `src/core/ports/db/index.ts` - 导出 3 个新端口
+- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+
+### 8.5 验证记录
+
+（`npx tsc --noEmit` 结果与测试证据待补，本节随本 PR 后续提交更新）
+
+---
+
 ## 总计统计
 
 | 阶段 | 端口数 | 实现数 | 总文件数 | 预估代码行数 |
