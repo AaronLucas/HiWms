@@ -76,6 +76,16 @@
 - [x] Device API 新增 `POST /missing-label/generate`、`POST /missing-label/confirm`、`POST /unidentified/receive`、`POST /unidentified/identify` 端点（`src/apps/device-api/routes.ts`）
 - [ ] **部署前必须完成的租户配置**：`tenant_tracking_policies` 里 B 类商品必须显式配置追踪策略，不能长期依赖系统保守兜底值；哪些库位需要 `force_unique_tracking = TRUE` 需仓库运营方按实际情况配置（业务配置项，非工程阻塞）
 
+#### 1.4.3 Layer 5-8：并发加固 + 跨租户归属修复 + 库区/序列号追踪 + 分层存储管理（2026-07-20 DBA 交付，本轮集成）
+
+> 设计依据：`.readonly/unWMS_Concurrency_Hardening_V1.md`（Layer 5）、`unWMS_Tenant_Ownership_Fix_V1.md`（Layer 6）、`unWMS_Zone_Location_Serial_Tracking_V1.md`（Layer 7）、`unWMS_Storage_Management_V1.md`（Layer 8）。**SQL 迁移脚本本身不再纳入本仓库 git 历史**——已随本轮集成一并迁到独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理），详见下方「迁移仓库拆分」。经 `ecc:database-reviewer`/`ecc:architect`/`ecc:planner` 三轮分析（PR #37），四个迁移在表结构/RLS/序列号并发写入正确性上核实无误，但发现 1 个 CRITICAL + 2 个 HIGH + 1 个 MEDIUM 的 SQL 层遗留问题，已整理为正式请求文档退回 DBA（见下）。
+
+- [x] **迁移仓库拆分**：`supabase/migrations`（001-008）、`seed.sql`、`.readonly/` 设计文档整体迁移到独立私有仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队直接管理，与本仓库零 git 关联、无 submodule）。CI 新增 `.github/workflows/db-integration.yml`，通过只读、无过期 Deploy Key checkout 该仓库、起本地一次性 Postgres、跑 001-008 迁移 + `RUN_DB_CONCURRENCY_TESTS` 并发测试套件（先作为独立 job，未加入 `ci-success` 硬门禁，观察稳定性）。本地开发用 `scripts/sync-db-migrations.sh` 同步。此举解决了 `REPOSITORY_ROADMAP.md` §「剩余缺口清单」CRITICAL 第 2 项此前记录的"是否开始把迁移脚本提交入库"暂缓决策
+- [x] **DBA Addendum 请求已提出**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-20.md`——① CRITICAL：`fn_apply_pick/putaway/count/pack_action` 四函数缺少 `EXECUTE` 权限收口，可绕过 `fn_apply_sync_event` dispatcher 直接调用复现重复处理；② HIGH：`fn_trg_sync_location_zone_type`（Layer 7）只覆盖 location→zone 方向，`zones.zone_type` 反向变更不会级联刷新已挂接库位，影响冷链/危险品合规校验时效性；③ HIGH：Layer 8 新增的 `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 两表会被维护任务反复 `ON CONFLICT DO UPDATE`，缺少 `updated_at`；④ MEDIUM：`sync_events` 卡在 `PROCESSING` 状态缺少超时清扫。四项均未修改任何 `.sql`，等待 DBA 团队评估处理
+- [ ] **TypeScript 仓储层集成**（进行中）：`src/types/database.ts` 手工补齐 Layer 7/8 新表（`zones`/`inventory_units`/`storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary`）、`v_serial_lookup` 视图、`locations` 新列、`PROCESSING` 状态值；新增 `IInventoryUnitRepository`（只读，序列号生命周期查询）、`IStorageManagementPolicyRepository`（平台管理员写、租户只读）、`IZoneRepository`（库区 CRUD）；`ILocationRepository` 补 `zone_id`/`name`/`aisle`/`bay`/`level`/`position` + `findByZone`；`device-api/validation.ts` 补 `serial_number` 字段（否则序列化 SKU 无法端到端可用）；`ITenantResolver` 端口补声明 `isPlatformAdmin`（六边形架构契约完整性）。Layer 5/6（并发加固、跨租户归属修复）核实对现有 TS 调用方**完全透明**——唯一调用方 `SupabaseSyncEventRepository.applyEvent()` 只经过 dispatcher，已把非 `APPLIED` 终态当异常处理，`PROCESSING` 已在类型联合里，无需额外改动
+- [ ] **休眠 bug 一并修复**：`SupabaseInventoryReservationRepository.createReservation()` 缺租户/所有权校验（与 Layer 6 修复的 `order_lines` 缺口同类），`findActiveByTenant()`/`getReservationStats()` 引用不存在列（`tenant_id`/`is_active`/`quantity` → 实为按 join 判断的租户归属/`status`/`reserved_qty`）——目前因 `ReserveInventoryUseCase.execute()` 是 stub 而未爆，趁本轮一并修复，避免真正接线后重演 Layer 6 那类真实数据泄露
+- [ ] Track B（登录/注册身份模型桥接，ADR-015）：设计已完成待评审，5 个开放问题需产品/DBA/项目负责人拍板，不在本轮范围内，独立跟踪
+
 ---
 
 ## 阶段 2：前端应用（Uniapp Vue3）

@@ -24,4 +24,11 @@ export interface ITenantResolver {
    * 验证租户是否存在且激活
    */
   validateTenant(tenantId: string): Promise<boolean>;
+
+  /**
+   * 检查用户是否为平台超管
+   * 对应 supabase/migrations/008_storage_management.sql §1 引入的
+   * fn_is_platform_admin 概念（is_system_user 或 role = 'platform_admin'）
+   */
+  isPlatformAdmin(userId: string): Promise<boolean>;
 }

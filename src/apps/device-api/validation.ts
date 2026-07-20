@@ -150,7 +150,18 @@ export type ExceptionParams = z.infer<typeof exceptionParamsSchema>;
 
 // ========== Layer 3: PUTAWAY/COUNT/PACK Actions ==========
 
-/** PUTAWAY 动作 payload */
+/**
+ * PUTAWAY 动作 payload
+ * serial_number（可选）：序列化商品（products.is_serial_required = TRUE）必须提供，
+ * 否则 fn_apply_putaway_action 会拒绝并登记异常，见
+ * supabase/migrations/007_zone_location_serial_tracking.sql §4。
+ * 非序列化商品不受影响，字段留空即可。
+ *
+ * 注：PICK 动作没有独立的 REST 端点/校验 schema——PDA 端只能通过通用的
+ * POST /sync/events（action_type = 'PICK'，payload 为 z.record(...) 任意 JSON）
+ * 提交拣货事件，该 payload 本就不做结构限制，serial_number 已经可以随意携带，
+ * 不需要在这里补 pickRequestSchema。
+ */
 export const putawayRequestSchema = z.object({
   /** SKU ID */
   sku_id: uuidSchema,
@@ -163,6 +174,8 @@ export const putawayRequestSchema = z.object({
   /** 批次/效期 */
   batch_id: uuidSchema.optional(),
   expiry_date: isoDateTimeSchema.optional(),
+  /** 序列号（序列化商品必填，见上方说明） */
+  serial_number: z.string().min(1).optional(),
 });
 
 /** COUNT 动作 payload */

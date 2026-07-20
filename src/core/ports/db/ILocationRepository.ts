@@ -41,6 +41,12 @@ export interface ILocationRepository extends IRepository<LocationRow, LocationIn
   findByZoneType(tenantId: string, zoneType: string): Promise<LocationRow[]>;
 
   /**
+   * 按库区（zones.id）查找库位
+   * 对应 migration 007 新增的 locations.zone_id 外键
+   */
+  findByZone(zoneId: string): Promise<LocationRow[]>;
+
+  /**
    * 更新库位状态（冻结/解冻/激活/停用）
    */
   updateStatus(locationId: string, isActive: boolean, isFrozen?: boolean): Promise<LocationRow>;

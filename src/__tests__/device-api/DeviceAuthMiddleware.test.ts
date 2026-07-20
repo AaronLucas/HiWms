@@ -43,6 +43,7 @@ const mockTenantResolver: ITenantResolver = {
   validateTenant: vi.fn(),
   resolveFromUser: vi.fn(),
   resolveFromRequest: vi.fn(),
+  isPlatformAdmin: vi.fn(),
 };
 
 const deviceAuthConfig = {

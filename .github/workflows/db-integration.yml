@@ -1,0 +1,84 @@
+name: DB Integration Tests
+
+# 数据库集成/并发测试：从独立仓库 HiWmsSupabase 拉取迁移脚本，起一次性本地
+# Docker Postgres（`supabase start`），跑 001-008 迁移，再跑标记为
+# RUN_DB_CONCURRENCY_TESTS 的并发/集成测试套件。
+#
+# HiWmsSupabase 是与本仓库完全独立的仓库（DBA 团队管理迁移脚本），本 job 只通过
+# 一把只读 Deploy Key（HIWMS_SUPABASE_DEPLOY_KEY secret，绑定该仓库、无过期时间）
+# checkout 它的内容，不在本仓库的 git 历史里保留任何一份 SQL 原文。
+#
+# 当前为独立 job，未加入 ci.yml 的 ci-success 硬门禁——首次上线，先观察稳定性，
+# 稳定后再考虑升级为合并前必须通过的门禁项。
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9'
+
+jobs:
+  db-integration:
+    name: DB Migrations + Concurrency Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wms7
+        uses: actions/checkout@v4
+
+      - name: Checkout HiWmsSupabase (DBA-managed migrations)
+        uses: actions/checkout@v4
+        with:
+          repository: AaronLucas/HiWmsSupabase
+          ssh-key: ${{ secrets.HIWMS_SUPABASE_DEPLOY_KEY }}
+          path: hiwms-supabase-src
+
+      - name: Stage migrations into ./supabase
+        run: cp -r hiwms-supabase-src/supabase ./supabase
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (one-shot Docker Postgres)
+        run: supabase start
+
+      - name: Apply migrations (001-008) + seed
+        run: supabase db reset
+
+      - name: Fix up role grants (CI-only, not a DBA migration)
+        # Supabase Cloud provisions anon/authenticated/service_role grants as part of
+        # its managed dashboard flow; a bare `supabase start`/`db reset` on a fresh CI
+        # Postgres doesn't replicate that, and the migration SQL itself has no GRANT
+        # statements (production works because it went through Cloud's provisioning).
+        # See scripts/ci-db-grants.sql for the full explanation.
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+            -f scripts/ci-db-grants.sql
+
+      - name: Run DB concurrency / integration tests
+        run: pnpm run test
+        env:
+          RUN_DB_CONCURRENCY_TESTS: 'true'
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop

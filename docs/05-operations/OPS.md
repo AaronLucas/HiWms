@@ -288,6 +288,15 @@ S3_BUCKET=wms-backups
 | `REDIS_URL` | redis://localhost:6379 | redis://staging-redis:6379 | redis://prod-redis:6379 |
 | `JWT_SECRET` | dev-secret | staging-secret (K8s Secret) | prod-secret (K8s Secret) |
 
+### 9.4 CI/CD Secrets（GitHub Actions，非运行时应用变量，2026-07-20 新增）
+
+| Secret 名称 | 用途 | 类型/有效期 |
+|---|---|---|
+| `HIWMS_SUPABASE_DEPLOY_KEY` | `.github/workflows/db-integration.yml` 用它 checkout 独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理的迁移脚本仓库） | SSH 只读 Deploy Key，绑定该仓库单一权限，**无过期时间**（区别于个人 PAT，不会因账号会话/token 轮换而断，只能手动吊销）。公钥已加为 HiWmsSupabase 的 read-only deploy key |
+
+轮换/吊销流程：在 HiWmsSupabase 仓库 Settings → Deploy keys 里删除对应公钥，再在 wms7
+`gh secret set HIWMS_SUPABASE_DEPLOY_KEY` 更新为新私钥即可，两步操作互不依赖生产环境。
+
 ---
 
 ## 10. 监控配置文件路径
