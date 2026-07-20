@@ -5,7 +5,7 @@
 import { ICacheKeyBuilder } from '@core/ports/cache/ICacheKeyBuilder';
 
 export class CacheKeyBuilder implements ICacheKeyBuilder {
-  private prefix = 'wms7';
+  private prefix = 'hiwms';
 
   build(...parts: string[]): string {
     return [this.prefix, ...parts].join(':');

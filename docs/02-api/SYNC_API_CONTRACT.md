@@ -47,9 +47,9 @@
 
 ```http
 POST /api/v1/device/sync/events HTTP/1.1
-Host: api.wms7.com
+Host: api.hiwms.com
 Authorization: Bearer <device_access_token>
-X-API-Key: wms7_dk_<deviceId>_<random>
+X-API-Key: hiwms_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 X-Client-Version: 3.0.0
 Content-Type: application/json
@@ -205,7 +205,7 @@ PENDING → REJECTED   （action_type 未知，或请求本身不满足处理前
 ```http
 GET /api/v1/device/sync/pull?tables=work_order,product,location,container&cursor=<opaque> HTTP/1.1
 Authorization: Bearer <token>
-X-API-Key: wms7_dk_<deviceId>_<random>
+X-API-Key: hiwms_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 ```
 
@@ -261,7 +261,7 @@ interface PullResponse {
 ```http
 GET /api/v1/device/sync/policy?task_type=PICK&zone_type=COLD_CHAIN HTTP/1.1
 Authorization: Bearer <token>
-X-API-Key: wms7_dk_<deviceId>_<random>
+X-API-Key: hiwms_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 ```
 
@@ -294,7 +294,7 @@ PDA 在开始任务前应先调用本接口：若 `offline_mode = ONLINE_ONLY`�
 ```http
 POST /api/v1/device/tasks/wo-uuid-1/claim HTTP/1.1
 Authorization: Bearer <token>
-X-API-Key: wms7_dk_<deviceId>_<random>
+X-API-Key: hiwms_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 Content-Type: application/json
 
@@ -333,7 +333,7 @@ Content-Type: application/json
 ```http
 POST /api/v1/device/tasks/claims/claim-uuid-9012/release HTTP/1.1
 Authorization: Bearer <token>
-X-API-Key: wms7_dk_<deviceId>_<random>
+X-API-Key: hiwms_dk_<deviceId>_<random>
 X-Device-Id: <device_id>
 ```
 

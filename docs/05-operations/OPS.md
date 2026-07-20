@@ -294,7 +294,7 @@ S3_BUCKET=wms-backups
 |---|---|---|
 | `HIWMS_SUPABASE_DEPLOY_KEY` | `.github/workflows/db-integration.yml` 用它 checkout 独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理的迁移脚本仓库） | SSH 只读 Deploy Key，绑定该仓库单一权限，**无过期时间**（区别于个人 PAT，不会因账号会话/token 轮换而断，只能手动吊销）。公钥已加为 HiWmsSupabase 的 read-only deploy key |
 
-轮换/吊销流程：在 HiWmsSupabase 仓库 Settings → Deploy keys 里删除对应公钥，再在 wms7
+轮换/吊销流程：在 HiWmsSupabase 仓库 Settings → Deploy keys 里删除对应公钥，再在 HiWms
 `gh secret set HIWMS_SUPABASE_DEPLOY_KEY` 更新为新私钥即可，两步操作互不依赖生产环境。
 
 ---

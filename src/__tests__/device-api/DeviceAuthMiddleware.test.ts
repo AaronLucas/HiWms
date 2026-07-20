@@ -48,8 +48,8 @@ const mockTenantResolver: ITenantResolver = {
 
 const deviceAuthConfig = {
   jwtSecret: 'test-secret',
-  jwtIssuer: 'wms7-device-api',
-  jwtAudience: 'wms7-devices',
+  jwtIssuer: 'hiwms-device-api',
+  jwtAudience: 'hiwms-devices',
 };
 
 describe('DeviceAuthMiddleware', () => {
@@ -123,8 +123,8 @@ describe('DeviceAuthMiddleware', () => {
         device_id: '123e4567-e89b-12d3-a456-426614174000',
         tenant_id: '123e4567-e89b-12d3-a456-426614174001',
         type: 'user',
-        iss: 'wms7-device-api',
-        aud: 'wms7-devices',
+        iss: 'hiwms-device-api',
+        aud: 'hiwms-devices',
         exp: Math.floor(Date.now() / 1000) + 3600,
       };
       const token = createJwtToken(payload);
@@ -143,8 +143,8 @@ describe('DeviceAuthMiddleware', () => {
         device_id: '123e4567-e89b-12d3-a456-426614174000',
         tenant_id: '123e4567-e89b-12d3-a456-426614174001',
         type: 'device',
-        iss: 'wms7-device-api',
-        aud: 'wms7-devices',
+        iss: 'hiwms-device-api',
+        aud: 'hiwms-devices',
         exp: Math.floor(Date.now() / 1000) - 3600,
       };
       const token = createJwtToken(payload);
@@ -164,7 +164,7 @@ describe('DeviceAuthMiddleware', () => {
         tenant_id: '123e4567-e89b-12d3-a456-426614174001',
         type: 'device',
         iss: 'wrong-issuer',
-        aud: 'wms7-devices',
+        aud: 'hiwms-devices',
         exp: Math.floor(Date.now() / 1000) + 3600,
       };
       const token = createJwtToken(payload);
@@ -182,7 +182,7 @@ describe('DeviceAuthMiddleware', () => {
         device_id: '123e4567-e89b-12d3-a456-426614174000',
         tenant_id: '123e4567-e89b-12d3-a456-426614174001',
         type: 'device',
-        iss: 'wms7-device-api',
+        iss: 'hiwms-device-api',
         aud: 'wrong-audience',
         exp: Math.floor(Date.now() / 1000) + 3600,
       };
@@ -218,7 +218,7 @@ describe('DeviceAuthMiddleware', () => {
     });
 
     it('should return 401 when device not found or inactive', async () => {
-      mockReq.headers = { 'x-api-key': 'wms7_dev_123e4567-e89b-12d3-a456-426614174000_secret' };
+      mockReq.headers = { 'x-api-key': 'hiwms_dev_123e4567-e89b-12d3-a456-426614174000_secret' };
       const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
@@ -231,7 +231,7 @@ describe('DeviceAuthMiddleware', () => {
     it('should prefer JWT over API Key when both present', async () => {
       mockReq.headers = {
         authorization: 'Bearer invalid.token.here',
-        'x-api-key': 'wms7_dev_123e4567-e89b-12d3-a456-426614174000_secret',
+        'x-api-key': 'hiwms_dev_123e4567-e89b-12d3-a456-426614174000_secret',
       };
       const authenticate = middleware.authenticate;
 

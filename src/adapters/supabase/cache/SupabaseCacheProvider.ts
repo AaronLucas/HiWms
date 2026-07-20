@@ -144,7 +144,7 @@ export class RedisCacheProvider implements ICacheProvider {
 }
 
 export class CacheKeyBuilder implements ICacheKeyBuilder {
-  private prefix = 'wms7';
+  private prefix = 'hiwms';
 
   build(...parts: string[]): string {
     return [this.prefix, ...parts].join(':');

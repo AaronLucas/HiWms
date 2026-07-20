@@ -448,7 +448,7 @@ interface PlatformJwtPayload {
   permissions: string[];
   iat: number;
   exp: number;
-  iss: 'wms7-platform';
+  iss: 'hiwms-platform';
 }
 
 // Tenant JWT (Tenant/Device API)
@@ -461,7 +461,7 @@ interface TenantJwtPayload {
   deviceId?: string;        // 设备端必填
   iat: number;
   exp: number;
-  iss: 'wms7-tenant';
+  iss: 'hiwms-tenant';
 }
 ```
 
@@ -484,13 +484,13 @@ interface TenantJwtPayload {
 ### 7.3 API Key 格式
 ```
 # Platform API Key
-wms7_pk_{base64url(32字节随机)}
+hiwms_pk_{base64url(32字节随机)}
 
 # Tenant API Key
-wms7_tk_{tenantId}_{base64url(32字节随机)}
+hiwms_tk_{tenantId}_{base64url(32字节随机)}
 
 # Device API Key
-wms7_dk_{deviceId}_{base64url(32字节随机)}
+hiwms_dk_{deviceId}_{base64url(32字节随机)}
 ```
 
 ---
@@ -663,7 +663,7 @@ Response 200:
 {
   "success": true,
   "data": {
-    "labelUrl": "https://r2.wms7.com/labels/label-uuid.zpl",
+    "labelUrl": "https://r2.hiwms.com/labels/label-uuid.zpl",
     "format": "zpl",
     "size": "100x150mm"
   },
@@ -689,7 +689,7 @@ Response 200:
 | 策略 | 说明 |
 |------|------|
 | **URL 版本** | `/api/v1/...` `/api/v2/...` |
-| **Header 版本** | `Accept: application/vnd.wms7.v1+json` |
+| **Header 版本** | `Accept: application/vnd.hiwms.v1+json` |
 | **废弃通知** | `Sunset` Header + 6 个月缓冲期 |
 | **破坏性变更** | 只在新版本引入，旧版本维护 12 个月 |
 

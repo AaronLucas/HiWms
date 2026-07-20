@@ -72,7 +72,7 @@ export function createDeviceAuthMiddleware(
   tenantResolver: ITenantResolver,
   config: DeviceAuthConfig
 ) {
-  const apiKeyPrefix = config.apiKeyPrefix || 'wms7_dev';
+  const apiKeyPrefix = config.apiKeyPrefix || 'hiwms_dev';
 
   /**
    * 验证 Device JWT Token
