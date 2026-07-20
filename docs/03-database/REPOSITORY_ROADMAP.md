@@ -1,11 +1,12 @@
 # 仓储层实施路线图
 
 ## 项目概览
-- **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表
-- **聚合根数**：43 个
+- **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表 + 5 个 Layer 7/8 库区/序列号/存储管理表
+- **聚合根数**：46 个
 - **已完成**：15 个（Phase 1/3/4 核心域 5 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
+- **🔨 已实现未验证**：3 个（Phase 8，本 PR 新增，`tsc`/既有测试基线通过，尚无专属集成测试证据）
 - **待完成**：28 个（Phase 1/3/4 剩余未实现 20 个 + Phase 2 出库作业 8 个，详见各 Phase 表格）
-- **分 7 个优先级阶段实施**
+- **分 8 个优先级阶段实施**
 
 > **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
 
@@ -206,30 +207,37 @@
 ### 8.1 端口定义
 | # | 文件 | 状态 | 说明 |
 |---|------|------|------|
-| 1 | `src/core/ports/db/IInventoryUnitRepository.ts` | 🔨 本 PR 集成中 | 序列化商品只读查询：`findBySerial`/`findByLocation`/`findByStatus`/`findByOrderLine`/`serialLookup`（封装 `v_serial_lookup`）。写路径留在 SQL 函数内部原子完成，不在本仓储职责内 |
-| 2 | `src/core/ports/db/IStorageManagementPolicyRepository.ts` | 🔨 本 PR 集成中 | `getEffectivePolicy`/`checkStorageUsage`/`runMaintenance`（RPC 封装）+ 平台管理员 CRUD。写方法仅限 admin-api 调用（RLS 层已强制平台管理员边界，TS 层遵循同一分层原则） |
-| 3 | `src/core/ports/db/IZoneRepository.ts` | 🔨 本 PR 集成中 | 库区 CRUD：`create`/`update`/`findById`/`findByCode`/`findByTenant`/`findActive` |
-| — | `src/core/ports/db/ILocationRepository.ts`（扩展，非新文件） | 🔨 本 PR 集成中 | 补 `zone_id`/`name`/`aisle`/`bay`/`level`/`position` + 新增 `findByZone(zoneId)` |
-| — | `src/core/ports/auth/ITenantResolver.ts`（扩展，非新文件） | 🔨 本 PR 集成中 | 补声明 `isPlatformAdmin`（具体实现已存在，端口契约补全，ADR-007/ADR-016 决策 3） |
+| 1 | `src/core/ports/db/IInventoryUnitRepository.ts` | 🔨 已实现未验证 | 序列化商品只读查询：`findBySerial`/`findByLocation`/`findByStatus`/`findByOrderLine`/`serialLookup`（封装 `v_serial_lookup`）。写路径留在 SQL 函数内部原子完成，不在本仓储职责内 |
+| 2 | `src/core/ports/db/IStorageManagementPolicyRepository.ts` | 🔨 已实现未验证 | `getEffectivePolicy`/`checkStorageUsage`/`runMaintenance`（RPC 封装）+ 平台管理员 CRUD。写方法仅限 admin-api 调用（RLS 层已强制平台管理员边界，TS 层遵循同一分层原则） |
+| 3 | `src/core/ports/db/IZoneRepository.ts` | 🔨 已实现未验证 | 库区 CRUD：`create`/`update`/`findById`/`findByCode`/`findByTenant`/`findActive` |
+| — | `src/core/ports/db/ILocationRepository.ts`（扩展，非新文件） | 🔨 已实现未验证 | 补 `zone_id`/`name`/`aisle`/`bay`/`level`/`position` + 新增 `findByZone(zoneId)` |
+| — | `src/core/ports/auth/ITenantResolver.ts`（扩展，非新文件） | 🔨 已实现未验证 | 补声明 `isPlatformAdmin`（具体实现已存在，端口契约补全，ADR-007/ADR-016 决策 3） |
 
 ### 8.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseInventoryUnitRepository.ts` | 🔨 本 PR 集成中 |
-| 2 | `src/adapters/supabase/repositories/SupabaseStorageManagementPolicyRepository.ts` | 🔨 本 PR 集成中 |
-| 3 | `src/adapters/supabase/repositories/SupabaseZoneRepository.ts` | 🔨 本 PR 集成中 |
-| — | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts`（扩展） | 🔨 本 PR 集成中 |
+| 1 | `src/adapters/supabase/repositories/SupabaseInventoryUnitRepository.ts` | 🔨 已实现未验证 |
+| 2 | `src/adapters/supabase/repositories/SupabaseStorageManagementPolicyRepository.ts` | 🔨 已实现未验证 |
+| 3 | `src/adapters/supabase/repositories/SupabaseZoneRepository.ts` | 🔨 已实现未验证 |
+| — | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts`（扩展） | 🔨 已实现未验证 |
 
 ### 8.3 附带修复（非新仓储，随本 Phase 一并处理）
 - `SupabaseInventoryReservationRepository`：`createReservation()` 缺租户/所有权校验 + `findActiveByTenant()`/`getReservationStats()` 引用不存在列（`tenant_id`/`is_active`/`quantity`，实为按 join 判断归属/`status`/`reserved_qty`）——目前因 `ReserveInventoryUseCase.execute()` 是 stub 未被触发，本轮趁便修复，避免真正接线后重演 Layer 6 同类真实数据泄露
 
 ### 8.4 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 3 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 3 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 3 个新实现
+- [x] `src/adapters/supabase/index.ts` - `SupabaseAdapters.repositories` 接口 + `createSupabaseAdapters()` 工厂函数注册 3 个新仓储
 
-### 8.5 验证记录
+### 8.5 验证记录（2026-07-21）
 
-（`npx tsc --noEmit` 结果与测试证据待补，本节随本 PR 后续提交更新）
+- `npx tsc --noEmit`：**零错误**。
+- `pnpm run test`：**59 passed / 82 skipped**（与集成前基线一致，无回归；82 个跳过是需要本地 Postgres 的 `RUN_DB_CONCURRENCY_TESTS` 用例，本轮未新增）。
+- 状态定为"🔨 已实现未验证"而非"✅ 已完成"——符合本文档 §5 的三档语义：`tsc` 通过、可编译运行，但序列号追踪/存储管理这两个新只读仓储尚无自动化测试覆盖业务逻辑正确性。**下一轮排期任务**：比照 Phase 5/6/7 的打法（本地一次性 Postgres 沙盒 + 真实并发/边界场景），为 `IInventoryUnitRepository`/`IStorageManagementPolicyRepository` 补集成测试证据。
+- 额外发现并修复的问题（非计划任务，实现过程中顺带处理）：
+  - 全仓库 PICK 动作没有独立的 REST 端点/校验 schema——只经由通用 `POST /sync/events`（`payload: z.record(...)`，本就无结构化校验），因此 `serial_number` 已天然透传，无需改动；putaway 路径的 `putawayRequestSchema`/`/putaway` handler 已补 `serial_number`。
+  - `ITenantResolver.isPlatformAdmin` 除 `SupabaseTenantResolver` 外还有一个实现方（`src/adapters/cloudflare/CloudflareAdapters.ts` 的 `WorkerTenantResolver`）与一处测试 mock（`DeviceAuthMiddleware.test.ts`），均已同步补齐，否则会编译不过。
+  - `SupabaseInventoryReservationRepository.releaseReservation()`/`releaseExpiredReservations()` 与本次计划修复的 `createReservation()`/`findActiveByTenant()`/`getReservationStats()` 是同一批"引用不存在列"缺陷（原写入不存在的 `is_active`/`released_at`），一并修复为使用真实的 `status` 列。
 
 ---
 
@@ -244,7 +252,8 @@
 | Phase 5 (离线同步/异常领域) | 5 | 5 | 10 | ~1,050 |
 | Phase 6 (同步动作扩展，Layer 3) | 2 | 2 | 4 | ~280 |
 | Phase 7 (唯一追踪策略，Layer 4) | 3 | 3 | 6 | ~420 |
-| **合计** | **43** | **43** | **86** | **~8,550** |
+| Phase 8 (库区/序列号/存储管理，Layer 7/8) | 3 | 3 | 6 | ~370 |
+| **合计** | **46** | **46** | **92** | **~8,920** |
 
 ---
 
