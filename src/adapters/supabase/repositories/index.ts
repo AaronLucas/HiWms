@@ -53,3 +53,8 @@ export { SupabasePackingTaskItemRepository } from './SupabasePackingTaskItemRepo
 export { SupabaseTenantTrackingPolicyRepository } from './SupabaseTenantTrackingPolicyRepository';
 export { SupabaseMissingLabelRepository } from './SupabaseMissingLabelRepository';
 export { SupabaseUnidentifiedGoodsRepository } from './SupabaseUnidentifiedGoodsRepository';
+
+// Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+export { SupabaseInventoryUnitRepository } from './SupabaseInventoryUnitRepository';
+export { SupabaseStorageManagementPolicyRepository } from './SupabaseStorageManagementPolicyRepository';
+export { SupabaseZoneRepository } from './SupabaseZoneRepository';

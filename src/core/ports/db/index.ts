@@ -53,3 +53,8 @@ export { IPackingTaskItemRepository, type PackingTaskItemRow, type PackingTaskIt
 export { ITenantTrackingPolicyRepository, type TenantTrackingPolicyRow, type TenantTrackingPolicyInsert, type TenantTrackingPolicyUpdate } from './ITenantTrackingPolicyRepository';
 export { IMissingLabelRepository, type MissingLabelRow, type MissingLabelInsert, type MissingLabelUpdate, type ContainerRow, type ContainerInsert, type ContainerUpdate } from './IMissingLabelRepository';
 export { IUnidentifiedGoodsRepository, type UnidentifiedGoodsRow, type UnidentifiedGoodsInsert, type UnidentifiedGoodsUpdate } from './IUnidentifiedGoodsRepository';
+
+// Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+export { IInventoryUnitRepository, type InventoryUnitRow, type SerialLookupRow } from './IInventoryUnitRepository';
+export { IStorageManagementPolicyRepository, type StorageManagementPolicyRow, type StorageManagementPolicyInsert, type StorageManagementPolicyUpdate, type StorageUsageStatus } from './IStorageManagementPolicyRepository';
+export { IZoneRepository, type ZoneRow, type ZoneInsert, type ZoneUpdate } from './IZoneRepository';

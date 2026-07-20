@@ -1054,6 +1054,47 @@ export type Database = {
           },
         ]
       }
+      inventory_history_daily_summary: {
+        Row: {
+          change_count: number
+          change_type: string | null
+          created_at: string | null
+          id: string
+          product_id: string | null
+          summary_date: string
+          tenant_id: string | null
+          total_change_qty: number | null
+        }
+        Insert: {
+          change_count?: number
+          change_type?: string | null
+          created_at?: string | null
+          id?: string
+          product_id?: string | null
+          summary_date: string
+          tenant_id?: string | null
+          total_change_qty?: number | null
+        }
+        Update: {
+          change_count?: number
+          change_type?: string | null
+          created_at?: string | null
+          id?: string
+          product_id?: string | null
+          summary_date?: string
+          tenant_id?: string | null
+          total_change_qty?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_history_daily_summary_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_locks: {
         Row: {
           created_at: string | null
@@ -1155,6 +1196,97 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_units: {
+        Row: {
+          batch_no: string | null
+          container_id: string | null
+          created_at: string | null
+          exp_date: string | null
+          id: string
+          location_id: string | null
+          mfg_date: string | null
+          order_line_id: string | null
+          product_id: string | null
+          serial_number: string
+          status: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          batch_no?: string | null
+          container_id?: string | null
+          created_at?: string | null
+          exp_date?: string | null
+          id?: string
+          location_id?: string | null
+          mfg_date?: string | null
+          order_line_id?: string | null
+          product_id?: string | null
+          serial_number: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          batch_no?: string | null
+          container_id?: string | null
+          created_at?: string | null
+          exp_date?: string | null
+          id?: string
+          location_id?: string | null
+          mfg_date?: string | null
+          order_line_id?: string | null
+          product_id?: string | null
+          serial_number?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_units_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_units_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_units_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_replenishment_needs"
+            referencedColumns: ["loc_id"]
+          },
+          {
+            foreignKeyName: "inventory_units_order_line_id_fkey"
+            columns: ["order_line_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_units_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_units_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1338,54 +1470,72 @@ export type Database = {
       }
       locations: {
         Row: {
+          aisle: string | null
+          bay: string | null
           code: string
           created_at: string | null
           force_unique_tracking: boolean
           id: string
           is_active: boolean | null
           is_frozen: boolean | null
+          level: string | null
           max_volume_capacity: number | null
           max_weight_capacity: number | null
+          name: string | null
           picking_max_qty: number | null
           picking_threshold_pct: number | null
+          position: string | null
           tenant_id: string | null
           travel_sequence: number | null
           updated_at: string | null
           zone_abc_type: string | null
+          zone_id: string | null
           zone_type: string | null
         }
         Insert: {
+          aisle?: string | null
+          bay?: string | null
           code: string
           created_at?: string | null
           force_unique_tracking?: boolean
           id?: string
           is_active?: boolean | null
           is_frozen?: boolean | null
+          level?: string | null
           max_volume_capacity?: number | null
           max_weight_capacity?: number | null
+          name?: string | null
           picking_max_qty?: number | null
           picking_threshold_pct?: number | null
+          position?: string | null
           tenant_id?: string | null
           travel_sequence?: number | null
           updated_at?: string | null
           zone_abc_type?: string | null
+          zone_id?: string | null
           zone_type?: string | null
         }
         Update: {
+          aisle?: string | null
+          bay?: string | null
           code?: string
           created_at?: string | null
           force_unique_tracking?: boolean
           id?: string
           is_active?: boolean | null
           is_frozen?: boolean | null
+          level?: string | null
           max_volume_capacity?: number | null
           max_weight_capacity?: number | null
+          name?: string | null
           picking_max_qty?: number | null
           picking_threshold_pct?: number | null
+          position?: string | null
           tenant_id?: string | null
           travel_sequence?: number | null
           updated_at?: string | null
           zone_abc_type?: string | null
+          zone_id?: string | null
           zone_type?: string | null
         }
         Relationships: [
@@ -1394,6 +1544,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "locations_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
             referencedColumns: ["id"]
           },
         ]
@@ -2441,6 +2598,56 @@ export type Database = {
           },
         ]
       }
+      storage_management_policies: {
+        Row: {
+          aggregate_before_purge: boolean
+          archive_enabled: boolean
+          budget_tier: string
+          created_at: string | null
+          critical_threshold_pct: number
+          hot_retention_days: number
+          id: string
+          is_active: boolean
+          tenant_id: string | null
+          updated_at: string | null
+          warn_threshold_pct: number
+        }
+        Insert: {
+          aggregate_before_purge?: boolean
+          archive_enabled?: boolean
+          budget_tier?: string
+          created_at?: string | null
+          critical_threshold_pct?: number
+          hot_retention_days?: number
+          id?: string
+          is_active?: boolean
+          tenant_id?: string | null
+          updated_at?: string | null
+          warn_threshold_pct?: number
+        }
+        Update: {
+          aggregate_before_purge?: boolean
+          archive_enabled?: boolean
+          budget_tier?: string
+          created_at?: string | null
+          critical_threshold_pct?: number
+          hot_retention_days?: number
+          id?: string
+          is_active?: boolean
+          tenant_id?: string | null
+          updated_at?: string | null
+          warn_threshold_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_management_policies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sync_events: {
         Row: {
           action_type: string
@@ -3163,6 +3370,50 @@ export type Database = {
           },
         ]
       }
+      wo_action_logs_daily_summary: {
+        Row: {
+          action_count: number
+          action_type: string | null
+          created_at: string | null
+          id: string
+          summary_date: string
+          tenant_id: string | null
+          total_duration_seconds: number | null
+          total_qty_acted: number | null
+          work_order_id: string | null
+        }
+        Insert: {
+          action_count?: number
+          action_type?: string | null
+          created_at?: string | null
+          id?: string
+          summary_date: string
+          tenant_id?: string | null
+          total_duration_seconds?: number | null
+          total_qty_acted?: number | null
+          work_order_id?: string | null
+        }
+        Update: {
+          action_count?: number
+          action_type?: string | null
+          created_at?: string | null
+          id?: string
+          summary_date?: string
+          tenant_id?: string | null
+          total_duration_seconds?: number | null
+          total_qty_acted?: number | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_action_logs_daily_summary_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           accepted_at: string | null
@@ -3263,6 +3514,53 @@ export type Database = {
             columns: ["wave_id"]
             isOneToOne: false
             referencedRelation: "waves"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zones: {
+        Row: {
+          code: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          max_capacity_volume: number | null
+          max_capacity_weight: number | null
+          name: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          zone_type: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_capacity_volume?: number | null
+          max_capacity_weight?: number | null
+          name?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          zone_type?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_capacity_volume?: number | null
+          max_capacity_weight?: number | null
+          name?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          zone_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -3461,6 +3759,37 @@ export type Database = {
           },
         ]
       }
+      v_serial_lookup: {
+        Row: {
+          container_code: string | null
+          external_order_id: string | null
+          last_updated_at: string | null
+          location_code: string | null
+          location_name: string | null
+          order_line_id: string | null
+          product_name: string | null
+          serial_number: string | null
+          sku: string | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_units_order_line_id_fkey"
+            columns: ["order_line_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_units_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_sorting_efficiency: {
         Row: {
           completed_tasks: number | null
@@ -3605,6 +3934,14 @@ export type Database = {
       fn_apply_pick_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_putaway_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_sync_event: { Args: { p_event_id: string }; Returns: string }
+      fn_check_storage_usage: {
+        Args: never
+        Returns: {
+          current_size_bytes: number
+          status: string
+          used_pct: number
+        }[]
+      }
       fn_claim_task: {
         Args: {
           p_device_id: string
@@ -3650,6 +3987,22 @@ export type Database = {
         Args: { p_product_id: string; p_tenant_id: string }
         Returns: number
       }
+      fn_get_storage_policy: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          aggregate_before_purge: boolean
+          archive_enabled: boolean
+          budget_tier: string
+          created_at: string | null
+          critical_threshold_pct: number
+          hot_retention_days: number
+          id: string
+          is_active: boolean
+          tenant_id: string | null
+          updated_at: string | null
+          warn_threshold_pct: number
+        }
+      }
       fn_get_sync_policy: {
         Args: {
           p_task_type?: string
@@ -3673,6 +4026,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      fn_is_platform_admin: { Args: { p_user_id: string }; Returns: boolean }
       fn_logic_resolve_blackbox_box: {
         Args: {
           p_batch: string
@@ -3698,12 +4052,34 @@ export type Database = {
           staging_loc_id: string
         }[]
       }
+      fn_pick_serialized_unit: {
+        Args: {
+          p_order_line_id?: string
+          p_product_id: string
+          p_serial_number: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       fn_purge_old_action_logs: {
         Args: { p_days?: number }
         Returns: {
           purged_inventory_history: number
           purged_wo_logs: number
         }[]
+      }
+      fn_putaway_serialized_unit: {
+        Args: {
+          p_batch_no?: string
+          p_container_id?: string
+          p_exp_date?: string
+          p_location_id: string
+          p_mfg_date?: string
+          p_product_id: string
+          p_serial_number: string
+          p_tenant_id: string
+        }
+        Returns: string
       }
       fn_raise_exception: {
         Args: {
@@ -3759,6 +4135,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      fn_run_storage_maintenance: { Args: never; Returns: string }
       fn_verify_weight: {
         Args: { p_actual_weight: number; p_sku_id: string }
         Returns: {

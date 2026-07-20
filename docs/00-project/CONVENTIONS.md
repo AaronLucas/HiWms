@@ -131,6 +131,13 @@ POST   /api/work-orders/{id}/complete # 工单完成
 例：20240115000001_create_products_table.sql
 ```
 
+> **2026-07-20 更新**：迁移脚本的权威版本与提交历史已迁到独立仓库
+> [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理，与本仓库
+> 无 git 关联），本仓库 `supabase/migrations/` 目录本身不再跟踪。命名约定仍适用于
+> HiWmsSupabase 仓库内的迁移文件；实际已落地的文件用 `{NNN}_{short_description}.sql`
+> 三位数序号（如 `001_enterprise_core_schema.sql`），而非本节示例的时间戳前缀——
+> 这是既有实践与文档示例之间的历史差异，不在本次改动范围内一并修正。
+
 ### 5.2 表/列命名
 - 表名：snake_case 复数（`products`, `work_orders`）
 - 列名：snake_case（`tenant_id`, `created_at`, `sku_code`）

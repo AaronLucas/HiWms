@@ -170,6 +170,12 @@ export class WorkerTenantResolver implements ITenantResolver {
     // 简单验证，实际可调用 RPC
     return !!tenantId && tenantId.length > 0;
   }
+
+  async isPlatformAdmin(_userId: string): Promise<boolean> {
+    // Worker 环境下无直接查询 users 表的能力，平台管理操作不应在此环境暴露，
+    // 保守起见恒返回 false（需要平台超管权限的写操作只走 admin-api / Supabase 环境）
+    return false;
+  }
 }
 
 /** Cloudflare 缓存键构建器（复用核心实现） */

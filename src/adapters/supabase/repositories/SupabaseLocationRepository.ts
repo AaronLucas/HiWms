@@ -100,6 +100,17 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
     return (data as LocationRow[]) || [];
   }
 
+  async findByZone(zoneId: string): Promise<LocationRow[]> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('zone_id', zoneId)
+      .order('code', { ascending: true });
+
+    if (error) throw error;
+    return (data as LocationRow[]) || [];
+  }
+
   async updateStatus(locationId: string, isActive: boolean, isFrozen?: boolean): Promise<LocationRow> {
     const updateData: Partial<LocationUpdate> = { is_active: isActive };
     if (isFrozen !== undefined) updateData.is_frozen = isFrozen;

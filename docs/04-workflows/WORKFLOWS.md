@@ -99,6 +99,30 @@ jobs:
   - ci-success: 汇总门禁，lint/test/build 任一失败则整体失败
 ```
 
+#### 3.2.1 数据库集成测试流水线（2026-07-20 新增，独立于 `ci.yml`）
+
+`supabase/migrations`（DBA 团队交付的迁移脚本）已迁到独立私有仓库
+[HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（与本仓库零 git 关联，
+无 submodule，详见 `docs/01-architecture/ADR/017-dba-migration-repo-split.md`）。
+`.github/workflows/db-integration.yml` 负责实际跑通数据库这一侧：
+
+```yaml
+# .github/workflows/db-integration.yml（main/dev 双触发，独立 job，暂未加入 ci-success 硬门禁）
+jobs:
+  - db-integration:
+      - checkout wms7
+      - checkout HiWmsSupabase（只读 Deploy Key，HIWMS_SUPABASE_DEPLOY_KEY secret，无过期时间）
+      - cp HiWmsSupabase/supabase → ./supabase
+      - supabase start（一次性本地 Docker Postgres）
+      - supabase db reset（应用 001-008 迁移 + seed）
+      - RUN_DB_CONCURRENCY_TESTS=true pnpm run test
+      - supabase stop
+```
+
+首次上线，先观察稳定性（Docker 起停耗时、Deploy Key 权限等首跑风险），稳定后再评估
+是否升级为 `ci-success` 的必过门禁项。本地开发同理需要 `./supabase/`（gitignore）时，
+用 `bash scripts/sync-db-migrations.sh` 从 HiWmsSupabase 同步，不建立 git 层面关联。
+
 ### 3.3 CD 流水线
 ```yaml
 # 部署阶段

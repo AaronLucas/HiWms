@@ -54,6 +54,11 @@ export { SupabaseTenantTrackingPolicyRepository } from './repositories/SupabaseT
 export { SupabaseMissingLabelRepository } from './repositories/SupabaseMissingLabelRepository';
 export { SupabaseUnidentifiedGoodsRepository } from './repositories/SupabaseUnidentifiedGoodsRepository';
 
+// Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+export { SupabaseInventoryUnitRepository } from './repositories/SupabaseInventoryUnitRepository';
+export { SupabaseStorageManagementPolicyRepository } from './repositories/SupabaseStorageManagementPolicyRepository';
+export { SupabaseZoneRepository } from './repositories/SupabaseZoneRepository';
+
 export { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 export { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
 export { SupabaseTenantResolver } from './auth/SupabaseTenantResolver';
@@ -113,6 +118,11 @@ import { SupabaseTenantTrackingPolicyRepository } from './repositories/SupabaseT
 import { SupabaseMissingLabelRepository } from './repositories/SupabaseMissingLabelRepository';
 import { SupabaseUnidentifiedGoodsRepository } from './repositories/SupabaseUnidentifiedGoodsRepository';
 
+// Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+import { SupabaseInventoryUnitRepository } from './repositories/SupabaseInventoryUnitRepository';
+import { SupabaseStorageManagementPolicyRepository } from './repositories/SupabaseStorageManagementPolicyRepository';
+import { SupabaseZoneRepository } from './repositories/SupabaseZoneRepository';
+
 import { SupabaseAuthProvider } from './auth/SupabaseAuthProvider';
 import { SupabasePermissionChecker } from './auth/SupabasePermissionChecker';
 import { SupabaseTenantResolver } from './auth/SupabaseTenantResolver';
@@ -171,6 +181,10 @@ export interface SupabaseAdapters {
     tenantTrackingPolicies: SupabaseTenantTrackingPolicyRepository;
     missingLabels: SupabaseMissingLabelRepository;
     unidentifiedGoods: SupabaseUnidentifiedGoodsRepository;
+    // Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+    inventoryUnits: SupabaseInventoryUnitRepository;
+    storageManagementPolicies: SupabaseStorageManagementPolicyRepository;
+    zones: SupabaseZoneRepository;
   };
   auth: {
     provider: SupabaseAuthProvider;
@@ -253,6 +267,10 @@ export function createSupabaseAdapters(config: {
       tenantTrackingPolicies: new SupabaseTenantTrackingPolicyRepository(client, rpc),
       missingLabels: new SupabaseMissingLabelRepository(client, rpc),
       unidentifiedGoods: new SupabaseUnidentifiedGoodsRepository(client, rpc),
+      // Phase 8: 库区/序列号追踪 + 存储管理仓储（migration 007/008）
+      inventoryUnits: new SupabaseInventoryUnitRepository(client),
+      storageManagementPolicies: new SupabaseStorageManagementPolicyRepository(client, rpc),
+      zones: new SupabaseZoneRepository(client),
     },
     auth: {
       provider: new SupabaseAuthProvider(client.getClient(), config.serviceRoleKey ? client.getAdminClient() : null),

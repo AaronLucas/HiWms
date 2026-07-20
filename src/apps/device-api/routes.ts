@@ -345,7 +345,7 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
 
-        const { sku_id, location_id, qty, lpn_id, batch_id, expiry_date } = req.body;
+        const { sku_id, location_id, qty, lpn_id, batch_id, expiry_date, serial_number } = req.body;
 
         // 提交为 sync_events 记录
         const eventId = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -356,7 +356,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
           operator_user_id: (req as any).context?.userId || null,
           device_seq: Date.now(),
           action_type: 'PUTAWAY',
-          payload: { sku_id, location_id, qty, lpn_id, batch_id, expiry_date },
+          // serial_number 透传给 fn_apply_putaway_action，供序列化商品分流使用
+          payload: { sku_id, location_id, qty, lpn_id, batch_id, expiry_date, serial_number },
           captured_at: new Date().toISOString(),
           received_at: new Date().toISOString(),
           status: 'PENDING' as const,
