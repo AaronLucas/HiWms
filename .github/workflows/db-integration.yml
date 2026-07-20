@@ -64,6 +64,16 @@ jobs:
       - name: Apply migrations (001-008) + seed
         run: supabase db reset
 
+      - name: Fix up role grants (CI-only, not a DBA migration)
+        # Supabase Cloud provisions anon/authenticated/service_role grants as part of
+        # its managed dashboard flow; a bare `supabase start`/`db reset` on a fresh CI
+        # Postgres doesn't replicate that, and the migration SQL itself has no GRANT
+        # statements (production works because it went through Cloud's provisioning).
+        # See scripts/ci-db-grants.sql for the full explanation.
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+            -f scripts/ci-db-grants.sql
+
       - name: Run DB concurrency / integration tests
         run: pnpm run test
         env:
