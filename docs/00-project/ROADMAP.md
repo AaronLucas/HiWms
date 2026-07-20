@@ -354,6 +354,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 | **HIGH** | 修复 `SyncEventRepository.applyEvent` catch 分支并补测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
 | **MEDIUM** | 评估 `fn_apply_pack_action` 库存扣减语义一致性 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
 | **MEDIUM** | 文档化 `containers` 表跨租户可见性设计决策 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **CRITICAL** | 登录/注册身份模型分裂 + RLS 租户上下文从未真正注入查询连接（2026-07-20 排期任务 #5 执行过程中发现，详见 ADR-015） | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」#7；`docs/01-architecture/ADR/015-auth-identity-bridge.md`；`docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md` | 设计已完成（方案 A），待评审后实施，阻塞本文件「登录/鉴权」模块（阶段 2 §2.2）与排期任务 #5 |
 
 > 处理原则：CRITICAL → HIGH → MEDIUM 分批推进；每一项修复后必须走 `/ecc:code-review` skill 评审。
 

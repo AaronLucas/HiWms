@@ -368,6 +368,7 @@
 | **MEDIUM** | `containers` 表无 `tenant_id` 列且无 RLS，`lpn_code` 全局唯一 | 跨租户 LPN 冲突或扫描错误可能导致串货风险 | 文档化设计决策（跨租户共享容器资源）或评估是否需要 RLS/tenant_id | #5 |
 | **MEDIUM** | `MissingLabelRepository.generateInternalLpn` 对同一 `exception_id` 重复调用的幂等性未明确 | 可能生成孤儿容器或重复 LPN | 业务决策后补测试 | #4 |
 | **MEDIUM** | 缺乏故意退化验证的 CI 自动化 | 无法持续证明测试确实能捕捉回归 | 新增非阻塞 `test-effectiveness` job，对关键文件抽样执行"临时还原旧实现 → 测试应变红 → 恢复" | #6 |
+| **CRITICAL** | 登录/注册身份模型分裂：`public.users`（自建 username+password_hash，无 email，id 不关联 `auth.users`）与 `SupabaseAuthProvider`（完全基于 Supabase Auth）互不相认，且 RLS 租户上下文从未真正注入查询连接（`injectRlsContext`/`x-tenant-id` 均是无人读取的无效代码）；导致本项任务 #5（`authenticated` 角色测试）缺少可用的真实登录路径，且 RLS 从未在业务查询中真正生效 | 阻塞 #5；且任何未来接入 `authenticated` 角色的查询在修复前实际不受 RLS 保护 | 设计已完成（方案 A：全面采用 Supabase Auth），待评审后实施；数据库侧见 `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md`，应用代码侧见 `docs/01-architecture/ADR/015-auth-identity-bridge.md` | #7 |
 
 > **处理原则**：以上缺口按"CRITICAL → HIGH → MEDIUM"分批推进；CRITICAL 项必须先修复，再进入下一轮功能开发。每一项修复后必须走 `/ecc:code-review` skill 评审。
 
