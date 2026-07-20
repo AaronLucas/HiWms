@@ -162,26 +162,63 @@ export class SupabaseTaskClaimRepository extends SupabaseBaseRepository<
 
   /**
    * 延长租约（续租）
+   *
+   * "SELECT expires_at → 应用层算新值 → UPDATE" 是读改写竞态：两个并发续租请求都可能
+   * 读到同一个旧 expires_at、各自基于它算出"旧值+increment"再写回，后写的那次会覆盖
+   * 先写的那次，实际只生效了一次续租而不是两次。同时到期清扫（`fn_expire_task_claims`）
+   * 可能与续租并发——如果没有状态守卫，一个已经被清扫标记为 EXPIRED 的租约可能被这里
+   * 的 UPDATE 无条件覆盖出一个未来的 expires_at，制造"status=EXPIRED 但 expires_at 在
+   * 未来"的不一致状态。
+   *
+   * 改为乐观并发重试：UPDATE 同时带上 `status = 'ACTIVE'` 与 `expires_at = <刚读到的旧
+   * 值>` 两个条件作为原子的"抢占校验"——命中行数为 0 说明这段时间内已被别的请求（另一次
+   * extendLease 或到期清扫）抢先修改，重新读取最新状态后重试，而不是无条件覆盖。
    */
   async extendLease(claimId: string, additionalSeconds: number): Promise<TaskClaimRow | null> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
-      .select('expires_at')
-      .eq('id', claimId)
-      .single();
+    const MAX_ATTEMPTS = 20;
 
-    if (error || !data) return null;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const { data: current, error: readError } = await this.getClient()
+        .from(this.tableName)
+        .select('expires_at, status')
+        .eq('id', claimId)
+        .maybeSingle();
 
-    const newExpiresAt = new Date(new Date(data.expires_at).getTime() + additionalSeconds * 1000).toISOString();
+      if (readError) throw readError;
+      // 不存在，或已不是 ACTIVE（已释放/已过期）：续租没有意义，如实返回 null，
+      // 不应该把一个已终结的租约悄悄复活。
+      if (!current || current.status !== 'ACTIVE') return null;
 
-    const { data: updated, error: updateError } = await this.getClient()
-      .from(this.tableName)
-      .update({ expires_at: newExpiresAt } as TaskClaimUpdate)
-      .eq('id', claimId)
-      .select()
-      .single();
+      // `task_claims.expires_at` 是 `timestamp`（不带时区）。经实测核实：Postgres 会话时区
+      // 是 UTC，`NOW() + interval`（`fn_claim_task` 写入 `expires_at` 的方式）落库的是 UTC
+      // 墙上时间数字、不带偏移量后缀。但 `new Date(naiveString)`（无 'Z'/偏移量后缀）会被
+      // JS 当成"运行进程本地时区"解析——本地沙盒/CI 进程时区若不是 UTC（比如 JST，
+      // `getTimezoneOffset()===-540`），读出来的值会被错误解读，偏移量精确等于进程时区差
+      // （实测 9 小时）。修复：读取时显式补回 'Z' 按 UTC 解析（与 SQL 端 NOW() 落库的约定
+      // 对齐），写回时同样落库为不带偏移量后缀的 UTC 数字（`toISOString()` 本身就是 UTC
+      // 表示，只是要去掉结尾 'Z' 以匹配这张表既有值"无时区后缀"的格式，不代表要做任何
+      // 时区换算）。
+      const newExpiresAt = new Date(new Date(`${current.expires_at}Z`).getTime() + additionalSeconds * 1000)
+        .toISOString()
+        .replace('Z', '');
 
-    if (updateError) throw updateError;
-    return updated as TaskClaimRow;
+      const { data: updated, error: updateError } = await this.getClient()
+        .from(this.tableName)
+        .update({ expires_at: newExpiresAt } as TaskClaimUpdate)
+        .eq('id', claimId)
+        .eq('status', 'ACTIVE')
+        .eq('expires_at', current.expires_at)
+        .select()
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+      if (updated) return updated as TaskClaimRow;
+
+      // 命中行数为 0：被并发请求抢先修改了同一行，随机退避后重新读取最新状态重试，
+      // 避免多个失败者同步在同一轮再次撞车。
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 10 * (attempt + 1)));
+    }
+
+    return null;
   }
 }

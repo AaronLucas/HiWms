@@ -359,11 +359,11 @@
 | 优先级 | 缺口 | 影响 | 建议处理方向 | 跟踪任务 |
 |---|---|---|---|---|
 | **CRITICAL** | ✅ 已修复（2026-07-20，见下方执行记录）~~`processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖~~ | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
-| **CRITICAL** | DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
-| **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
-| **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
-| **HIGH** | `SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试 | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
-| **HIGH** | `SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error` | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
+| **CRITICAL** | ⏸️ 已排查，暂缓（2026-07-20，见下方记录）DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
+| **HIGH** | ⏸️ 排查中，暂缓（2026-07-20，见 `docs/01-architecture/BUG_REPORT_AUTH_TENANT_ISOLATION_2026-07-20.md`）当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
+| **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500）~~ | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
+| **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试~~ | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
+| **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error`~~ | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
 | **MEDIUM** | `fn_apply_pack_action` 仍调用旧 `adjust_inventory`（按 SKU 找最近一行扣减），而 PICK/PUTAWAY/COUNT 已改用 `fn_adjust_inventory_at_location` | 打包路径若扫描具体库位/容器，扣减可能落到不匹配库存行，造成账实不符 | 评估是否需 DBA 统一改为按 `(location_id, product_id, batch)` 精确扣减 | #5 |
 | **MEDIUM** | `containers` 表无 `tenant_id` 列且无 RLS，`lpn_code` 全局唯一 | 跨租户 LPN 冲突或扫描错误可能导致串货风险 | 文档化设计决策（跨租户共享容器资源）或评估是否需要 RLS/tenant_id | #5 |
 | **MEDIUM** | `MissingLabelRepository.generateInternalLpn` 对同一 `exception_id` 重复调用的幂等性未明确 | 可能生成孤儿容器或重复 LPN | 业务决策后补测试 | #4 |
@@ -380,6 +380,49 @@
 - **测试有效性验证**：临时用 `git show <fix 之前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：新增/扩展的 2 个用例均按预期失败（`expected undefined to be '<uuid>'`、`expected [] to have a length of 1 but got +0`），其余 10 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 12 个用例转绿。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 12 个用例全部通过。
+
+#### CRITICAL 第 2 项排查记录（CI `db-concurrency-tests` job，2026-07-20，已暂缓）
+
+- **排查发现的阻塞项**：`supabase/migrations/*.sql`、`supabase/config.toml`、`supabase/seed.sql` 目前**完全未被 git 跟踪**——`.gitignore` 里 `supabase/*` 通配符生效，此前紧邻的注释"track migrations and seed only"与实际行为不一致（已在 `.gitignore` 补充说明，见对应 diff）。用 `git ls-files supabase/` 核实为空。GitHub Actions runner check out 本仓库时 `supabase/` 目录不含任何文件，`supabase start`/`db reset` 无法定位 config/迁移脚本，缺口描述里的 job 步骤按现状无法执行。
+- **决策**：是否开始把这些文件提交入库，是超出"加一个 CI job"范围的仓库策略变更（可能涉及 DBA 团队对这些文件的既有管理流程），已征询项目负责人：**暂缓本项，先只澄清 `.gitignore` 注释，不改变任何文件的实际跟踪状态**。本项保持登记，待入库决策明确后再继续。
+- **本地验证环境**：无（本项为排查/文档记录，未涉及代码变更，未连接任何 Postgres 实例）。
+
+#### HIGH 第 1 项执行记录（`TaskClaimRepository.extendLease` 并发/时区双缺陷，2026-07-20）
+
+- **可达性核查（测试方法论第 6 步）**：全仓库搜索确认 `extendLease` 目前在 `src/apps/**` 无任何调用方——尚未接入任何路由，是纯粹的"已实现未验证"应用层代码，不是当前生产必经路径。
+- **缺陷 1（缺口报告已点名）**：原实现"SELECT expires_at → 应用层算新值 → UPDATE"是读改写竞态；同时对 `fn_expire_task_claims` 到期清扫无状态守卫，可能把一个已清扫为 `EXPIRED` 的租约覆盖出一个未来的 `expires_at`。**修复**：改为乐观并发重试——`UPDATE` 同时带 `status = 'ACTIVE'` 与 `expires_at = <刚读到的旧值>` 两个条件作为原子抢占校验，命中 0 行说明被并发请求抢先，重新读取最新状态后重试（沿用 P0 第 3 项 `PackingTaskItemRepository.insertBatch` 已验证过的同一套重试+随机退避模式，20 次上限）。
+- **缺陷 2（测试补齐过程中新发现，非缺口报告原有条目）**：`task_claims.expires_at` 是 `timestamp`（不带时区）。经 `psql`/PostgREST 直连实测核实：本地沙盒 Postgres 会话时区是 UTC，SQL 端 `NOW() + interval`（`fn_claim_task` 写入方式）落库的是不带偏移量后缀的 UTC 墙上时间数字。但原实现 `new Date(data.expires_at)` 对这个无偏移量后缀的字符串按 **JS 运行进程本地时区**解析——若运行环境（本地开发机/CI runner）配置的进程时区不是 UTC（本次实测环境是 JST，`getTimezoneOffset()===-540`），续租一次就会把 `expires_at` 静默漂移整整一个时区差（实测 9 小时）。此缺陷在原实现中已存在（我的乐观重试重构本身不会引入或修复它），是本次为验证并发修复而写的"续租应精确延长 additionalSeconds"回归测试意外暴露的独立缺陷。**修复**：读取时显式补回 `'Z'` 按 UTC 解析（与 SQL 端约定对齐），写回时同样落库为不带偏移量后缀的 UTC 数字。
+- 扩展 `src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`，新增 3 个 `extendLease` 用例：正常续租延长精度回归防护、5 路真实并发续租应全部生效（断言最终 `expires_at` 精确等于原始值 + 5×60 秒）、对已 `EXPIRED` 的租约续租应返回 `null` 且不修改 `expires_at`。
+- **测试有效性验证**：临时用 `git show <本次改动前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：3 个新用例全部按预期失败（时区漂移用例报告"expected X to be Y"、并发用例报告同样的漂移量、EXPIRED 用例报告"expected object to be null"——原实现确认无 ACTIVE 状态守卫，会把已过期租约悄悄复活），其余 4 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 7 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 7 个用例全部通过。
+
+#### HIGH 第 2 项执行记录（`SupabaseSyncEventRepository.applyEvent` catch 分支，2026-07-20）
+
+- **背景**：这个 catch 分支只在 RPC 调用本身抛出异常时触发（网络中断/连接失败等——`fn_apply_sync_event` 内部的 `BEGIN/EXCEPTION` 包装从未被触发到，未来得及产生任何结果字符串），是"已实现未验证"里覆盖率最薄的一段：此前 0 个测试触碰过这个分支。
+- **可测试性排查**：真实触发这个分支需要让 supabase-js 的 RPC 调用本身抛错（网络层故障），这类故障在现有"直接实例化仓储、连真实本地 Postgres"的测试基建下难以稳定复现，且用 mock 伪造网络异常会违背本文件一贯坚持的"真实 DB，不 mock"测试哲学。**处理方式**：把 catch 分支里"判断状态守卫 + 执行 UPDATE"这段此前零覆盖的收尾逻辑抽成独立私有方法 `markStalledEventAsException`，测试直接构造真实处于 `PENDING`/非 `PENDING`（如 `APPLIED`）状态的事件行，通过类型断言显式调用这个私有方法验证其行为，从而在不依赖网络故障注入的前提下，为这段逻辑本身提供真实的回归保护。这段网络异常触发路径本身仍然缺少端到端覆盖，如实记录为已知限制。
+- **修复 1（缺口报告已点名）**：不再用 `console.error` 静默吞掉"标记 EXCEPTION 也失败"这个次生错误——`applyEvent` 现在会把这个次生失败拼接进返回给调用方的 `error` 字符串，调用方不再需要翻 console 日志才能发现"这条事件很可能卡在 PENDING，既没有真正被应用，也没能被标记为 EXCEPTION"。
+- **修复 2（顺带发现，与 HIGH 第 1 项 `extendLease` 同一类根因）**：`sync_events.applied_at` 同样是不带时区的 `timestamp` 列。原写法 `new Date().toISOString()`（带 'Z' 后缀）在本地沙盒（Postgres 会话时区为 UTC）恰好不出错，但依赖"会话时区必须是 UTC"这个隐含前提，不够健壮。改为与 `extendLease` 一致的约定：去掉 `toISOString()` 结尾的 `'Z'`，落库为不带偏移量后缀的 UTC 数字，不依赖会话时区。
+- **未采用的方案**：曾考虑让这个 catch 分支也顺带往 `exceptions` 表插入一条记录（弥补"事件被标记 EXCEPTION 但完全没有对应异常记录、`GET /exceptions` 看不到"的可观测性缺口）。**放弃**——`docs/03-database/REPOSITORY_ROADMAP.md` P0 第 2 项执行记录里已经针对同类场景（Bug E）明确讨论并否决过"从 TS 层外挂异常登记逻辑"的方案，理由是会破坏"所有'登记异常'逻辑收敛在 SQL 函数内部"这一架构约定、增加以后遗漏维护的风险；本次遵循同一个已有决定，不重复引入这个不一致。这个可观测性缺口本身如实记录为未处理的已知限制，如需关闭需要 SQL 层配合（不在本次改动范围）。
+- 扩展 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`，新增 2 个 `markStalledEventAsException` 用例：仍处于 `PENDING` 的事件应被标记为 `EXCEPTION`；已经是 `APPLIED`（或其他非 `PENDING`）状态的事件不应被覆盖。
+- **测试有效性验证**：临时用 `git show <本次改动前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：2 个新用例均按预期失败（`TypeError: repo.markStalledEventAsException is not a function`——该方法在原实现里根本不存在，是本次重构新增的，失败信号本身即证明测试确实依赖新代码存在），其余 12 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 14 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 14 个用例全部通过。
+
+#### HIGH 第 3 项执行记录（`device-api` 路由层 HTTP 集成测试，2026-07-20）
+
+> **与 HIGH 第 5 项（`docs/01-architecture/BUG_REPORT_AUTH_TENANT_ISOLATION_2026-07-20.md`）的关联备注**：本项测试有意绕开 `DeviceAuthMiddleware`（自签 Device JWT/API Key，与 Supabase Auth `authenticated` 角色无关），用测试专用中间件直接注入 `req.context`，测的是路由层的序列化/校验/响应形状契约。若 HIGH 第 5 项的结论最终改变了 device-api 建立租户上下文的方式，本文件全部用例需要跟着复查是否仍反映真实生产鉴权路径（已在测试文件内联注释里同步记录）。
+
+- 引入 `supertest`（`pnpm add -D -w supertest @types/supertest`）作为新的测试依赖——此前项目里所有测试要么是纯仓储层单测（直接实例化仓储类），要么是 zod schema 单测（`validation.test.ts`）/中间件单测（`DeviceAuthMiddleware.test.ts`），从未有测试真正发起过一次 HTTP 请求过 Express Router。
+- 新增 `src/__tests__/integration/device-api/routes.http.test.ts`，直接对 `createDeviceApiRouter` 构造出的真实 Express Router 发起 HTTP 请求（`supertest(app)`），挂载在真实本地 Postgres 沙盒上（不 mock 仓储/数据库），覆盖范围有意收窄为缺口报告点名的三个场景，不追求覆盖全部 14 个端点：
+  1. `GET /sync/policy` 字段映射（P1 第 2 项修复的 HTTP 层回归防护——未配置策略时应返回 `{offline_mode, max_offline_duration_seconds}` snake_case 安全默认值，且不应再出现 camelCase 键名）
+  2. `POST /sync/events` 成功/失败两种结果的响应形状（成功路径：库存充足应返回 `success:true` 且事件真实落库为 `APPLIED`；失败路径：库存不足应在响应体里带上真实 `exceptionId`——这是 CRITICAL 第 1 项修复是否真的传导到 HTTP 响应的端到端回归防护）
+  3. `GET /sync/pull` 有新事件时应正常返回且不 500，`next_cursor` 应精确等于最新 `device_seq`
+  4. 额外补充：缺少 `context`（相当于跳过设备认证中间件）时应返回 400，而不是把 `undefined` 租户 ID 传给数据库
+- **测试 fixture 踩坑记录（非生产 bug）**：`POST /sync/events` 会把 `req.context.userId` 写入 `sync_events.operator_user_id`，该列有外键约束指向 `users` 表。最初用 `randomUUID()` 直接伪造测试上下文的 `userId`，触发 `23503` 外键违反——这是测试数据构造的问题（其他仓储层测试从未走过这条会写 `operator_user_id` 的路由代码路径，不会触发这个约束），不是应用代码缺陷；改为在 `beforeAll` 里插入一条真实 `users` 行后解决。
+- **测试有效性验证**：临时同时还原两处此前已修复的实现（`routes.ts` 的 `GET /sync/policy` 改回直接透传 `policy` 对象；`SupabaseSyncEventRepository` 还原到 CRITICAL 第 1 项修复前的版本），重跑本文件：2 个用例按预期失败（字段名断言精确报出 `offlineMode`/`maxOfflineDurationSeconds` 而非 `offline_mode`/`max_offline_duration_seconds`；`exceptionId` 断言报 `expected undefined to be truthy`），其余 3 个不受这两处改动影响的用例保持通过——失败集合精确对应验证范围；随后恢复两处修复后的实现，全部 5 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 跑全部 12 个 DB 集成测试文件（含本项新增）共 82 个用例全部通过，未见跨文件相互干扰。
 
 ---
 

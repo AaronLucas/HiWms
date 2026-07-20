@@ -47,7 +47,11 @@ coverage/
 # Readonly directory (not for upload)
 .readonly/
 
-# Supabase - track migrations and seed only
+# Supabase — 整个目录当前均未跟踪（迁移脚本/config.toml/seed.sql 只存在于本地磁盘 +
+# DBA 部署流程，本行原注释"track migrations and seed only"与实际的 `supabase/*` 通配行为
+# 不一致，未生效）。若要让 CI 跑本地 Postgres 沙盒（如并发测试 job），需要先决定是否
+# 开始把这些文件提交入库——这是有意暂缓的决策，不要自行改动。见
+# docs/03-database/REPOSITORY_ROADMAP.md §「剩余缺口清单」CRITICAL 第 2 项（2026-07-20 暂缓）。
 supabase/*
 
 # Claude local artifacts (worktrees, local settings)

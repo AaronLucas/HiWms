@@ -122,33 +122,55 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
       return { success: false, result, exceptionId };
     } catch (rpcError) {
       const errorMessage = rpcError instanceof Error ? rpcError.message : 'Unknown error';
-
-      // 只有事件仍处于 PENDING（RPC 确实没跑完）才标记为 EXCEPTION；如果状态已经不是
-      // PENDING（比如服务端其实已经提交，只是客户端这边超时/连接中断导致这里进了
-      // catch），说明 sync_events 的真实状态已经由 SQL 函数自己落定，不应该被这里覆盖
-      // 成 EXCEPTION（sync_events 表没有 error_message 列，错误信息只通过返回值传给
-      // 调用方，不做持久化）。
-      const { data: current } = await this.getClient()
-        .from(this.tableName)
-        .select('status')
-        .eq('id', eventId)
-        .single();
-
-      if (current?.status === 'PENDING') {
-        const { error: updateError } = await this.getClient()
-          .from(this.tableName)
-          .update({
-            status: 'EXCEPTION',
-            applied_at: new Date().toISOString(),
-          } as SyncEventUpdate)
-          .eq('id', eventId);
-        if (updateError) {
-          console.error(`applyEvent: failed to mark event ${eventId} as EXCEPTION after RPC error`, updateError);
-        }
+      const markError = await this.markStalledEventAsException(eventId);
+      if (markError) {
+        // 不吞掉这个次生失败：调用方不仅要知道 RPC 本身失败了，也要知道这条事件很可能
+        // 卡在 PENDING（既没有真正被应用，也没能被标记为 EXCEPTION），不能只看 console
+        // 日志才发现。
+        return { success: false, error: `${errorMessage}（另外，标记事件为 EXCEPTION 时也失败：${markError}）` };
       }
-
       return { success: false, error: errorMessage };
     }
+  }
+
+  /**
+   * `applyEvent` 的 RPC 调用本身抛出异常时（网络中断/连接失败等，`fn_apply_sync_event`
+   * 内部的 BEGIN/EXCEPTION 包装从未被触发到，未来得及产生任何结果字符串）的兜底收尾：
+   * 只有事件仍处于 PENDING（RPC 确实没跑完）才标记为 EXCEPTION；如果状态已经不是 PENDING
+   * （比如服务端其实已经提交，只是客户端这边超时/连接中断导致这里进了 catch），说明
+   * sync_events 的真实状态已经由 SQL 函数自己落定，不应该被这里覆盖（sync_events 表没有
+   * error_message 列，错误信息只通过返回值传给调用方，不做持久化）。
+   *
+   * 抽成独立方法是为了能在不依赖"真的让 RPC 网络调用失败"这种难以稳定复现的前提下，
+   * 直接对这段此前零覆盖的收尾逻辑本身做测试（构造真实处于 PENDING/非 PENDING 状态的
+   * 事件行，直接调用本方法验证状态守卫是否生效）。
+   */
+  private async markStalledEventAsException(eventId: string): Promise<string | undefined> {
+    const { data: current } = await this.getClient()
+      .from(this.tableName)
+      .select('status')
+      .eq('id', eventId)
+      .single();
+
+    if (current?.status !== 'PENDING') return undefined;
+
+    const { error: updateError } = await this.getClient()
+      .from(this.tableName)
+      .update({
+        status: 'EXCEPTION',
+        // `applied_at` 是 `timestamp`（不带时区）。这张表里其余写入方式（SQL 端 `NOW()`）
+        // 落库的都是不带偏移量后缀的数字；这里同样去掉 `toISOString()` 结尾的 'Z'，避免
+        // 依赖 Postgres 会话时区必然是 UTC 才能得到一致结果（与 extendLease 时区漂移修复
+        // 同一套约定）。
+        applied_at: new Date().toISOString().replace('Z', ''),
+      } as SyncEventUpdate)
+      .eq('id', eventId);
+
+    if (updateError) {
+      console.error(`applyEvent: failed to mark event ${eventId} as EXCEPTION after RPC error`, updateError);
+      return updateError.message;
+    }
+    return undefined;
   }
 
   /**
