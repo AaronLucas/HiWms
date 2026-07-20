@@ -360,7 +360,7 @@
 |---|---|---|---|---|
 | **CRITICAL** | ✅ 已修复（2026-07-20，见下方执行记录）~~`processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖~~ | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
 | **CRITICAL** | ⏸️ 已排查，暂缓（2026-07-20，见下方记录）DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
-| **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
+| **HIGH** | ⏸️ 排查中，暂缓（2026-07-20，见 `docs/01-architecture/BUG_REPORT_AUTH_TENANT_ISOLATION_2026-07-20.md`）当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
 | **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
 | **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试~~ | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
 | **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error`~~ | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
