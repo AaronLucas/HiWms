@@ -359,7 +359,7 @@
 | 优先级 | 缺口 | 影响 | 建议处理方向 | 跟踪任务 |
 |---|---|---|---|---|
 | **CRITICAL** | ✅ 已修复（2026-07-20，见下方执行记录）~~`processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖~~ | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
-| **CRITICAL** | DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
+| **CRITICAL** | ⏸️ 已排查，暂缓（2026-07-20，见下方记录）DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
 | **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
 | **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
 | **HIGH** | `SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试 | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
@@ -380,6 +380,12 @@
 - **测试有效性验证**：临时用 `git show <fix 之前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：新增/扩展的 2 个用例均按预期失败（`expected undefined to be '<uuid>'`、`expected [] to have a length of 1 but got +0`），其余 10 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 12 个用例转绿。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 12 个用例全部通过。
+
+#### CRITICAL 第 2 项排查记录（CI `db-concurrency-tests` job，2026-07-20，已暂缓）
+
+- **排查发现的阻塞项**：`supabase/migrations/*.sql`、`supabase/config.toml`、`supabase/seed.sql` 目前**完全未被 git 跟踪**——`.gitignore` 里 `supabase/*` 通配符生效，此前紧邻的注释"track migrations and seed only"与实际行为不一致（已在 `.gitignore` 补充说明，见对应 diff）。用 `git ls-files supabase/` 核实为空。GitHub Actions runner check out 本仓库时 `supabase/` 目录不含任何文件，`supabase start`/`db reset` 无法定位 config/迁移脚本，缺口描述里的 job 步骤按现状无法执行。
+- **决策**：是否开始把这些文件提交入库，是超出"加一个 CI job"范围的仓库策略变更（可能涉及 DBA 团队对这些文件的既有管理流程），已征询项目负责人：**暂缓本项，先只澄清 `.gitignore` 注释，不改变任何文件的实际跟踪状态**。本项保持登记，待入库决策明确后再继续。
+- **本地验证环境**：无（本项为排查/文档记录，未涉及代码变更，未连接任何 Postgres 实例）。
 
 ---
 
