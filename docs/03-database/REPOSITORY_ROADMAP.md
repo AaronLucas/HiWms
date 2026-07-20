@@ -362,7 +362,7 @@
 | **CRITICAL** | ⏸️ 已排查，暂缓（2026-07-20，见下方记录）DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
 | **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
 | **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
-| **HIGH** | `SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试 | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
+| **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试~~ | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
 | **HIGH** | `SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error` | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
 | **MEDIUM** | `fn_apply_pack_action` 仍调用旧 `adjust_inventory`（按 SKU 找最近一行扣减），而 PICK/PUTAWAY/COUNT 已改用 `fn_adjust_inventory_at_location` | 打包路径若扫描具体库位/容器，扣减可能落到不匹配库存行，造成账实不符 | 评估是否需 DBA 统一改为按 `(location_id, product_id, batch)` 精确扣减 | #5 |
 | **MEDIUM** | `containers` 表无 `tenant_id` 列且无 RLS，`lpn_code` 全局唯一 | 跨租户 LPN 冲突或扫描错误可能导致串货风险 | 文档化设计决策（跨租户共享容器资源）或评估是否需要 RLS/tenant_id | #5 |
@@ -386,6 +386,16 @@
 - **排查发现的阻塞项**：`supabase/migrations/*.sql`、`supabase/config.toml`、`supabase/seed.sql` 目前**完全未被 git 跟踪**——`.gitignore` 里 `supabase/*` 通配符生效，此前紧邻的注释"track migrations and seed only"与实际行为不一致（已在 `.gitignore` 补充说明，见对应 diff）。用 `git ls-files supabase/` 核实为空。GitHub Actions runner check out 本仓库时 `supabase/` 目录不含任何文件，`supabase start`/`db reset` 无法定位 config/迁移脚本，缺口描述里的 job 步骤按现状无法执行。
 - **决策**：是否开始把这些文件提交入库，是超出"加一个 CI job"范围的仓库策略变更（可能涉及 DBA 团队对这些文件的既有管理流程），已征询项目负责人：**暂缓本项，先只澄清 `.gitignore` 注释，不改变任何文件的实际跟踪状态**。本项保持登记，待入库决策明确后再继续。
 - **本地验证环境**：无（本项为排查/文档记录，未涉及代码变更，未连接任何 Postgres 实例）。
+
+#### HIGH 第 1 项执行记录（`TaskClaimRepository.extendLease` 并发/时区双缺陷，2026-07-20）
+
+- **可达性核查（测试方法论第 6 步）**：全仓库搜索确认 `extendLease` 目前在 `src/apps/**` 无任何调用方——尚未接入任何路由，是纯粹的"已实现未验证"应用层代码，不是当前生产必经路径。
+- **缺陷 1（缺口报告已点名）**：原实现"SELECT expires_at → 应用层算新值 → UPDATE"是读改写竞态；同时对 `fn_expire_task_claims` 到期清扫无状态守卫，可能把一个已清扫为 `EXPIRED` 的租约覆盖出一个未来的 `expires_at`。**修复**：改为乐观并发重试——`UPDATE` 同时带 `status = 'ACTIVE'` 与 `expires_at = <刚读到的旧值>` 两个条件作为原子抢占校验，命中 0 行说明被并发请求抢先，重新读取最新状态后重试（沿用 P0 第 3 项 `PackingTaskItemRepository.insertBatch` 已验证过的同一套重试+随机退避模式，20 次上限）。
+- **缺陷 2（测试补齐过程中新发现，非缺口报告原有条目）**：`task_claims.expires_at` 是 `timestamp`（不带时区）。经 `psql`/PostgREST 直连实测核实：本地沙盒 Postgres 会话时区是 UTC，SQL 端 `NOW() + interval`（`fn_claim_task` 写入方式）落库的是不带偏移量后缀的 UTC 墙上时间数字。但原实现 `new Date(data.expires_at)` 对这个无偏移量后缀的字符串按 **JS 运行进程本地时区**解析——若运行环境（本地开发机/CI runner）配置的进程时区不是 UTC（本次实测环境是 JST，`getTimezoneOffset()===-540`），续租一次就会把 `expires_at` 静默漂移整整一个时区差（实测 9 小时）。此缺陷在原实现中已存在（我的乐观重试重构本身不会引入或修复它），是本次为验证并发修复而写的"续租应精确延长 additionalSeconds"回归测试意外暴露的独立缺陷。**修复**：读取时显式补回 `'Z'` 按 UTC 解析（与 SQL 端约定对齐），写回时同样落库为不带偏移量后缀的 UTC 数字。
+- 扩展 `src/__tests__/integration/tasks/fn_claim_task.concurrency.test.ts`，新增 3 个 `extendLease` 用例：正常续租延长精度回归防护、5 路真实并发续租应全部生效（断言最终 `expires_at` 精确等于原始值 + 5×60 秒）、对已 `EXPIRED` 的租约续租应返回 `null` 且不修改 `expires_at`。
+- **测试有效性验证**：临时用 `git show <本次改动前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：3 个新用例全部按预期失败（时区漂移用例报告"expected X to be Y"、并发用例报告同样的漂移量、EXPIRED 用例报告"expected object to be null"——原实现确认无 ACTIVE 状态守卫，会把已过期租约悄悄复活），其余 4 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 7 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 7 个用例全部通过。
 
 ---
 
