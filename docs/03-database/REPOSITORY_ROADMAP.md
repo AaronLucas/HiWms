@@ -358,7 +358,7 @@
 
 | 优先级 | 缺口 | 影响 | 建议处理方向 | 跟踪任务 |
 |---|---|---|---|---|
-| **CRITICAL** | `processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖 | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
+| **CRITICAL** | ✅ 已修复（2026-07-20，见下方执行记录）~~`processPendingEvents` 有实现 bug：`applyEvent` 从不返回 `exceptionId`，导致批量处理返回的 `exceptions` 数组永远为空；且该方法无任何测试覆盖~~ | 批量处理事件时异常追踪缺失，调用方无法按设计拿到异常列表 | 修复实现 + 补测试；涉及 `SupabaseSyncEventRepository` | #4 |
 | **CRITICAL** | DB 并发测试在 CI 中被 `RUN_DB_CONCURRENCY_TESTS` 环境变量跳过 | 高价值并发测试无法持续生效，回归只能依赖本地手动执行 | 在 CI 新增 `db-concurrency-tests` job：`supabase start` → `db reset` → `RUN_DB_CONCURRENCY_TESTS=true pnpm test -- src/__tests__/integration` | #6 |
 | **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
 | **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
@@ -371,6 +371,15 @@
 | **CRITICAL** | 登录/注册身份模型分裂：`public.users`（自建 username+password_hash，无 email，id 不关联 `auth.users`）与 `SupabaseAuthProvider`（完全基于 Supabase Auth）互不相认，且 RLS 租户上下文从未真正注入查询连接（`injectRlsContext`/`x-tenant-id` 均是无人读取的无效代码）；导致本项任务 #5（`authenticated` 角色测试）缺少可用的真实登录路径，且 RLS 从未在业务查询中真正生效 | 阻塞 #5；且任何未来接入 `authenticated` 角色的查询在修复前实际不受 RLS 保护 | 设计已完成（方案 A：全面采用 Supabase Auth），待评审后实施；数据库侧见 `docs/03-database/AUTH_IDENTITY_BRIDGE_DESIGN_V1.md`，应用代码侧见 `docs/01-architecture/ADR/015-auth-identity-bridge.md` | #7 |
 
 > **处理原则**：以上缺口按"CRITICAL → HIGH → MEDIUM"分批推进；CRITICAL 项必须先修复，再进入下一轮功能开发。每一项修复后必须走 `/ecc:code-review` skill 评审。
+
+#### CRITICAL 第 1 项执行记录（`processPendingEvents`/`applyEvent` exceptionId 缺口，2026-07-20）
+
+- **根因**：`fn_apply_sync_event`（SQL 层）内部通过 `fn_raise_exception` 把失败原因登记进统一异常域（`exceptions.source_table='sync_events', source_id=<event_id>`），但自身只回传一个状态字符串（如 `COMPLIANCE_EXCEPTION`/`SYSTEM_EXCEPTION`/`REJECTED_UNKNOWN_ACTION`），不回传新建的 exception id。`SupabaseSyncEventRepository.applyEvent` 原实现在事件最终状态判定后直接 `return { success, result }`，从未查询过 `exceptions` 表，`exceptionId` 字段（`ISyncEventRepository` 接口早已声明）永远是 `undefined`；`processPendingEvents` 批量汇总里 `if (result.exceptionId) exceptions.push(...)` 因此永远不会命中，返回的 `exceptions` 数组恒为空。
+- **修复（纯 TS 应用层代码，未触碰任何 `.sql` 文件）**：`applyEvent` 在事件最终状态不是 `APPLIED` 时，新增私有方法 `findExceptionIdForEvent()` 按 `source_table='sync_events' AND source_id=eventId`、`created_at` 降序取最新一条查询 `exceptions.id`，作为 `exceptionId` 一并返回。
+- 扩展 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`：在既有"库存不足"用例中追加 `result.exceptionId` 应等于 `exceptions` 表真实记录 id 的断言；新增 `processPendingEvents` 专项用例（独立隔离租户，一个事件库存充足、一个库存不足），断言 `processed/succeeded/failed` 汇总正确，且 `exceptions` 数组含真实 `eventId`+`exceptionId`。
+- **测试有效性验证**：临时用 `git show <fix 之前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：新增/扩展的 2 个用例均按预期失败（`expected undefined to be '<uuid>'`、`expected [] to have a length of 1 but got +0`），其余 10 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 12 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 12 个用例全部通过。
 
 ---
 

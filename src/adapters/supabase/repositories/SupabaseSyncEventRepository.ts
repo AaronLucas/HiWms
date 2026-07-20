@@ -110,7 +110,16 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
 
       if (refetchError) throw refetchError;
 
-      return { success: finalEvent!.status === 'APPLIED', result };
+      if (finalEvent!.status === 'APPLIED') {
+        return { success: true, result };
+      }
+
+      // fn_apply_sync_event 内部通过 fn_raise_exception 把失败原因登记进统一异常域
+      // （exceptions.source_table='sync_events', source_id=eventId），但自身只回传一个
+      // 状态字符串，不回传新建的 exception id。调用方（如 processPendingEvents 的批量
+      // 汇总）需要拿到 exceptionId 才能把"哪个事件对应哪条异常"关联起来，这里补查一次。
+      const exceptionId = await this.findExceptionIdForEvent(eventId);
+      return { success: false, result, exceptionId };
     } catch (rpcError) {
       const errorMessage = rpcError instanceof Error ? rpcError.message : 'Unknown error';
 
@@ -140,6 +149,29 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
 
       return { success: false, error: errorMessage };
     }
+  }
+
+  /**
+   * 查找某个同步事件对应的异常记录 id（exceptions.source_table='sync_events'）。
+   * 同一事件理论上只应有一条对应异常，但按 created_at 取最新一条兜底，避免历史重试留下
+   * 的多条记录导致取到过期数据。
+   */
+  private async findExceptionIdForEvent(eventId: string): Promise<string | undefined> {
+    const { data, error } = await this.getClient()
+      .from('exceptions')
+      .select('id')
+      .eq('source_table', 'sync_events')
+      .eq('source_id', eventId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`applyEvent: failed to look up exception id for event ${eventId}`, error);
+      return undefined;
+    }
+
+    return data?.id;
   }
 
   /**

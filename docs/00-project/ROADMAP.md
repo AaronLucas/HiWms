@@ -346,7 +346,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 | 优先级 | 任务 | 证据/详细设计 | 跟踪位置 |
 |---|---|---|---|
-| **CRITICAL** | 修复 `processPendingEvents` 实现 bug 并补测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
+| **CRITICAL** | ✅ 已修复（2026-07-20）修复 `processPendingEvents` 实现 bug 并补测试 | `REPOSITORY_ROADMAP.md` §「剩余缺口清单」CRITICAL 第 1 项执行记录 | `AGENTS.md` §8.5.4 |
 | **CRITICAL** | 在 CI 中启用本地 Postgres DB 并发测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
 | **HIGH** | 补充 `authenticated` 角色 RLS/权限路径测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
 | **HIGH** | 补充 `device-api` 路由层 HTTP 集成测试 | `REPOSITORY_ROADMAP.md` §8「剩余缺口清单」 | `AGENTS.md` §8.5.4 |
