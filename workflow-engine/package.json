@@ -1,5 +1,5 @@
 {
-  "name": "wms-workflow-engine",
+  "name": "hiwms-workflow-engine",
   "version": "1.0.0",
   "description": "Enhanced workflow engine with auto-retry, circuit breaker, and type-safe workflow engine",
   "type": "commonjs",
