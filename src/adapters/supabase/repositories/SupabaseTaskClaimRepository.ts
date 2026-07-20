@@ -189,7 +189,18 @@ export class SupabaseTaskClaimRepository extends SupabaseBaseRepository<
       // 不应该把一个已终结的租约悄悄复活。
       if (!current || current.status !== 'ACTIVE') return null;
 
-      const newExpiresAt = new Date(new Date(current.expires_at).getTime() + additionalSeconds * 1000).toISOString();
+      // `task_claims.expires_at` 是 `timestamp`（不带时区）。经实测核实：Postgres 会话时区
+      // 是 UTC，`NOW() + interval`（`fn_claim_task` 写入 `expires_at` 的方式）落库的是 UTC
+      // 墙上时间数字、不带偏移量后缀。但 `new Date(naiveString)`（无 'Z'/偏移量后缀）会被
+      // JS 当成"运行进程本地时区"解析——本地沙盒/CI 进程时区若不是 UTC（比如 JST，
+      // `getTimezoneOffset()===-540`），读出来的值会被错误解读，偏移量精确等于进程时区差
+      // （实测 9 小时）。修复：读取时显式补回 'Z' 按 UTC 解析（与 SQL 端 NOW() 落库的约定
+      // 对齐），写回时同样落库为不带偏移量后缀的 UTC 数字（`toISOString()` 本身就是 UTC
+      // 表示，只是要去掉结尾 'Z' 以匹配这张表既有值"无时区后缀"的格式，不代表要做任何
+      // 时区换算）。
+      const newExpiresAt = new Date(new Date(`${current.expires_at}Z`).getTime() + additionalSeconds * 1000)
+        .toISOString()
+        .replace('Z', '');
 
       const { data: updated, error: updateError } = await this.getClient()
         .from(this.tableName)
