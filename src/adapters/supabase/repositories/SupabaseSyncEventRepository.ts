@@ -152,6 +152,29 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
   }
 
   /**
+   * 查找某个同步事件对应的异常记录 id（exceptions.source_table='sync_events'）。
+   * 同一事件理论上只应有一条对应异常，但按 created_at 取最新一条兜底，避免历史重试留下
+   * 的多条记录导致取到过期数据。
+   */
+  private async findExceptionIdForEvent(eventId: string): Promise<string | undefined> {
+    const { data, error } = await this.getClient()
+      .from('exceptions')
+      .select('id')
+      .eq('source_table', 'sync_events')
+      .eq('source_id', eventId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`applyEvent: failed to look up exception id for event ${eventId}`, error);
+      return undefined;
+    }
+
+    return data?.id;
+  }
+
+  /**
    * 批量处理待处理事件（状态 = PENDING）
    * 返回处理结果汇总
    */
