@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 把 HiWmsSupabase（DBA 团队独立管理的迁移仓库）同步到本地 ./supabase/ 和 .readonly/。
 #
-# wms7 与 HiWmsSupabase 之间没有 git 层面的关联（无 submodule），本脚本是本地
+# HiWms 与 HiWmsSupabase 之间没有 git 层面的关联（无 submodule），本脚本是本地
 # 拉取内容的唯一方式；取代此前"DBA 手工把文件丢进 .readonly/"的人工流程——
 # .readonly/ 现在是本脚本从 HiWmsSupabase 拉取生成的只读镜像，不再手工维护。
 # 同步结果落地在 gitignore 的 ./supabase/ 与 .readonly/ 目录，均不会被提交。

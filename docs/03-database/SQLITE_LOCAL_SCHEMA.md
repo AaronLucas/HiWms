@@ -594,7 +594,7 @@ PRAGMA cipher_hmac_algorithm = HMAC_SHA512;
 PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;
 
 -- 密钥派生：设备绑定 Key + 用户 PIN → 256 位加密密钥
--- Key = HKDF-SHA256(salt=device_id, IKM=device_master_key || user_pin, info="wms7-pda-db", L=32)
+-- Key = HKDF-SHA256(salt=device_id, IKM=device_master_key || user_pin, info="hiwms-pda-db", L=32)
 ```
 
 ### 7.2 敏感字段加密存储

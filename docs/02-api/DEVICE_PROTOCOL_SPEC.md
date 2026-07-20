@@ -20,7 +20,7 @@
 // 所有请求头
 headers: {
   'Authorization': 'Bearer <device_jwt>',
-  'X-API-Key': 'wms7_dk_<deviceId>_<random>',
+  'X-API-Key': 'hiwms_dk_<deviceId>_<random>',
   'X-Device-Id': '<device_id>',
   'X-Client-Version': '2.1.0',
   'X-Request-Id': '<ulid>',           // 幂等键，客户端生成
@@ -86,7 +86,7 @@ Content-Type: application/json
 
 {
   "device_id": "pda-wh-001",
-  "api_key": "wms7_dk_pda-wh-001_abc123...",
+  "api_key": "hiwms_dk_pda-wh-001_abc123...",
   "fcm_token": "firebase_push_token",  // 可选，用于推送通知
   "app_version": "2.1.0",
   "os_version": "Android 13",
@@ -880,7 +880,7 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "label_url": "https://r2.wms7.com/labels/label-uuid.zpl",
+    "label_url": "https://r2.hiwms.com/labels/label-uuid.zpl",
     "tracking_no": "SF1234567890",
     "format": "zpl",
     "size": "100x150mm"
@@ -1064,7 +1064,7 @@ GET /api/v1/device/tasks/next?types=PICKING,PACKING&radius_m=50
 
 ### 6.1 连接建立
 ```
-WSS: wss://api.wms7.com/api/v1/device/ws?token=<access_token>&device_id=<device_id>
+WSS: wss://api.hiwms.com/api/v1/device/ws?token=<access_token>&device_id=<device_id>
 ```
 
 **握手认证**: Query 参数携带 `token` 和 `device_id`，服务端验证后建立连接
@@ -1148,7 +1148,7 @@ Content-Type: application/json
   "success": true,
   "data": {
     "device_id": "pda-wh-001",
-    "api_key": "wms7_dk_pda-wh-001_abc123def456...",
+    "api_key": "hiwms_dk_pda-wh-001_abc123def456...",
     "provisioned_at": "2025-07-11T10:30:00.000Z",
     "config": {
       "sync_interval_sec": 30,
@@ -1208,9 +1208,9 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "upload_url": "https://r2.wms7.com/tenant-uuid/exception/ulid.jpg?X-Amz-Signature=...",
+    "upload_url": "https://r2.hiwms.com/tenant-uuid/exception/ulid.jpg?X-Amz-Signature=...",
     "file_key": "tenant-uuid/exception/ulid.jpg",
-    "public_url": "https://r2.wms7.com/tenant-uuid/exception/ulid.jpg",
+    "public_url": "https://r2.hiwms.com/tenant-uuid/exception/ulid.jpg",
     "expires_at": "2025-07-11T11:30:00.000Z"
   },
   "meta": { ... }
@@ -1219,7 +1219,7 @@ Content-Type: application/json
 
 ### 8.2 直接 PUT 上传到 R2
 ```
-PUT https://r2.wms7.com/tenant-uuid/exception/ulid.jpg?X-Amz-Signature=...
+PUT https://r2.hiwms.com/tenant-uuid/exception/ulid.jpg?X-Amz-Signature=...
 Content-Type: image/jpeg
 
 <二进制文件内容>

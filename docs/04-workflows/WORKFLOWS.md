@@ -110,7 +110,7 @@ jobs:
 # .github/workflows/db-integration.yml（main/dev 双触发，独立 job，暂未加入 ci-success 硬门禁）
 jobs:
   - db-integration:
-      - checkout wms7
+      - checkout HiWms
       - checkout HiWmsSupabase（只读 Deploy Key，HIWMS_SUPABASE_DEPLOY_KEY secret，无过期时间）
       - cp HiWmsSupabase/supabase → ./supabase
       - supabase start（一次性本地 Docker Postgres）

@@ -27,8 +27,8 @@ export function loadDeviceApiConfig(): DeviceApiConfig {
   const port = parseInt(process.env.DEVICE_API_PORT || '3003', 10);
   const host = process.env.DEVICE_API_HOST || '0.0.0.0';
   const jwtSecret = process.env.DEVICE_JWT_SECRET || '';
-  const jwtIssuer = process.env.DEVICE_JWT_ISSUER || 'wms7-device-api';
-  const jwtAudience = process.env.DEVICE_JWT_AUDIENCE || 'wms7-devices';
+  const jwtIssuer = process.env.DEVICE_JWT_ISSUER || 'hiwms-device-api';
+  const jwtAudience = process.env.DEVICE_JWT_AUDIENCE || 'hiwms-devices';
 
   if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
     throw new Error('Missing required Supabase environment variables');
