@@ -164,4 +164,6 @@ Postgres（而非 Supabase 托管）部署这套 schema 的场景，或者想让
 
 **关联文档**：`docs/00-project/ROADMAP.md`「阶段 1.5」、
 `docs/03-database/REPOSITORY_ROADMAP.md`「剩余缺口清单」、
-`HiWmsSupabase` 仓库 README「当前已知待办」（与本文档保持同步）。
+`HiWmsSupabase` 仓库 README「当前已知待办」（与本文档保持同步）、
+[HiWmsSupabase#1](https://github.com/AaronLucas/HiWmsSupabase/issues/1)（本文档在
+DBA 团队自己仓库里的镜像 Issue，供其原生可见，不需要跨仓库找 PR）。
