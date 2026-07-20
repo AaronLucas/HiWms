@@ -363,7 +363,7 @@
 | **HIGH** | 当前所有并发测试使用 `service_role` 绕过 RLS，未覆盖生产 `authenticated` 角色路径 | 生产权限/RLS 问题在 CI 中无法被发现 | 补充以 `authenticated` 角色调用的集成测试，或确认 SQL 函数全部改为 `SECURITY DEFINER` 并在迁移中补 `GRANT` | #5 |
 | **HIGH** | 缺少 `device-api` 路由层 HTTP 集成测试（如 `GET /sync/policy` 字段映射、`POST /sync/events` 合规失败返回、`GET /sync/pull` 有新事件时不 500） | 仓库层全绿但路由契约仍可能出错（如 camelCase 透传） | 引入 `supertest` 对关键端点做最小 HTTP 集成测试 | #4 |
 | **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseTaskClaimRepository.extendLease` 是"先 SELECT 再 UPDATE"的非原子读改写，无并发测试~~ | 续租可能互相覆盖或与到期清扫竞态 | 补并发测试；若风险高，改由 SQL 层原子操作 | #4 |
-| **HIGH** | `SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error` | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
+| **HIGH** | ✅ 已修复（2026-07-20，见下方执行记录）~~`SupabaseSyncEventRepository.applyEvent` catch 分支仍对 `EXCEPTION` 状态写入 `applied_at` 并含 `console.error`~~ | schema/代码规范双风险；可能再次引发列不存在错误 | 修复实现 + 补错误路径测试 | #4 |
 | **MEDIUM** | `fn_apply_pack_action` 仍调用旧 `adjust_inventory`（按 SKU 找最近一行扣减），而 PICK/PUTAWAY/COUNT 已改用 `fn_adjust_inventory_at_location` | 打包路径若扫描具体库位/容器，扣减可能落到不匹配库存行，造成账实不符 | 评估是否需 DBA 统一改为按 `(location_id, product_id, batch)` 精确扣减 | #5 |
 | **MEDIUM** | `containers` 表无 `tenant_id` 列且无 RLS，`lpn_code` 全局唯一 | 跨租户 LPN 冲突或扫描错误可能导致串货风险 | 文档化设计决策（跨租户共享容器资源）或评估是否需要 RLS/tenant_id | #5 |
 | **MEDIUM** | `MissingLabelRepository.generateInternalLpn` 对同一 `exception_id` 重复调用的幂等性未明确 | 可能生成孤儿容器或重复 LPN | 业务决策后补测试 | #4 |
@@ -396,6 +396,18 @@
 - **测试有效性验证**：临时用 `git show <本次改动前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：3 个新用例全部按预期失败（时区漂移用例报告"expected X to be Y"、并发用例报告同样的漂移量、EXPIRED 用例报告"expected object to be null"——原实现确认无 ACTIVE 状态守卫，会把已过期租约悄悄复活），其余 4 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 7 个用例转绿。
 - **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
 - **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 7 个用例全部通过。
+
+#### HIGH 第 2 项执行记录（`SupabaseSyncEventRepository.applyEvent` catch 分支，2026-07-20）
+
+- **背景**：这个 catch 分支只在 RPC 调用本身抛出异常时触发（网络中断/连接失败等——`fn_apply_sync_event` 内部的 `BEGIN/EXCEPTION` 包装从未被触发到，未来得及产生任何结果字符串），是"已实现未验证"里覆盖率最薄的一段：此前 0 个测试触碰过这个分支。
+- **可测试性排查**：真实触发这个分支需要让 supabase-js 的 RPC 调用本身抛错（网络层故障），这类故障在现有"直接实例化仓储、连真实本地 Postgres"的测试基建下难以稳定复现，且用 mock 伪造网络异常会违背本文件一贯坚持的"真实 DB，不 mock"测试哲学。**处理方式**：把 catch 分支里"判断状态守卫 + 执行 UPDATE"这段此前零覆盖的收尾逻辑抽成独立私有方法 `markStalledEventAsException`，测试直接构造真实处于 `PENDING`/非 `PENDING`（如 `APPLIED`）状态的事件行，通过类型断言显式调用这个私有方法验证其行为，从而在不依赖网络故障注入的前提下，为这段逻辑本身提供真实的回归保护。这段网络异常触发路径本身仍然缺少端到端覆盖，如实记录为已知限制。
+- **修复 1（缺口报告已点名）**：不再用 `console.error` 静默吞掉"标记 EXCEPTION 也失败"这个次生错误——`applyEvent` 现在会把这个次生失败拼接进返回给调用方的 `error` 字符串，调用方不再需要翻 console 日志才能发现"这条事件很可能卡在 PENDING，既没有真正被应用，也没能被标记为 EXCEPTION"。
+- **修复 2（顺带发现，与 HIGH 第 1 项 `extendLease` 同一类根因）**：`sync_events.applied_at` 同样是不带时区的 `timestamp` 列。原写法 `new Date().toISOString()`（带 'Z' 后缀）在本地沙盒（Postgres 会话时区为 UTC）恰好不出错，但依赖"会话时区必须是 UTC"这个隐含前提，不够健壮。改为与 `extendLease` 一致的约定：去掉 `toISOString()` 结尾的 `'Z'`，落库为不带偏移量后缀的 UTC 数字，不依赖会话时区。
+- **未采用的方案**：曾考虑让这个 catch 分支也顺带往 `exceptions` 表插入一条记录（弥补"事件被标记 EXCEPTION 但完全没有对应异常记录、`GET /exceptions` 看不到"的可观测性缺口）。**放弃**——`docs/03-database/REPOSITORY_ROADMAP.md` P0 第 2 项执行记录里已经针对同类场景（Bug E）明确讨论并否决过"从 TS 层外挂异常登记逻辑"的方案，理由是会破坏"所有'登记异常'逻辑收敛在 SQL 函数内部"这一架构约定、增加以后遗漏维护的风险；本次遵循同一个已有决定，不重复引入这个不一致。这个可观测性缺口本身如实记录为未处理的已知限制，如需关闭需要 SQL 层配合（不在本次改动范围）。
+- 扩展 `src/__tests__/integration/sync/fn_apply_sync_event.concurrency.test.ts`，新增 2 个 `markStalledEventAsException` 用例：仍处于 `PENDING` 的事件应被标记为 `EXCEPTION`；已经是 `APPLIED`（或其他非 `PENDING`）状态的事件不应被覆盖。
+- **测试有效性验证**：临时用 `git show <本次改动前的 commit>:...` 还原修复前的原始实现覆盖工作区文件（不改动 git 历史），重跑测试：2 个新用例均按预期失败（`TypeError: repo.markStalledEventAsException is not a function`——该方法在原实现里根本不存在，是本次重构新增的，失败信号本身即证明测试确实依赖新代码存在），其余 12 个既有用例不受影响仍通过；随后恢复修复后的实现，全部 14 个用例转绿。
+- **本地验证环境**：复用另一 worktree 遗留的本地一次性 Docker Postgres 沙盒（`supabase_db_ecc-governance-pilot`，001-005 迁移均已生效），全程未连接生产库，未触碰任何迁移脚本文件。
+- **回归确认**：`npx tsc --noEmit` 零错误；`npx vitest run`（不含本地 DB 测试）59 个既有用例全部通过；`RUN_DB_CONCURRENCY_TESTS=true` 单独跑本文件 14 个用例全部通过。
 
 ---
 
