@@ -1,7 +1,7 @@
 {
-  "name": "wms7",
+  "name": "hiwms",
   "version": "1.0.0",
-  "description": "Project using Redux Toolkit and WMS workflows",
+  "description": "HiWms warehouse management system — multi-tenant WMS workflows",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "workspaces": [
@@ -27,7 +27,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-redux": "^8.1.3",
-    "wms-workflow-engine": "workspace:*",
+    "hiwms-workflow-engine": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

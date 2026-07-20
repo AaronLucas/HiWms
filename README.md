@@ -148,7 +148,7 @@
 
 ## 联系方式
 
-- **GitHub**：https://github.com/<username>/wms7
+- **GitHub**：https://github.com/AaronLucas/HiWms
 - **邮箱**：<aaronlucas@126.com>
 - **文档**：见 `/docs/` 目录
 

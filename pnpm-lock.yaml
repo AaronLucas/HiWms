@@ -17,6 +17,9 @@ importers:
       express:
         specifier: ^4.19.2
         version: 4.22.2
+      hiwms-workflow-engine:
+        specifier: workspace:*
+        version: link:workflow-engine
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -26,9 +29,6 @@ importers:
       react-redux:
         specifier: ^8.1.3
         version: 8.1.3(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(redux@5.0.1)
-      wms-workflow-engine:
-        specifier: workspace:*
-        version: link:workflow-engine
       zod:
         specifier: ^4.4.3
         version: 4.4.3
