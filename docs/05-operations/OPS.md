@@ -290,12 +290,34 @@ S3_BUCKET=wms-backups
 
 ### 9.4 CI/CD Secrets（GitHub Actions，非运行时应用变量，2026-07-20 新增）
 
+#### 两个仓库的 Secret 现状
+
+| 仓库 | 当前 Secret | 用途 | 是否自动生成/轮换 |
+|---|---|---|---|
+| **HiWms**（本仓库） | `HIWMS_SUPABASE_DEPLOY_KEY` | `db-integration.yml` 与 `secret-health-check.yml` 用它以只读 Deploy Key checkout [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase) | 否，GitHub Deploy Key 默认**无过期时间**，只能手动吊销/轮换 |
+| **HiWmsSupabase**（DBA 迁移仓库） | 无 | 该仓库 CI 只在本地起一次性 Postgres 容器跑迁移，不需要访问其他仓库或外部服务 | 不适用 |
+
+> **常见误解澄清**：HiWmsSupabase 仓库本身没有任何生成 Secret 的 workflow；那把只读 key 的**公钥**是加在 HiWmsSupabase 的 Deploy keys 里，而**私钥**是存在 HiWms 仓库的 Actions Secrets 里。两边都不是靠"自动生成 Secret"来防止 CI 过期，而是 Deploy Key 本身无过期时间。
+
+#### Secret 清单
+
 | Secret 名称 | 用途 | 类型/有效期 |
 |---|---|---|
-| `HIWMS_SUPABASE_DEPLOY_KEY` | `.github/workflows/db-integration.yml` 用它 checkout 独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理的迁移脚本仓库） | SSH 只读 Deploy Key，绑定该仓库单一权限，**无过期时间**（区别于个人 PAT，不会因账号会话/token 轮换而断，只能手动吊销）。公钥已加为 HiWmsSupabase 的 read-only deploy key |
+| `HIWMS_SUPABASE_DEPLOY_KEY` | `.github/workflows/db-integration.yml` 与 `.github/workflows/secret-health-check.yml` 用它 checkout 独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（DBA 团队管理的迁移脚本仓库） | SSH 只读 Deploy Key，绑定该仓库单一权限，**无过期时间**（区别于个人 PAT，不会因账号会话/token 轮换而断，只能手动吊销）。公钥已加为 HiWmsSupabase 的 read-only deploy key |
 
-轮换/吊销流程：在 HiWmsSupabase 仓库 Settings → Deploy keys 里删除对应公钥，再在 HiWms
-`gh secret set HIWMS_SUPABASE_DEPLOY_KEY` 更新为新私钥即可，两步操作互不依赖生产环境。
+#### 健康检查
+- `.github/workflows/secret-health-check.yml`：每月 1 日自动验证 `HIWMS_SUPABASE_DEPLOY_KEY` 是否仍能 checkout HiWmsSupabase；失败即告警。
+- 也可通过 `workflow_dispatch` 手动触发验证。
+
+#### 轮换/吊销流程
+建议每 12 个月或在以下场景主动轮换：
+1. 在 HiWmsSupabase 仓库 Settings → Deploy keys 里删除旧公钥。
+2. 本地生成新的 SSH key pair：`ssh-keygen -t ed25519 -C "hiwms-supabase-deploy-key" -f hiwms-supabase-deploy-key`。
+3. 在 HiWmsSupabase 仓库添加新公钥为 read-only deploy key。
+4. 在 HiWms 仓库更新 Secret：`gh secret set HIWMS_SUPABASE_DEPLOY_KEY < hiwms-supabase-deploy-key`。
+5. 触发 `.github/workflows/secret-health-check.yml` 确认新 key 有效。
+
+两步操作互不依赖生产环境。
 
 ---
 
