@@ -5,7 +5,7 @@
 ### 1.1 基础信息
 | 属性 | 值 |
 |------|-----|
-| **标题** | WMS7 仓储管理系统 API |
+| **标题** | HiWms 仓储管理系统 API |
 | **版本** | 2.1.0 |
 | **规范** | OpenAPI 3.1.0 |
 | **基础路径** | `/api/v1` (Admin/Tenant/Device) / `/api/edge` (Edge Worker) |
