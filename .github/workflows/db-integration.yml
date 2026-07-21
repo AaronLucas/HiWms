@@ -26,7 +26,7 @@ jobs:
     name: DB Migrations + Concurrency Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout wms7
+      - name: Checkout HiWms
         uses: actions/checkout@v4
 
       - name: Checkout HiWmsSupabase (DBA-managed migrations)
