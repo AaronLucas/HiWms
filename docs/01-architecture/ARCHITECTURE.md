@@ -350,6 +350,8 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 | **ADR-014** | 唯一追踪策略三层解析 + 无码/未识别货物分离处理 | 区分"低值货物本不追踪"与"该追踪但现场缺码"两种完全不同的场景，避免混为一谈造成操作摩擦或追溯断裂 |
 | **ADR-016** | 迁移 005-008 应用层集成：并发/租户修复零改动、序列化追踪走独立只读仓储、存储策略平台管理员写权限复用现有 RBAC | Layer 5/6 对现有调用方透明；Layer 7 序列化路径在 SQL 层已按 `is_serial_required` 分流，TS 层无需感知；Layer 8 权限模型复用已有 `roles.tenant_id IS NULL` 平台角色机制，不新增权限体系 |
 | **ADR-017** | DBA 迁移脚本拆分至独立仓库 HiWmsSupabase，CI 用无过期只读 Deploy Key 跨仓库 checkout | 此前 `supabase/migrations` 从未被 git 跟踪导致 CI 数据库测试无法运行；拆分后 DBA 产出物与应用代码历史解耦，Deploy Key 避免 PAT 的强制过期问题 |
+| **ADR-018** | 异常处理"解决人身份"改由已验证的 `req.context.userId` 派生，不再信任客户端传入的 `resolver_user_id`/`actor_user_id` | `fn_resolve_exception` 信任调用方自报身份的漏洞模式，已通过 `/missing-label/confirm`、`/unidentified/identify` 两条真实可达路由暴露；应用层修复今天就能收口，不等数据库层 |
+| **ADR-019** | 设备身份签发子系统：租户自助配发、按设备独立 API Key + 按租户独立会话签名密钥、二维码一次性配对、Token 分层（15分钟/7天） | 修复 ADR-018 时发现 `DeviceAuthMiddleware` 只有验证没有签发，`DEVICE_PROTOCOL_SPEC.md` 草案从未落地也从未提交 DBA；设计已定稿待实施 |
 
 ---
 
@@ -421,6 +423,25 @@ Types           │             │       │          │      │         │ 
 | 2.1.0 | 2026-07-15 | 离线同步流改为操作同步+预分工模型（ADR-011），新增统一异常领域用例模块，更新 ADR 摘要与相关文档索引 |
 | 2.2.0 | 2026-07-16 | 新增 ADR-013/ADR-014（Layer 3 同步动作扩展、Layer 4 唯一追踪策略），标注 Device API 当前实现状态（尚不存在，仅 admin-api 已实现），更新相关文档索引 |
 | 2.3.0 | 2026-07-18 | DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境，`device-api` 应用已实现（§4.3 状态更新为已核实存在），Layer 2/3/4 仓储层已全部完成 |
+| 2.4.0 | 2026-07-23 | 新增 §11「待决策架构问题」，登记对 `HiWmsSupabase` 迁移 009-016 只读复核发现的架构级 backlog（不含任何该仓库的代码改动） |
+
+---
+
+## 11. 待决策架构问题（2026-07-23，`HiWmsSupabase` 009-016 只读复核新增）
+
+> 以下问题来自对 `HiWmsSupabase`（DBA 团队独立维护，应用团队只读）迁移 009-016 的
+> 复核，均已通过 `docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md` 正式退回 DBA
+> 团队处理。本节只做架构层面的登记追踪，不代表本仓库已对这些问题做任何代码改动。
+
+| 优先级 | 问题 | 说明 | 详情 |
+|---|---|---|---|
+| **CRITICAL（设计已定稿 2026-07-23，待实施）** | `DeviceAuthMiddleware` 从未真正验证设备 JWT 签名/API Key secret——完整的身份认证绕过 | 项目尚未上线（非线上事故）。根因已查明：不是验证逻辑写错，是整个设备身份签发子系统从未被设计实现——`DEVICE_PROTOCOL_SPEC.md` 草案从未落地也从未提交 DBA。已完成完整设计（ADR-019：租户自助配发、按设备独立 API Key、按租户独立会话签名密钥、二维码配对、Token 分层），DBA 侧 schema 需求已提交 `DBA_ADDENDUM_REQUEST_DEVICE_IDENTITY_2026-07-23.md`，应用层实施尚未开始 | ADR-018「已知遗留问题」；ADR-019（设计定稿） |
+| **P0**（应用层已修复，2026-07-23） | `fn_resolve_exception` 信任调用方传入的 `p_resolver_user_id` | 与 013 修复的 `check_user_permission` 跨租户信息泄露同一类"SECURITY DEFINER 信任调用方自称身份"漏洞模式，且已通过 `/missing-label/confirm`、`/unidentified/identify` 两条路由真实可达——应用层已改为从 `req.context.userId` 派生（见 ADR-018）；数据库层防御性加固仍待 DBA 处理 | ADR-018；`DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1 |
+| **P1** | GRANT 策略缺失，全仓库无显式 GRANT 语句 | 生产不受影响（Supabase 托管 provisioning 隐式处理），但两轮复核后建议正式写一份 ADR 关闭这个反复被提起的问题 | 同上新发现 2 |
+| **P1** | 测试执行顺序加固（事务隔离 + CI 随机顺序） | 已在 `HiWmsSupabase` 侧实现但未提交合并，`TEST_PLAN.md` 仍标注"待决策" | `docs/00-project/ROADMAP.md` §1.5 |
+| **P2** | 009 迁移 `WHEN OTHERS` 过宽异常捕获 | 迁移已合并不可变，属永久性限制，记录避免未来迁移重演同一模式 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 上一轮追踪表 |
+| **P2** | 独立评审流程缺口 | `HiWmsSupabase` 013/014/015 三个迁移自曝当时缺少可用的独立评审工具/会话，部分评审记录是否真正完成存疑 | `docs/04-workflows/WORKFLOWS.md` §8 |
+| **P2** | `containers` 共享可见性 RLS 模型 | 014 的设计权衡（空闲容器对所有租户可见），"严格租户容器池"是否已是真实产品需求需产品侧确认 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 4 |
 
 ---
 
