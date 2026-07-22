@@ -434,6 +434,7 @@ Types           │             │       │          │      │         │ 
 
 | 优先级 | 问题 | 说明 | 详情 |
 |---|---|---|---|
+| **CRITICAL（未修复，2026-07-23 独立评审确认）** | `DeviceAuthMiddleware` 从未真正验证设备 JWT 签名/API Key secret——完整的身份认证绕过 | `verifyDeviceToken` 只查 `type`/`iss`/`aud`/`exp`，签名校验被注释为 TODO；API Key 路径解析 secret 但无任何列可比对。任何知道/猜到一个真实 `device_id` 的攻击者可伪造该设备身份，获得其真实租户的数据访问权限，并伪造任意 `user_id` 归属（ADR-018 想堵的正是这条链路的下游）。已确认无第二道独立防线——`WmsSupabaseClient` 用固定 service-role key，RLS 不在这条路径上生效，本中间件是唯一信任边界。需要：①确认 device-api 是否已在生产网络可达（业务/运维决策，代码判断不了）；②确认 JWT 签发方是谁（仓库内无签发代码）；③确认是否有真实设备在用 API Key 路径（决定能否直接禁用该分支）。修复本身（JWT 部分）可以只在应用层完成，不需要 DBA 改 schema；API Key 部分需要 DBA 加 secret hash 列 | ADR-018「已知遗留问题」；建议独立立项 ADR-019 |
 | **P0**（应用层已修复，2026-07-23） | `fn_resolve_exception` 信任调用方传入的 `p_resolver_user_id` | 与 013 修复的 `check_user_permission` 跨租户信息泄露同一类"SECURITY DEFINER 信任调用方自称身份"漏洞模式，且已通过 `/missing-label/confirm`、`/unidentified/identify` 两条路由真实可达——应用层已改为从 `req.context.userId` 派生（见 ADR-018）；数据库层防御性加固仍待 DBA 处理 | ADR-018；`DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1 |
 | **P1** | GRANT 策略缺失，全仓库无显式 GRANT 语句 | 生产不受影响（Supabase 托管 provisioning 隐式处理），但两轮复核后建议正式写一份 ADR 关闭这个反复被提起的问题 | 同上新发现 2 |
 | **P1** | 测试执行顺序加固（事务隔离 + CI 随机顺序） | 已在 `HiWmsSupabase` 侧实现但未提交合并，`TEST_PLAN.md` 仍标注"待决策" | `docs/00-project/ROADMAP.md` §1.5 |

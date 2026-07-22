@@ -326,6 +326,32 @@ cp -r ~/.claude/plugins/cache/ecc/ecc/2.0.0/rules/typescript .claude/rules/ecc/
 - **设计/映射做不出来**：视为方法论本身的 bug，应继续深挖或向项目负责人提出具体卡点（needs input），不构成执行人自行终止或回退的理由
 - **真正合理的回退触发条件，仅剩两类客观外部因素**：①项目负责人基于业务判断明确决定不采用；②ECC 承诺的机制被证实不存在/不工作（事实性硬阻塞，非设计难度问题）
 
+### 8.7 显著发现/设计必须走多视角并行评审，不能单人处理（2026-07-23 固化）
+
+**先例**：2026-07-20 已有一次"经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/
+`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析）"记录在 `docs/00-project/ROADMAP.md`。
+2026-07-23 同一类工作（`HiWmsSupabase` 跨仓库分析 + ADR-018 身份冒用修复）却单人
+独立完成，只在最后补了一次单一的 `ecc:code-reviewer`，且是被用户提醒后才补的。
+用户指出：规则已经落地在项目里，却没有被持续执行——这条本节要正式堵上。
+
+**规则（不是观察记录，是要求）**：以下情况必须并行起多个 ECC agent（`Agent` 工具，
+`run_in_background: true`），不能只用单一视角或单人分析：
+- 发现足以单独立 ADR 的问题（架构/安全/数据完整性类）
+- 触及 `docs/04-workflows/WORKFLOWS.md` §7 暂停节点范围的改动（认证/授权、RLS、
+  GRANT/REVOKE、部署顺序硬依赖）
+- 任何被归类为业务/产品"决策类"而非工程 backlog 的事项——不能由单一工程视角
+  的 agent 替用户做决定，应该用 `ecc:planner` 之类的 agent 把问题结构化成
+  "选项 + 取舍"交给用户，而不是自己拍板
+
+**参考并行组合**（按发现类型选用，不必每次全套）：`ecc:architect`（影响面/修复
+形状）、`ecc:security-reviewer`（可利用性/严重程度）、`ecc:tdd-guide`（测试计划）、
+`ecc:planner`（业务/产品决策结构化）、`ecc:code-reviewer`（push 前独立评审，见
+§8.5 已有的评审流程要求）。
+
+**边界**：多视角 agent 覆盖的是工程侧的分析角度；"这个功能今天是否真的暴露在
+生产环境""业务上有多急"这类问题任何 agent 都答不出来，必须直接问项目负责人，
+不能悄悄假设或跳过。
+
 ---
 
 ## 9. 版本记录
