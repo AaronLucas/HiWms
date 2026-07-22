@@ -100,4 +100,5 @@ ALTER TABLE devices
 **关联文档**：`docs/01-architecture/ADR/018-resolver-identity-trust-fix.md`
 「已知遗留问题」（发现本缺口的起因）；`docs/01-architecture/ARCHITECTURE.md`
 §11；`docs/02-api/DEVICE_PROTOCOL_SPEC.md` §2.1/§2.2/§7.1（草案设计来源）；
-ADR-019（设备身份签发子系统，2026-07-23 定稿）。
+ADR-019（设备身份签发子系统，2026-07-23 定稿）；
+[HiWmsSupabase#19](https://github.com/AaronLucas/HiWmsSupabase/issues/19)（本文档的镜像 Issue）。

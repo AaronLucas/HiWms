@@ -350,6 +350,25 @@ const validated: UserInput = userSchema.parse(input)
 3. 库版本相关的行为以官方文档/Context7 为准，不凭记忆假设 API 签名
 4. 找到能覆盖 80% 需求的现成实现时，优先移植/包装，而不是从零重写
 
+## 14. DBA Addendum 请求必须同步镜像 Issue（2026-07-23 新增）
+
+> 起因：2026-07-23 连续提交了两份 `docs/03-database/DBA_ADDENDUM_REQUEST_*.md`
+> 文档，却漏了在 `HiWmsSupabase` 建对应的镜像 Issue——事后发现这是既定模式
+> （第一份 2026-07-20 的文档本就有对应的 `HiWmsSupabase#1`），只是这次没跟着
+> 做。补做后固化为清单项，避免以后又漏掉。
+
+任何时候新建/更新 `docs/03-database/DBA_ADDENDUM_REQUEST_*.md`（无论是迁移
+复核发现，还是新功能的 schema 需求），必须同步完成：
+
+1. 在 `HiWmsSupabase` 仓库开一个对应的镜像 Issue（`gh issue create --repo
+   AaronLucas/HiWmsSupabase`），标题概括发现数量/严重度或需求性质，正文摘要
+   + 跳转链接到本仓库对应 PR 与文档路径，不代 DBA 决定具体 DDL（格式参照
+   `HiWmsSupabase#1`）
+2. 如果本次内容是对某个已有 Issue 的追踪更新（例如复核发现之前报告的问题
+   已解决），在原 Issue 下追加评论同步状态，而不是让原 Issue 停留在过时状态；
+   是否关闭原 Issue 由 DBA 团队自行决定，不代为关闭
+3. 本仓库文档里的"关联文档"部分应包含镜像 Issue 的链接，双向可追溯
+
 ---
 
 *本文档随项目演进持续更新。重大规范变更需团队评审通过。*

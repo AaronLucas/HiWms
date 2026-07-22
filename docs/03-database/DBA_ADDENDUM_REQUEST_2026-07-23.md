@@ -123,4 +123,6 @@ END IF;
 `docs/01-architecture/ARCHITECTURE.md`「§11 待决策架构问题」、
 `docs/03-database/REPOSITORY_ROADMAP.md`「跨仓库同步与状态核实」、
 `docs/04-workflows/WORKFLOWS.md`「§8 独立评审流程缺口」、
-`HiWmsSupabase` 仓库自身 `design-docs/`（009-016 各自的设计文档，本文档所有发现均来自对其只读复核）。
+`HiWmsSupabase` 仓库自身 `design-docs/`（009-016 各自的设计文档，本文档所有发现均来自对其只读复核）、
+[HiWmsSupabase#18](https://github.com/AaronLucas/HiWmsSupabase/issues/18)（本文档的镜像 Issue）、
+[HiWmsSupabase#1](https://github.com/AaronLucas/HiWmsSupabase/issues/1)（上一轮 addendum，已追加状态更新评论）。
