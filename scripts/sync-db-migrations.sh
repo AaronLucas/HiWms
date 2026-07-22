@@ -53,7 +53,9 @@ echo "✅ 已同步 $(ls "$READONLY_TARGET" | wc -l | tr -d ' ') 份设计文档
 
 if [ -n "$PREV_PROJECT_REF" ] && command -v supabase >/dev/null 2>&1; then
   echo "🔗 检测到同步前已 link 到 $PREV_PROJECT_REF，尝试自动恢复本地 Supabase CLI 链接..."
-  if supabase link --project-ref "$PREV_PROJECT_REF"; then
+  # 显式在 $ROOT_DIR 子 shell 里执行——supabase CLI 按当前工作目录的 supabase/
+  # 目录操作，不能依赖脚本被调用时的 cwd 恰好等于仓库根目录。
+  if (cd "$ROOT_DIR" && supabase link --project-ref "$PREV_PROJECT_REF"); then
     echo "✅ 已恢复链接到 $PREV_PROJECT_REF"
   else
     echo "⚠️  自动恢复链接失败（可能是 CLI 未登录 supabase login，或网络问题），如需要请手动执行：" >&2

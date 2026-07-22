@@ -224,11 +224,10 @@ export const receiveRequestSchema = z.object({
 // ========== Layer 4: Missing Label / Unidentified Goods ==========
 
 /** 生成内部 LPN 请求 */
+// 注意：actor_user_id 同 missingLabelConfirmSchema 等，改由 req.context.userId 派生。
 export const missingLabelGenerateSchema = z.object({
   /** 异常 ID */
   exception_id: uuidSchema,
-  /** 操作员 ID */
-  actor_user_id: uuidSchema,
 });
 
 /** 确认贴标请求 */

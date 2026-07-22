@@ -457,12 +457,16 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     async (req: Request, res: Response) => {
       try {
         const tenantId = (req as any).context?.tenantId;
+        const actorUserId = (req as any).context?.userId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
+        if (!actorUserId) {
+          return res.status(400).json({ error: 'user_id not available in context, cannot record actor identity' });
+        }
 
-        const { exception_id, actor_user_id } = req.body;
-        const lpn = await supabaseAdapters.repositories.missingLabels.generateInternalLpn(exception_id, actor_user_id);
+        const { exception_id } = req.body;
+        const lpn = await supabaseAdapters.repositories.missingLabels.generateInternalLpn(exception_id, actorUserId);
         res.json({ lpn_code: lpn, exception_id });
       } catch (error) {
         console.error('POST /missing-label/generate error:', error);
