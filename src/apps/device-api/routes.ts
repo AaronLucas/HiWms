@@ -479,12 +479,16 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     async (req: Request, res: Response) => {
       try {
         const tenantId = (req as any).context?.tenantId;
+        const resolverUserId = (req as any).context?.userId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
+        if (!resolverUserId) {
+          return res.status(400).json({ error: 'user_id not available in context, cannot record resolver identity' });
+        }
 
-        const { exception_id, resolver_user_id, scanned_lpn_code } = req.body;
-        const success = await supabaseAdapters.repositories.missingLabels.confirmLabelApplied(exception_id, resolver_user_id, scanned_lpn_code);
+        const { exception_id, scanned_lpn_code } = req.body;
+        const success = await supabaseAdapters.repositories.missingLabels.confirmLabelApplied(exception_id, resolverUserId, scanned_lpn_code);
         res.json({ success, exception_id });
       } catch (error) {
         console.error('POST /missing-label/confirm error:', error);
@@ -504,14 +508,17 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
+        // actor_user_id 改由已验证的设备上下文派生，不再信任客户端传入；
+        // 保持可选（API Key 纯设备认证场景下 context.userId 本就可能不存在）
+        const actorUserId = (req as any).context?.userId;
 
-        const { location_id, qty, note, actor_user_id } = req.body;
+        const { location_id, qty, note } = req.body;
         const exceptionId = await supabaseAdapters.repositories.unidentifiedGoods.receiveUnidentifiedGoods({
           tenantId,
           locationId: location_id,
           qty,
           note,
-          actorUserId: actor_user_id,
+          actorUserId,
         });
         res.json({ exception_id: exceptionId });
       } catch (error) {
@@ -529,12 +536,16 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     async (req: Request, res: Response) => {
       try {
         const tenantId = (req as any).context?.tenantId;
+        const resolverUserId = (req as any).context?.userId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
+        if (!resolverUserId) {
+          return res.status(400).json({ error: 'user_id not available in context, cannot record resolver identity' });
+        }
 
-        const { exception_id, confirmed_product_id, resolver_user_id } = req.body;
-        const success = await supabaseAdapters.repositories.unidentifiedGoods.identifyUnidentifiedGoods(exception_id, confirmed_product_id, resolver_user_id);
+        const { exception_id, confirmed_product_id } = req.body;
+        const success = await supabaseAdapters.repositories.unidentifiedGoods.identifyUnidentifiedGoods(exception_id, confirmed_product_id, resolverUserId);
         res.json({ success, exception_id });
       } catch (error) {
         console.error('POST /unidentified/identify error:', error);

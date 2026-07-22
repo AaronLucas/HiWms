@@ -427,7 +427,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 | 优先级 | 任务 | 跟踪位置 |
 |---|---|---|
-| P0 | `fn_resolve_exception` 身份冒用风险 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1；`docs/01-architecture/ARCHITECTURE.md` §11 |
+| ~~P0~~ **应用层已修复（2026-07-23）** | `fn_resolve_exception` 身份冒用风险——确认经 `/missing-label/confirm`、`/unidentified/identify` 两条路由真实可达，非仅理论风险；应用层已改为从已验证的 `req.context.userId` 派生 | ADR-018；`DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1（数据库层防御性加固仍待 DBA）；`docs/01-architecture/ARCHITECTURE.md` §11 |
 | P1 | GRANT 策略正式化决策（ADR） | 同上新发现 2 |
 | P1 | 测试执行顺序加固合并后转正 TEST_PLAN.md 待决策标记 | 见「立即可执行」 |
 | P2 | 009 迁移 `WHEN OTHERS` 过宽捕获 | 已是永久限制，记录避免未来重演 |

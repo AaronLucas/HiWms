@@ -51,6 +51,18 @@ END IF;
 
 或直接移除 `p_resolver_user_id` 参数，函数内部自行从会话推导，不再接受调用方传入——具体取舍请 DBA 团队结合应用层调用方式决定。
 
+**补充（2026-07-23，应用层已修复）**：进一步核实发现这不只是理论风险——
+`fn_resolve_exception` 虽然没有直接对应的 HTTP 路由，但 `fn_confirm_label_applied`/
+`fn_identify_unidentified_goods`（004 迁移引入）内部会调用它关闭异常，而这两个
+函数已经通过 `POST /missing-label/confirm`、`POST /unidentified/identify` 两条
+真实可达的应用层路由暴露在外，且这两条路由此前把 `resolver_user_id` 直接从
+客户端请求体读取——**应用层已经把这个漏洞模式暴露在生产可达的 API 上**。应用
+团队已把这部分改为从 `DeviceAuthMiddleware` 已验证的 `req.context.userId` 派生
+（详见本仓库 `docs/01-architecture/ADR/018-resolver-identity-trust-fix.md`），
+今天已知的两条可达路径已收口。本项请求的数据库层加固仍然建议处理——作为独立
+于应用层的纵深防御，避免未来有新调用方（内部工具、直接 RPC、新路由）绕开
+应用层中间件重演同一问题。
+
 ---
 
 ## 新发现 2：GRANT 策略正式化——建议由「非阻塞观察」升级为一次性 ADR 决策

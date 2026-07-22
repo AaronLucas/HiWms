@@ -232,16 +232,19 @@ export const missingLabelGenerateSchema = z.object({
 });
 
 /** 确认贴标请求 */
+// 注意：resolver_user_id 不再作为客户端输入字段——2026-07-23 复核发现如果信任
+// 客户端自报的身份，可以伪造成其他用户完成异常处理，审计轨迹被污染。改由
+// routes.ts 从 DeviceAuthMiddleware 已验证的 req.context.userId 派生。
 export const missingLabelConfirmSchema = z.object({
   /** 异常 ID */
   exception_id: uuidSchema,
-  /** 解决人 ID */
-  resolver_user_id: uuidSchema,
   /** 扫描的 LPN 码 */
   scanned_lpn_code: z.string().min(1),
 });
 
 /** 接收未识别货物请求 */
+// 注意：actor_user_id 同上，改由 req.context.userId 派生（保持可选，纯设备
+// 认证场景下 context.userId 本就可能不存在）。
 export const unidentifiedReceiveSchema = z.object({
   /** 租户 ID */
   tenant_id: uuidSchema,
@@ -251,18 +254,15 @@ export const unidentifiedReceiveSchema = z.object({
   qty: positiveIntSchema,
   /** 备注 */
   note: z.string().optional(),
-  /** 操作员 ID */
-  actor_user_id: uuidSchema.optional(),
 });
 
 /** 确认未识别货物身份请求 */
+// 注意：resolver_user_id 同上，改由 req.context.userId 派生。
 export const unidentifiedIdentifySchema = z.object({
   /** 异常 ID */
   exception_id: uuidSchema,
   /** 确认的商品 ID */
   confirmed_product_id: uuidSchema,
-  /** 解决人 ID */
-  resolver_user_id: uuidSchema,
 });
 
 export type PutawayAction = z.infer<typeof putawayRequestSchema>;

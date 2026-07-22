@@ -350,6 +350,7 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 | **ADR-014** | 唯一追踪策略三层解析 + 无码/未识别货物分离处理 | 区分"低值货物本不追踪"与"该追踪但现场缺码"两种完全不同的场景，避免混为一谈造成操作摩擦或追溯断裂 |
 | **ADR-016** | 迁移 005-008 应用层集成：并发/租户修复零改动、序列化追踪走独立只读仓储、存储策略平台管理员写权限复用现有 RBAC | Layer 5/6 对现有调用方透明；Layer 7 序列化路径在 SQL 层已按 `is_serial_required` 分流，TS 层无需感知；Layer 8 权限模型复用已有 `roles.tenant_id IS NULL` 平台角色机制，不新增权限体系 |
 | **ADR-017** | DBA 迁移脚本拆分至独立仓库 HiWmsSupabase，CI 用无过期只读 Deploy Key 跨仓库 checkout | 此前 `supabase/migrations` 从未被 git 跟踪导致 CI 数据库测试无法运行；拆分后 DBA 产出物与应用代码历史解耦，Deploy Key 避免 PAT 的强制过期问题 |
+| **ADR-018** | 异常处理"解决人身份"改由已验证的 `req.context.userId` 派生，不再信任客户端传入的 `resolver_user_id`/`actor_user_id` | `fn_resolve_exception` 信任调用方自报身份的漏洞模式，已通过 `/missing-label/confirm`、`/unidentified/identify` 两条真实可达路由暴露；应用层修复今天就能收口，不等数据库层 |
 
 ---
 
@@ -433,7 +434,7 @@ Types           │             │       │          │      │         │ 
 
 | 优先级 | 问题 | 说明 | 详情 |
 |---|---|---|---|
-| **P0** | `fn_resolve_exception` 信任调用方传入的 `p_resolver_user_id` | 与 013 修复的 `check_user_permission` 跨租户信息泄露同一类"SECURITY DEFINER 信任调用方自称身份"漏洞模式，至今未修复 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1 |
+| **P0**（应用层已修复，2026-07-23） | `fn_resolve_exception` 信任调用方传入的 `p_resolver_user_id` | 与 013 修复的 `check_user_permission` 跨租户信息泄露同一类"SECURITY DEFINER 信任调用方自称身份"漏洞模式，且已通过 `/missing-label/confirm`、`/unidentified/identify` 两条路由真实可达——应用层已改为从 `req.context.userId` 派生（见 ADR-018）；数据库层防御性加固仍待 DBA 处理 | ADR-018；`DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1 |
 | **P1** | GRANT 策略缺失，全仓库无显式 GRANT 语句 | 生产不受影响（Supabase 托管 provisioning 隐式处理），但两轮复核后建议正式写一份 ADR 关闭这个反复被提起的问题 | 同上新发现 2 |
 | **P1** | 测试执行顺序加固（事务隔离 + CI 随机顺序） | 已在 `HiWmsSupabase` 侧实现但未提交合并，`TEST_PLAN.md` 仍标注"待决策" | `docs/00-project/ROADMAP.md` §1.5 |
 | **P2** | 009 迁移 `WHEN OTHERS` 过宽异常捕获 | 迁移已合并不可变，属永久性限制，记录避免未来迁移重演同一模式 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 上一轮追踪表 |
