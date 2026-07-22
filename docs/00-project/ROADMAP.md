@@ -86,6 +86,21 @@
 - [ ] **休眠 bug 一并修复**：`SupabaseInventoryReservationRepository.createReservation()` 缺租户/所有权校验（与 Layer 6 修复的 `order_lines` 缺口同类），`findActiveByTenant()`/`getReservationStats()` 引用不存在列（`tenant_id`/`is_active`/`quantity` → 实为按 join 判断的租户归属/`status`/`reserved_qty`）——目前因 `ReserveInventoryUseCase.execute()` 是 stub 而未爆，趁本轮一并修复，避免真正接线后重演 Layer 6 那类真实数据泄露
 - [ ] Track B（登录/注册身份模型桥接，ADR-015）：设计已完成待评审，5 个开放问题需产品/DBA/项目负责人拍板，不在本轮范围内，独立跟踪
 
+### 1.5 DBA Addendum 跨仓库协同追踪（`HiWmsSupabase` 只读复核，不含任何 SQL 改动）
+
+> `HiWmsSupabase` 由 DBA 团队独立维护，应用团队只有读取权限，任何发现都通过本节列出的
+> addendum 请求文档退回 DBA 团队处理，不直接改动该仓库。
+
+- [x] **第一轮**（`DBA_ADDENDUM_REQUEST_2026-07-20.md`，覆盖迁移 005-008）：4/5 项已由
+      009/010/015/016 修复（1 项 CRITICAL 因反复发现更深层同类问题，历时 4 个迁移才完全
+      收口），1 项（GRANT 缺失，INFO）保持非阻塞
+- [ ] **第二轮**（`DBA_ADDENDUM_REQUEST_2026-07-23.md`，2026-07-23 新增，覆盖迁移
+      009-016）：6 项新发现，其中新发现 1（`fn_resolve_exception` 信任调用方传入的
+      `p_resolver_user_id`，与 013 修复的 `check_user_permission` 同一类身份冒用漏洞模式，
+      **至今未修复**）优先级最高；详见该文档
+- [ ] **`HiWmsSupabase#1`**（GitHub Issue，镜像第一轮 addendum）目前仍是 OPEN——第二轮
+      文档已建议 DBA 团队据实更新，应用团队不代为编辑该仓库 issue
+
 ---
 
 ## 阶段 2：前端应用（Uniapp Vue3）
@@ -375,5 +390,75 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 - **有效性验证（非自证）**：将本地沙盒数据库中的函数临时替换为"去掉 `FOR UPDATE` 加锁"的旧版非原子实现（仅在运行中的本地 Postgres 会话内替换，未改动任何迁移文件），重跑同一测试可靠失败（`expected 165 to be` 实收 `80`，即 5 个并发请求中只有最后一次写入生效，验证了 lost update）；随后 `supabase db reset` 恢复正确迁移版本，测试重新转绿
 - **成功标准核对**：① 真实并发 ✅ ② 断言正确且能可靠检出退化 ✅ ③ 未触碰迁移脚本/`.readonly` ✅
 - **CI 影响**：测试默认通过 `describe.skipIf(!RUN_DB_CONCURRENCY_TESTS)` 跳过，不需要本地 Postgres 的常规 `npm run test`/CI 运行不受影响（已验证：既有 59 个用例全部通过，新测试计 1 个 skipped）
+
+---
+
+## HiWmsSupabase 009-016 跨仓库综合分析与任务规划 (2026-07-23)
+
+> **性质**：`HiWmsSupabase`（DBA 团队独立维护，应用团队只读）自上一轮分析后新增了迁移
+> 009-016，本节是对其现状 + 本仓库 Repository 层现状的一次综合复核，按业务/产品/架构/
+> 功能/设计五个视角产出的任务清单。**本节只做规划登记，不代表已执行**——具体执行时按
+> 各条目指向的详细文档独立展开。
+
+### 立即可执行（零决策成本）
+
+| 任务 | 说明 | 跟踪位置 |
+|---|---|---|
+| 提交 `test-execution-order-hardening` 分支 | `HiWmsSupabase` 侧的测试执行顺序加固（事务隔离 + CI 随机顺序）已实现但未提交，位于该仓库 `.claude/worktrees/test-execution-order-hardening`（DBA 团队自己的 worktree，应用团队不代为提交） | 由 DBA 团队完成独立评审 → commit → PR |
+| 关闭/更新 `HiWmsSupabase#1` | 见 §1.5 | DBA 团队 |
+
+### 业务视角（决策类，非工程 backlog）
+
+| 优先级 | 任务 | 详情 |
+|---|---|---|
+| P1 | 计费/核验规则版本化审计——要不要做 | `unWMS_Full_Init_Schema_V2.1.md` §5 点名"哪个费率适用于这张发票"不可追溯，3PL 计费对账场景有举证风险 |
+| P1 | 计费规则变更审批流程 | §6 留白"谁能改、怎么审批"未解决 |
+| P2 | 冷链/危化品合规校验人工复核机制 | DB 触发器只是最后一道防线，需业务侧明确配套流程 |
+
+### 产品视角（决策类）
+
+| 优先级 | 任务 | 详情 |
+|---|---|---|
+| P1 | 状态字典/SLA 文档化 | 目前状态流转只靠 CHECK 约束兜底，缺少面向产品/客服的状态字典 |
+| P2 | `containers` 共享可见性模型复审 | 014 的设计权衡，"严格租户容器池"是否已是真实产品需求需产品侧确认，详见 `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 4 |
+| P2 | `sync_events` 卡死超时后人工复核流程配套 | 需确认运营/客服侧是否已有人在看这个异常队列 |
+
+### 架构视角
+
+| 优先级 | 任务 | 跟踪位置 |
+|---|---|---|
+| P0 | `fn_resolve_exception` 身份冒用风险 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 1；`docs/01-architecture/ARCHITECTURE.md` §11 |
+| P1 | GRANT 策略正式化决策（ADR） | 同上新发现 2 |
+| P1 | 测试执行顺序加固合并后转正 TEST_PLAN.md 待决策标记 | 见「立即可执行」 |
+| P2 | 009 迁移 `WHEN OTHERS` 过宽捕获 | 已是永久限制，记录避免未来重演 |
+| P2 | 独立评审流程缺口 | 013/014/015 自曝评审链路不完整，详见 `docs/04-workflows/WORKFLOWS.md` §8 |
+
+### 功能视角
+
+| 优先级 | 任务 | 跟踪位置 |
+|---|---|---|
+| P0 | `wms7` 侧 `DB_SCHEMA.md`/`REPOSITORY_ROADMAP.md` 同步到 009-016 | `docs/03-database/REPOSITORY_ROADMAP.md`「跨仓库同步与状态核实」 |
+| P1 | Phase 8 补齐集成测试证据 | 同上 |
+| P2 | Phase 1-4 共 66 个 Repository 文件真实状态核实 | 同上，文档正文与文末总结自相矛盾，需先核实再排期 |
+| P2 | daily_summary 两表下游消费方核实 | 同上 |
+
+### 设计视角（工程规范/文档一致性）
+
+| 优先级 | 任务 | 详情 |
+|---|---|---|
+| P1 | `unWMS_Full_Init_Schema_V2.1.md` 模块总览表同步到 layer 16 | `DBA_ADDENDUM_REQUEST_2026-07-23.md` 新发现 5 |
+| P2 | View RLS 回归测试断言收紧 | 同上新发现 6 |
+| P2 | `REPOSITORY_ROADMAP.md` 内部矛盾清理 | 见功能视角 P2 |
+
+### 建议执行顺序
+
+1. 立即可执行两项（零成本收尾）
+2. 架构 P0（`fn_resolve_exception`）——同一漏洞模式已反复出现三次，风险最高，013 已有可参照的修复先例
+3. 功能 P0（应用仓库文档同步到 016）——后续任何 Repository 层新开发的前提
+4. 业务/产品视角三项——决策类任务，建议单独拉一次业务/产品侧对齐会，不当作技术 backlog 直接排期
+
+**关联文档**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md`、
+`docs/01-architecture/ARCHITECTURE.md` §11、`docs/03-database/REPOSITORY_ROADMAP.md`
+「跨仓库同步与状态核实」、`docs/04-workflows/WORKFLOWS.md` §8
 
 > **失败/迭代处理原则**（详见 `AGENTS.md` §8.6）：环境/工具故障（本地 Postgres 起不来等）与"是否保留规则导入"无关，只需重试；设计映射做不出来不构成回退理由，应向项目负责人提出具体卡点；真正合理的回退只剩"业务判断明确不采用"或"ECC 承诺机制被证实不存在"两类客观外部因素。

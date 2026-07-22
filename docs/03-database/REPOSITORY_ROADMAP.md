@@ -506,4 +506,25 @@
 
 *创建时间：2025-07-10*
 *状态：Phase 1/3/4 共 25 个端口+25 个实现已完成（含测试覆盖，已在 origin/main 核实）；Phase 5/6/7 共 10 个端口+10 个实现代码已落地、`tsc` 零错误、`device-api` 全部路由已接入，**已于 2026-07-19 补齐集成测试证据并恢复为「✅ 已完成」**；2026-07-20 经 ECC 多视角复核修正了文档状态不一致，并识别出行为覆盖缺口与工程化缺口，详见 §9「测试补齐完成记录与剩余缺口」*
+
+---
+
+## 跨仓库同步与状态核实（2026-07-23，`HiWmsSupabase` 009-016 只读复核新增）
+
+> `HiWmsSupabase` 由 DBA 团队独立维护，本仓库只有读取权限。本节记录该仓库新增迁移
+> 009-016 对本文档造成的滞后，以及本文档自身在本轮核实中发现的内部矛盾，均为规划
+> 登记，不代表已执行修复。
+
+### 待处理事项
+
+| 优先级 | 任务 | 说明 |
+|---|---|---|
+| **P0** | 本文档 + `docs/03-database/DB_SCHEMA.md` 同步到 `HiWmsSupabase` 迁移 009-016 | 两份文档最后一次更新都早于 009 合并时间，完全不知道 dispatcher 权限模型重构（010）、RLS 大批量加固（012/014）、库存写入原语二次收口（015）已经发生——基于旧文档做的新 Repository 开发可能撞上这些新的权限边界 |
+| **P1** | Phase 8（`IInventoryUnitRepository`/`IStorageManagementPolicyRepository`/`IZoneRepository`）补齐集成测试证据 | §8.5 已自行标注为"下一轮排期任务"，对齐 Phase 5-7 的打法（本地一次性 Postgres 沙盒 + 真实并发场景） |
+| **P2** | Phase 1-4 共 66 个 Repository 文件真实状态核实 | 本文档正文表格（§Phase 1/3/4）标注 `⏳ 待开始`，但文末"状态"行又写"已完成"——两处描述自相矛盾，排优先级前必须先跑 `npx tsc --noEmit` + 核对真实 `src/` 目录，确认哪个描述反映真实情况 |
+| **P2** | `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 下游消费方核实 | `HiWmsSupabase` 009 已补 `updated_at`，但本仓库没有记录是否有报表/看板依赖这两张表做增量拉取，若有需要跟着确认逻辑是否要调整 |
+
+**关联文档**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md`、
+`docs/00-project/ROADMAP.md`「HiWmsSupabase 009-016 跨仓库综合分析与任务规划」、
+`docs/01-architecture/ARCHITECTURE.md` §11
 *最近更新：2026-07-20 — ECC 多视角规划复核：修正本文档顶部/底部摘要仍停留在「🔨 已实现未验证」的不一致问题；新增 §9「剩余缺口清单」跟踪下一阶段的 CRITICAL/HIGH/MEDIUM 缺口（`processPendingEvents` bug、CI 未启用本地 Postgres 并发测试、RLS/权限路径未覆盖、HTTP 路由层测试缺失等）*
