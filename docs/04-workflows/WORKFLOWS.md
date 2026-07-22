@@ -240,5 +240,29 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
 **跟踪位置**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md`「上一轮追踪」表；
 `docs/01-architecture/ARCHITECTURE.md` §11
+
+### 8.1 本仓库自身的复现（2026-07-23，同一天内）
+
+上面第 3 条建议写完不到一小时，本仓库的 Claude Code 会话就重演了同一个模式：
+在完成 ADR-018（`fn_resolve_exception` 身份冒用修复，见 §11 P0 项）的代码改动后，
+直接 `tsc --noEmit` + `vitest run` 通过就当作验证完毕，commit → push → 开 PR，
+**跳过了 `/ecc:code-review`**——把类型检查/测试通过误当成了评审的替代品，且
+即使想起来要评审，最初也是准备在写代码的同一个会话里"自己审自己"。经用户
+指出后纠正为：另起一个独立的 `Agent`（`run_in_background: true`）跑
+`ecc:code-reviewer` 对 PR 复核，而不是在原会话里自评。
+
+**固化为规则**（不再只是观察记录）：
+
+1. 本仓库任何代码改动（不限于 `.ts`，包含 `.sh`/`.sql` 等）在 push 前必须过
+   一次 `/ecc:code-review`；`tsc`/`lint`/`vitest` 通过只代表"没有已知类型/测试
+   回归"，**不代表**已完成评审，两者不能互相替代。
+2. 评审必须是**独立会话**——用 `Agent` 工具起一个新的 `ecc:code-reviewer`
+   （`run_in_background: true`），不能在编写代码的同一个会话/上下文里自评。
+3. "自动推进提交模式"（本仓库根 `CLAUDE.md` 默认策略）、后台任务的"完成后自动
+   commit/push/开 PR"约定，覆盖的是提交流程本身，**不构成跳过评审步骤的理由**。
+
+**关联**：`.claude/rules/ecc/common/code-review.md`（已有"After writing or
+modifying code"触发条件，本次是执行侧遗漏，不是规则缺失）；
+`docs/00-project/CONVENTIONS.md`（建议后续补充引用本节）。
 - ~~修改 `.github/workflows/ci.yml` 触发分支范围、移除 lint job 的 `continue-on-error` 前~~ **已于 2026-07-18 经人工确认后执行**：`ci.yml` 现已 `main`/`dev` 双触发，lint job 硬门禁
 - 依据 ECC 规则回溯下调 `REPOSITORY_ROADMAP.md` 已标记"✅ 已完成"条目的状态前（需先书面告知受影响的开发团队成员，避免误判为倒退）——**已于 2026-07-18 经人工确认后执行**；**2026-07-19 Phase 5/6/7 已补齐基础集成测试，2026-07-20 经 ECC 多视角复核修正了文档状态不一致并识别出剩余缺口**，详见 `docs/00-project/ROADMAP.md` ECC 治理试点后续补齐工程、`docs/03-database/REPOSITORY_ROADMAP.md` §8「剩余缺口清单」
