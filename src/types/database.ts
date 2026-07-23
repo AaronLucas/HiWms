@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -1064,6 +1084,7 @@ export type Database = {
           summary_date: string
           tenant_id: string | null
           total_change_qty: number | null
+          updated_at: string | null
         }
         Insert: {
           change_count?: number
@@ -1074,6 +1095,7 @@ export type Database = {
           summary_date: string
           tenant_id?: string | null
           total_change_qty?: number | null
+          updated_at?: string | null
         }
         Update: {
           change_count?: number
@@ -1084,6 +1106,7 @@ export type Database = {
           summary_date?: string
           tenant_id?: string | null
           total_change_qty?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -2658,6 +2681,7 @@ export type Database = {
           id: string
           operator_user_id: string | null
           payload: Json
+          processing_started_at: string | null
           received_at: string | null
           status: string
           tenant_id: string | null
@@ -2671,6 +2695,7 @@ export type Database = {
           id: string
           operator_user_id?: string | null
           payload: Json
+          processing_started_at?: string | null
           received_at?: string | null
           status?: string
           tenant_id?: string | null
@@ -2684,6 +2709,7 @@ export type Database = {
           id?: string
           operator_user_id?: string | null
           payload?: Json
+          processing_started_at?: string | null
           received_at?: string | null
           status?: string
           tenant_id?: string | null
@@ -3380,6 +3406,7 @@ export type Database = {
           tenant_id: string | null
           total_duration_seconds: number | null
           total_qty_acted: number | null
+          updated_at: string | null
           work_order_id: string | null
         }
         Insert: {
@@ -3391,6 +3418,7 @@ export type Database = {
           tenant_id?: string | null
           total_duration_seconds?: number | null
           total_qty_acted?: number | null
+          updated_at?: string | null
           work_order_id?: string | null
         }
         Update: {
@@ -3402,6 +3430,7 @@ export type Database = {
           tenant_id?: string | null
           total_duration_seconds?: number | null
           total_qty_acted?: number | null
+          updated_at?: string | null
           work_order_id?: string | null
         }
         Relationships: [
@@ -3934,6 +3963,20 @@ export type Database = {
       fn_apply_pick_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_putaway_action: { Args: { p_event_id: string }; Returns: string }
       fn_apply_sync_event: { Args: { p_event_id: string }; Returns: string }
+      fn_archive_and_purge_inventory_history: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          purged_rows: number
+          summarized_days: number
+        }[]
+      }
+      fn_archive_and_purge_wo_action_logs: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          purged_rows: number
+          summarized_days: number
+        }[]
+      }
       fn_check_storage_usage: {
         Args: never
         Returns: {
@@ -3967,8 +4010,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      fn_container_is_unassigned: {
+        Args: { p_container_id: string }
+        Returns: boolean
+      }
       fn_cross_dock_timeout_sweep: { Args: never; Returns: number }
       fn_current_tenant_id: { Args: never; Returns: string }
+      fn_current_user_id: { Args: never; Returns: string }
+      fn_expire_stalled_sync_events: {
+        Args: { p_timeout_interval?: string }
+        Returns: number
+      }
       fn_expire_task_claims: { Args: never; Returns: number }
       fn_generate_internal_lpn: {
         Args: { p_actor_user_id: string; p_exception_id: string }
@@ -4001,6 +4053,12 @@ export type Database = {
           tenant_id: string | null
           updated_at: string | null
           warn_threshold_pct: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "storage_management_policies"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       fn_get_sync_policy: {
@@ -4280,7 +4338,11 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
 } as const
+
