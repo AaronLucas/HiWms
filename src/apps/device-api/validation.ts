@@ -274,6 +274,44 @@ export type ConfirmLabelAppliedRequest = z.infer<typeof missingLabelConfirmSchem
 export type ReceiveUnidentifiedGoodsRequest = z.infer<typeof unidentifiedReceiveSchema>;
 export type IdentifyUnidentifiedGoodsRequest = z.infer<typeof unidentifiedIdentifySchema>;
 
+// ========== ADR-019: 设备认证端点 ==========
+
+/** 设备注册请求（租户运营自助配发） */
+export const deviceProvisionSchema = z.object({
+  /** 设备编码（人类可读，如 PDA-WH-001） */
+  device_code: z.string().min(1).max(64),
+  /** 设备类型 */
+  device_type: z.enum(['PDA', 'SCANNER', 'PRINTER', 'RFID_READER', 'MOUNTED', 'OTHER']),
+  /** 备注 */
+  note: z.string().optional(),
+});
+
+/** 设备登录请求 */
+export const deviceLoginSchema = z.object({
+  /** 设备 ID */
+  device_id: uuidSchema,
+  /** API Key: hiwms_dk_<device_id>_<secret> */
+  api_key: z.string().min(1).startsWith('hiwms_dk_'),
+  /** FCM 推送 token（可选） */
+  fcm_token: z.string().optional(),
+  /** App 版本 */
+  app_version: z.string().optional(),
+  /** OS 版本 */
+  os_version: z.string().optional(),
+  /** 设备型号 */
+  device_model: z.string().optional(),
+});
+
+/** 刷新 Token 请求 */
+export const deviceRefreshSchema = z.object({
+  /** Refresh Token */
+  refresh_token: z.string().min(1),
+});
+
+export type DeviceProvisionRequest = z.infer<typeof deviceProvisionSchema>;
+export type DeviceLoginRequest = z.infer<typeof deviceLoginSchema>;
+export type DeviceRefreshRequest = z.infer<typeof deviceRefreshSchema>;
+
 /**
  * 创建请求体验证中间件
  */

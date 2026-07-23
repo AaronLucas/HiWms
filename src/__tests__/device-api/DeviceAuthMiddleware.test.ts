@@ -218,13 +218,13 @@ describe('DeviceAuthMiddleware', () => {
     });
 
     it('should return 401 when device not found or inactive', async () => {
-      mockReq.headers = { 'x-api-key': 'hiwms_dev_123e4567-e89b-12d3-a456-426614174000_secret' };
+      mockReq.headers = { 'x-api-key': 'hiwms_dk_123e4567-e89b-12d3-a456-426614174000_secret' };
       const authenticate = middleware.authenticate;
 
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Device not found or inactive' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Device has no API Key configured' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 

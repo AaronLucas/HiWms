@@ -5,7 +5,8 @@ export { loadDeviceApiConfig, type DeviceApiConfig } from './config';
 export { createDeviceApiDependencies, type DeviceApiDependencies } from './di';
 export { createDeviceApiRouter } from './routes';
 export { createDeviceApiApp, startDeviceApiServer } from './main';
-export { createDeviceAuthMiddleware, type DeviceAuthConfig, type DeviceAuthContext } from './DeviceAuthMiddleware';
+export { createDeviceAuthMiddleware, type DeviceAuthConfig } from './DeviceAuthMiddleware';
+export { type ExpressRequestContext } from '../../adapters/express/ExpressMiddlewareFactory';
 export {
   // Schemas
   uuidSchema,

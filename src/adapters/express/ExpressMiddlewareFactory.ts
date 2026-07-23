@@ -11,6 +11,7 @@ import { ICacheProvider } from '../../core/ports/cache/ICacheProvider';
 import { ICacheKeyBuilder } from '../../core/ports/cache/ICacheKeyBuilder';
 
 export interface ExpressRequestContext {
+  // 人类用户认证字段
   user?: {
     id: string;
     tenantId: string | null;
@@ -18,7 +19,13 @@ export interface ExpressRequestContext {
     roles: string[];
     permissions: string[];
   };
+  // 设备认证字段
+  deviceId?: string;
   tenantId?: string | null;
+  userId?: string;
+  deviceType?: string;
+  deviceCode?: string;
+  // 通用字段
   correlationId?: string;
 }
 
