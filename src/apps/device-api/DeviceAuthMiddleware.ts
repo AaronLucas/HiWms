@@ -1,23 +1,24 @@
 /**
- * Device 认证中间件
+ * Device 认证中间件 (ADR-019 修复版)
  * 专门用于 PDA/手持终端设备认证
  * 支持两种认证方式：
- * 1. Device JWT (Authorization: Bearer <token>)
- * 2. API Key (X-API-Key: <key>)
+ * 1. Device JWT (Authorization: Bearer <token>) - 使用 jose 验签，HS256，拒绝 alg:none
+ * 2. API Key (X-API-Key: <key>) - 解析 hiwms_dk_<device_id>_<secret>，查询 devices.secret_hash 用 argon2 验证
  *
  * 认证流程：
  * 1. 解析 token/key
- * 2. 验证签名、过期时间、issuer、audience
- * 3. 从 devices 表查询设备信息，验证设备绑定租户且激活
+ * 2. 验证签名/哈希、过期时间、issuer、audience
+ * 3. 从 devices 表查询设备信息（含 secret_hash），验证设备绑定租户且激活
  * 4. 将 device_id, tenant_id, user_id 注入 req.context
  * 5. 设置 RLS 所需的 x-tenant-id header
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { WmsSupabaseClient } from '../../adapters/supabase/SupabaseClient';
 import { IAuthProvider } from '../../core/ports/auth/IAuthProvider';
 import { ITenantResolver } from '../../core/ports/auth/ITenantResolver';
-import { WmsSupabaseClient } from '../../adapters/supabase/SupabaseClient';
-import type { Database } from '../../types/database';
+import { verifyDeviceAccessToken, verifyApiKeySecret, parseApiKey, DEVICE_TOKEN_CONFIG } from '@core/utils/crypto';
+import { ExpressRequestContext } from '../../adapters/express/ExpressMiddlewareFactory';
 
 export interface DeviceAuthConfig {
   jwtSecret: string;
@@ -27,44 +28,22 @@ export interface DeviceAuthConfig {
   apiKeyPrefix?: string;
 }
 
-export interface DeviceTokenPayload {
-  device_id: string;
-  tenant_id: string;
-  user_id?: string;
-  type: 'device';
-  iat: number;
-  exp: number;
-  iss: string;
-  aud: string;
-}
-
-export interface DeviceAuthContext {
-  deviceId: string;
-  tenantId: string;
-  userId?: string;
-  deviceType?: string;
-  deviceCode?: string;
-}
-
-/** 扩展 Express Request 类型 */
-declare global {
-  namespace Express {
-    interface Request {
-      deviceContext?: DeviceAuthContext;
-    }
-  }
-}
-
-interface DeviceRow {
+interface DeviceRowWithSecret {
   id: string;
   device_code: string;
   device_type: string;
   tenant_id: string;
-  is_active: boolean;
+  is_active: boolean | null;
+  secret_hash: string | null;
+  secret_rotated_at: string | null;
 }
 
 /**
  * 创建设备认证中间件
+ * @param supabase Supabase 客户端
+ * @param authProvider 认证提供者（用于租户签名密钥获取，暂用 jwtSecret 兜底）
+ * @param tenantResolver 租户解析器
+ * @param config 认证配置
  */
 export function createDeviceAuthMiddleware(
   supabase: WmsSupabaseClient,
@@ -72,64 +51,28 @@ export function createDeviceAuthMiddleware(
   tenantResolver: ITenantResolver,
   config: DeviceAuthConfig
 ) {
-  const apiKeyPrefix = config.apiKeyPrefix || 'hiwms_dev';
+  const apiKeyPrefix = config.apiKeyPrefix || DEVICE_TOKEN_CONFIG.apiKeyPrefix;
+  // 租户级签名密钥（暂时复用 jwtSecret，后续可从配置中心/tenant_secrets 表获取）
+  const tenantAccessSecret = config.jwtSecret;
+  const tenantRefreshSecret = config.jwtSecret;
 
   /**
-   * 验证 Device JWT Token
-   * 使用标准 JWT 验证（HS256 对称密钥）
+   * 查询设备信息含密钥哈希（需 admin client 绕过 RLS）
    */
-  async function verifyDeviceToken(token: string): Promise<DeviceTokenPayload | null> {
-    try {
-      // 简单的 JWT 解析（不验证签名，实际项目应使用 jose 库）
-      const parts = token.split('.');
-      if (parts.length !== 3) return null;
-
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as DeviceTokenPayload;
-
-      // 验证基本字段
-      if (payload.type !== 'device') return null;
-      if (payload.iss !== config.jwtIssuer) return null;
-      if (payload.aud !== config.jwtAudience) return null;
-      if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-
-      // TODO: 实际验证签名（需要引入 jose 库）
-      // const isValid = await verifySignature(token, config.jwtSecret);
-      // if (!isValid) return null;
-
-      return payload;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * 验证 API Key
-   * 格式: <prefix>_<device_id>_<secret>
-   */
-  async function verifyApiKey(apiKey: string): Promise<{ deviceId: string; secret: string } | null> {
-    if (!apiKey.startsWith(`${apiKeyPrefix}_`)) return null;
-
-    const parts = apiKey.slice(apiKeyPrefix.length + 1).split('_');
-    if (parts.length !== 2) return null;
-
-    return { deviceId: parts[0], secret: parts[1] };
-  }
-
-  /**
-   * 查询设备信息并验证绑定租户
-   */
-  async function validateDevice(deviceId: string): Promise<DeviceRow | null> {
+  async function validateDevice(deviceId: string): Promise<DeviceRowWithSecret | null> {
     try {
       const { data, error } = await supabase.getAdminClient()
         .from('devices')
-        .select('id, device_code, device_type, tenant_id, is_active')
+        .select('id, device_code, device_type, tenant_id, is_active, secret_hash, secret_rotated_at')
         .eq('id', deviceId)
         .single();
 
-      if (error || !data) return null;
-      if (!(data as DeviceRow).is_active) return null;
-
-      return data as DeviceRow;
+      if (error) {
+        if (error.code === 'PGRST116') return null;
+        throw error;
+      }
+      if (!(data as DeviceRowWithSecret).is_active) return null;
+      return data as DeviceRowWithSecret;
     } catch {
       return null;
     }
@@ -140,13 +83,13 @@ export function createDeviceAuthMiddleware(
       let deviceId: string | null = null;
       let tenantId: string | null = null;
       let userId: string | undefined;
-      let deviceInfo: DeviceRow | null = null;
+      let deviceInfo: DeviceRowWithSecret | null = null;
 
-      // 方式 1: Authorization: Bearer <device_jwt>
+      // ========== 方式 1: Authorization: Bearer <device_jwt> ==========
       const authHeader = req.headers.authorization;
       if (authHeader?.startsWith('Bearer ')) {
         const token = authHeader.slice(7);
-        const payload = await verifyDeviceToken(token);
+        const payload = await verifyDeviceAccessToken(token, tenantAccessSecret);
 
         if (payload) {
           deviceId = payload.device_id;
@@ -155,29 +98,41 @@ export function createDeviceAuthMiddleware(
         }
       }
 
-      // 方式 2: X-API-Key: <api_key>
+      // ========== 方式 2: X-API-Key: hiwms_dk_<device_id>_<secret> ==========
       if (!deviceId) {
         const apiKey = req.headers['x-api-key'] as string;
         if (apiKey) {
-          const apiKeyData = await verifyApiKey(apiKey);
-          if (apiKeyData) {
-            deviceId = apiKeyData.deviceId;
-            // API Key 方式需要从数据库查询 tenant_id
+          const parsed = parseApiKey(apiKey);
+          if (parsed) {
+            deviceId = parsed.deviceId;
+            // API Key 方式需查询数据库验证 secret_hash
+            deviceInfo = await validateDevice(deviceId);
+            if (deviceInfo && deviceInfo.secret_hash) {
+              const secretValid = await verifyApiKeySecret(parsed.secret, deviceInfo.secret_hash);
+              if (!secretValid) {
+                return res.status(401).json({ error: 'Invalid API Key secret' });
+              }
+            } else {
+              return res.status(401).json({ error: 'Device has no API Key configured' });
+            }
           }
         }
       }
 
-      // 验证设备存在且激活
+      // ========== 统一设备信息校验 ==========
       if (!deviceId) {
         return res.status(401).json({ error: 'Missing or invalid device credentials' });
       }
 
-      deviceInfo = await validateDevice(deviceId);
+      // JWT 方式已有 tenantId，API Key 方式需从设备行获取
+      if (!deviceInfo) {
+        deviceInfo = await validateDevice(deviceId);
+      }
       if (!deviceInfo) {
         return res.status(401).json({ error: 'Device not found or inactive' });
       }
 
-      // 确认租户匹配（JWT 方式）
+      // JWT 方式需确认租户匹配
       if (tenantId && tenantId !== deviceInfo.tenant_id) {
         return res.status(403).json({ error: 'Device tenant mismatch' });
       }
@@ -191,14 +146,17 @@ export function createDeviceAuthMiddleware(
         return res.status(403).json({ error: 'Invalid or inactive tenant' });
       }
 
-      // 注入设备上下文
-      (req as any).context = {
+      // ========== 注入设备上下文 ==========
+      const ctx: ExpressRequestContext = {
         deviceId: deviceInfo.id,
         tenantId,
         userId,
         deviceType: deviceInfo.device_type,
         deviceCode: deviceInfo.device_code,
       };
+      (req as any).context = ctx;
+      // 兼容旧字段名
+      (req as any).deviceContext = ctx;
 
       // 设置 RLS header（供 Supabase 客户端使用）
       req.headers['x-tenant-id'] = tenantId;
@@ -218,7 +176,6 @@ export function createDeviceAuthMiddleware(
       return next(); // No auth provided, continue without auth
     }
 
-    // Delegate to full authenticate
     return authenticateMiddleware(req, res, next);
   };
 

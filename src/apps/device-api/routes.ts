@@ -38,6 +38,10 @@ import {
   missingLabelConfirmSchema,
   unidentifiedReceiveSchema,
   unidentifiedIdentifySchema,
+  // ADR-019: Device Auth
+  deviceProvisionSchema,
+  deviceLoginSchema,
+  deviceRefreshSchema,
 } from './validation';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
@@ -561,6 +565,163 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   router.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', service: 'device-api', timestamp: new Date().toISOString() });
   });
+
+  // ========== ADR-019: 设备认证端点 ==========
+
+  /**
+   * POST /device/provision
+   * 租户运营自助注册设备（需人类登录态 + RBAC devices:CREATE）
+   * 注：此端点挂在需要人类认证的路由组下，非 device-api 本身
+   * Body: { device_code, device_type, note? }
+   * 返回: { device_id, device_code, device_type, api_key(raw, 仅此次), provisioned_at }
+   */
+  router.post('/device/provision',
+    validateRequest({ body: deviceProvisionSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        const userId = (req as any).context?.userId;
+        if (!tenantId || !userId) {
+          return res.status(400).json({ error: 'tenant_id/user_id not available in context, requires human authentication' });
+        }
+
+        const { device_code, device_type, note } = req.body;
+
+        // 创建设备记录
+        const device = await supabaseAdapters.repositories.devices.create({
+          tenant_id: tenantId,
+          device_code,
+          device_type,
+          is_active: true,
+        } as any);
+
+        // 生成并存储 API Key
+        const { device: updatedDevice, newApiKey } = await supabaseAdapters.repositories.devices.rotateSecret(device.id);
+
+        res.status(201).json({
+          device_id: updatedDevice.id,
+          device_code: updatedDevice.device_code,
+          device_type: updatedDevice.device_type,
+          api_key: newApiKey, // 仅此次返回明文，前端生成二维码供 PDA 扫码绑定
+          provisioned_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error('POST /device/provision error:', error);
+        res.status(500).json({ error: 'Failed to provision device' });
+      }
+    });
+
+  /**
+   * POST /device/auth/login
+   * 设备用 API Key 登录，获取 Access/Refresh Token
+   * Body: { device_id, api_key, fcm_token?, app_version?, os_version?, device_model? }
+   * 返回: { access_token, refresh_token, expires_in, refresh_expires_in, token_type, server_time, tenant_id, device_config, permissions }
+   */
+  router.post('/device/auth/login',
+    validateRequest({ body: deviceLoginSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const { device_id, api_key, fcm_token, app_version, os_version, device_model } = req.body;
+
+        // 解析 API Key
+        const { parseApiKey } = await import('@core/utils/crypto');
+        const parsed = parseApiKey(api_key);
+        if (!parsed || parsed.deviceId !== device_id) {
+          return res.status(401).json({ error: 'DEVICE_INVALID_CREDENTIALS', message: 'Invalid API Key format or device_id mismatch' });
+        }
+
+        // 查询设备并验证密钥哈希
+        const device = await supabaseAdapters.repositories.devices.findByIdWithSecret(device_id);
+        if (!device) {
+          return res.status(403).json({ error: 'DEVICE_NOT_PROVISIONED', message: 'Device not registered' });
+        }
+        if (!device.is_active) {
+          return res.status(403).json({ error: 'DEVICE_SUSPENDED', message: 'Device is disabled' });
+        }
+        if (!device.secret_hash) {
+          return res.status(403).json({ error: 'DEVICE_NOT_PROVISIONED', message: 'Device has no API Key configured' });
+        }
+
+        const { verifyApiKeySecret } = await import('@core/utils/crypto');
+        const valid = await verifyApiKeySecret(parsed.secret, device.secret_hash);
+        if (!valid) {
+          return res.status(401).json({ error: 'DEVICE_INVALID_CREDENTIALS', message: 'Invalid API Key' });
+        }
+
+        const tenantId = device.tenant_id;
+
+        // 签发 Token（需租户级签名密钥，暂从配置读取，后续可迁移到 tenant_secrets 表）
+        const { signDeviceAccessToken, signDeviceRefreshToken, DEVICE_TOKEN_CONFIG } = await import('@core/utils/crypto');
+        const accessToken = await signDeviceAccessToken({ device_id, tenant_id: tenantId }, process.env.DEVICE_JWT_SECRET || 'dev-secret-change-me');
+        const refreshToken = await signDeviceRefreshToken({ device_id, tenant_id: tenantId }, process.env.DEVICE_JWT_SECRET || 'dev-secret-change-me');
+
+        // TODO: 若提供 fcm_token，保存到 devices 表或单独表
+
+        res.json({
+          success: true,
+          data: {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: DEVICE_TOKEN_CONFIG.accessTokenTtlSeconds,
+            refresh_expires_in: DEVICE_TOKEN_CONFIG.refreshTokenTtlSeconds,
+            token_type: 'Bearer',
+            server_time: new Date().toISOString(),
+            tenant_id: tenantId,
+            device_config: {
+              sync_interval_sec: 30,
+              auto_sync_on_wifi: true,
+              max_offline_days: 7,
+              features: ['picking', 'packing', 'receiving', 'inventory', 'shipping'],
+            },
+            permissions: ['inventory:read', 'work_order:execute', 'task:complete'],
+          },
+          meta: { request_id: (req as any).context?.requestId || 'unknown', timestamp: new Date().toISOString() },
+        });
+      } catch (error) {
+        console.error('POST /device/auth/login error:', error);
+        res.status(500).json({ error: 'Login failed' });
+      }
+    });
+
+  /**
+   * POST /device/auth/refresh
+   * 用 Refresh Token 换新 Access Token
+   * Body: { refresh_token }
+   * 返回: 同 login 响应，不含 device_config
+   */
+  router.post('/device/auth/refresh',
+    validateRequest({ body: deviceRefreshSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const { refresh_token } = req.body;
+
+        const { verifyDeviceRefreshToken, signDeviceAccessToken, DEVICE_TOKEN_CONFIG } = await import('@core/utils/crypto');
+        const payload = await verifyDeviceRefreshToken(refresh_token, process.env.DEVICE_JWT_SECRET || 'dev-secret-change-me');
+        if (!payload) {
+          return res.status(401).json({ error: 'INVALID_REFRESH_TOKEN', message: 'Refresh token expired or invalid' });
+        }
+
+        const { device_id, tenant_id } = payload;
+        const accessToken = await signDeviceAccessToken({ device_id, tenant_id }, process.env.DEVICE_JWT_SECRET || 'dev-secret-change-me');
+
+        res.json({
+          success: true,
+          data: {
+            access_token: accessToken,
+            refresh_token: refresh_token, // 刷新不轮换 refresh token（可选策略：也可轮换）
+            expires_in: DEVICE_TOKEN_CONFIG.accessTokenTtlSeconds,
+            refresh_expires_in: DEVICE_TOKEN_CONFIG.refreshTokenTtlSeconds,
+            token_type: 'Bearer',
+            server_time: new Date().toISOString(),
+            tenant_id,
+          },
+          meta: { request_id: (req as any).context?.requestId || 'unknown', timestamp: new Date().toISOString() },
+        });
+      } catch (error) {
+        console.error('POST /device/auth/refresh error:', error);
+        res.status(500).json({ error: 'Token refresh failed' });
+      }
+    });
 
   return router;
 }

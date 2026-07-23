@@ -518,6 +518,8 @@ export type Database = {
           is_active: boolean | null
           tenant_id: string | null
           updated_at: string | null
+          secret_hash: string | null
+          secret_rotated_at: string | null
         }
         Insert: {
           created_at?: string | null
@@ -527,6 +529,8 @@ export type Database = {
           is_active?: boolean | null
           tenant_id?: string | null
           updated_at?: string | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
         }
         Update: {
           created_at?: string | null
@@ -536,6 +540,8 @@ export type Database = {
           is_active?: boolean | null
           tenant_id?: string | null
           updated_at?: string | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
         }
         Relationships: [
           {
