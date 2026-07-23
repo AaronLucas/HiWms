@@ -3,9 +3,9 @@
 ## 项目概览
 - **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表 + 5 个 Layer 7/8 库区/序列号/存储管理表
 - **聚合根数**：46 个
-- **已完成**：15 个（Phase 1/3/4 核心域 5 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
+- **已完成**：35 个（Phase 1 核心域 11 个 + Phase 3 业务扩展 8 个 + Phase 4 支撑域 6 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
 - **🔨 已实现未验证**：3 个（Phase 8，本 PR 新增，`tsc`/既有测试基线通过，尚无专属集成测试证据）
-- **待完成**：28 个（Phase 1/3/4 剩余未实现 20 个 + Phase 2 出库作业 8 个，详见各 Phase 表格）
+- **待完成**：8 个（Phase 2 出库作业 8 个，详见各 Phase 表格）
 - **分 8 个优先级阶段实施**
 
 > **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
@@ -22,105 +22,105 @@
 
 ---
 
-## Phase 1: P0 核心聚合根（11个） - 最高优先级
+## Phase 1: P0 核心聚合根（11个） - 最高优先级 ✅ 已完成
 
 ### 1.1 端口定义
 | # | 文件 | 状态 | 预估行数 | 备注 |
 |---|------|------|---------|------|
-| 1 | `src/core/ports/db/ILocationRepository.ts` | ⏳ 待开始 | ~80 | 库位管理核心 |
-| 2 | `src/core/ports/db/IContainerRepository.ts` | ⏳ 待开始 | ~70 | 容器/LPN管理 |
-| 3 | `src/core/ports/db/IInboundReceiptRepository.ts` | ⏳ 待开始 | ~100 | 入库单+质检项 |
-| 4 | `src/core/ports/db/IWaveRepository.ts` | ⏳ 待开始 | ~90 | 波次+订单映射 |
-| 5 | `src/core/ports/db/ICrossDockJobRepository.ts` | ⏳ 待开始 | ~80 | 交叉理货 |
-| 6 | `src/core/ports/db/IPackingTaskRepository.ts` | ⏳ 待开始 | ~80 | 打包任务 |
-| 7 | `src/core/ports/db/ISortingTaskRepository.ts` | ⏳ 待开始 | ~90 | 分拣任务+滑道 |
-| 8 | `src/core/ports/db/ILoadingTaskRepository.ts` | ⏳ 待开始 | ~70 | 装车任务 |
-| 9 | `src/core/ports/db/IDeviceRepository.ts` | ⏳ 待开始 | ~70 | PDA/设备管理 |
-| 10 | `src/core/ports/db/IInventoryLockRepository.ts` | ⏳ 待开始 | ~70 | 库存悲观锁 |
-| 11 | `src/core/ports/db/IInventoryReservationRepository.ts` | ⏳ 待开始 | ~80 | 库存预留/乐观锁 |
+| 1 | `src/core/ports/db/ILocationRepository.ts` | ✅ 已完成 | ~80 | 库位管理核心 |
+| 2 | `src/core/ports/db/IContainerRepository.ts` | ✅ 已完成 | ~70 | 容器/LPN管理 |
+| 3 | `src/core/ports/db/IInboundReceiptRepository.ts` | ✅ 已完成 | ~100 | 入库单+质检项 |
+| 4 | `src/core/ports/db/IWaveRepository.ts` | ✅ 已完成 | ~90 | 波次+订单映射 |
+| 5 | `src/core/ports/db/ICrossDockJobRepository.ts` | ✅ 已完成 | ~80 | 交叉理货 |
+| 6 | `src/core/ports/db/IPackingTaskRepository.ts` | ✅ 已完成 | ~80 | 打包任务 |
+| 7 | `src/core/ports/db/ISortingTaskRepository.ts` | ✅ 已完成 | ~90 | 分拣任务+滑道 |
+| 8 | `src/core/ports/db/ILoadingTaskRepository.ts` | ✅ 已完成 | ~70 | 装车任务 |
+| 9 | `src/core/ports/db/IDeviceRepository.ts` | ✅ 已完成 | ~70 | PDA/设备管理 |
+| 10 | `src/core/ports/db/IInventoryLockRepository.ts` | ✅ 已完成 | ~70 | 库存悲观锁 |
+| 11 | `src/core/ports/db/IInventoryReservationRepository.ts` | ✅ 已完成 | ~80 | 库存预留/乐观锁 |
 
 ### 1.2 Supabase 实现
 | # | 文件 | 状态 | 预估行数 | 依赖 |
 |---|------|------|---------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts` | ⏳ 待开始 | ~180 | ILocationRepository |
-| 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` | ⏳ 待开始 | ~160 | IContainerRepository |
-| 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` | ⏳ 待开始 | ~220 | IInboundReceiptRepository |
-| 4 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` | ⏳ 待开始 | ~200 | IWaveRepository |
-| 5 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ⏳ 待开始 | ~180 | ICrossDockJobRepository |
-| 6 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ⏳ 待开始 | ~180 | IPackingTaskRepository |
-| 7 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ⏳ 待开始 | ~200 | ISortingTaskRepository |
-| 8 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ⏳ 待开始 | ~160 | ILoadingTaskRepository |
-| 9 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ⏳ 待开始 | ~160 | IDeviceRepository |
-| 10 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ⏳ 待开始 | ~160 | IInventoryLockRepository |
-| 11 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ⏳ 待开始 | ~180 | IInventoryReservationRepository |
+| 1 | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts` | ✅ 已完成 | ~180 | ILocationRepository |
+| 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` | ✅ 已完成 | ~160 | IContainerRepository |
+| 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` | ✅ 已完成 | ~220 | IInboundReceiptRepository |
+| 4 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` | ✅ 已完成 | ~200 | IWaveRepository |
+| 5 | `src/adapters/supabase/repositories/SupabaseCrossDockJobRepository.ts` | ✅ 已完成 | ~180 | ICrossDockJobRepository |
+| 6 | `src/adapters/supabase/repositories/SupabasePackingTaskRepository.ts` | ✅ 已完成 | ~180 | IPackingTaskRepository |
+| 7 | `src/adapters/supabase/repositories/SupabaseSortingTaskRepository.ts` | ✅ 已完成 | ~200 | ISortingTaskRepository |
+| 8 | `src/adapters/supabase/repositories/SupabaseLoadingTaskRepository.ts` | ✅ 已完成 | ~160 | ILoadingTaskRepository |
+| 9 | `src/adapters/supabase/repositories/SupabaseDeviceRepository.ts` | ✅ 已完成 | ~160 | IDeviceRepository |
+| 10 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` | ✅ 已完成 | ~160 | IInventoryLockRepository |
+| 11 | `src/adapters/supabase/repositories/SupabaseInventoryReservationRepository.ts` | ✅ 已完成 | ~180 | IInventoryReservationRepository |
 
 ### 1.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 11 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 11 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 11 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 11 个新实现
 
 ### 1.4 验收
-- [ ] `npx tsc --noEmit` 零错误
-- [ ] 每个实现 `implements` 对应接口编译通过
+- [x] `npx tsc --noEmit` 零错误
+- [x] 每个实现 `implements` 对应接口编译通过
 
 ---
 
-## Phase 3: P1 业务扩展（8个） - 次优先级
+## Phase 3: P1 业务扩展（8个） - 次优先级 ✅ 已完成
 
 ### 3.1 端口定义
 | # | 文件 | 状态 | 预估行数 |
 |---|------|------|---------|
-| 1 | `src/core/ports/db/IShippingDocumentRepository.ts` | ⏳ 待开始 | ~80 |
-| 2 | `src/core/ports/db/IVehicleRepository.ts` | ⏳ 待开始 | ~70 |
-| 3 | `src/core/ports/db/IBillingRuleRepository.ts` | ⏳ 待开始 | ~80 |
-| 4 | `src/core/ports/db/IBillingTransactionRepository.ts` | ⏳ 待开始 | ~70 |
-| 5 | `src/core/ports/db/IUserRepository.ts` | ⏳ 待开始 | ~90 |
-| 6 | `src/core/ports/db/IRoleRepository.ts` | ⏳ 待开始 | ~80 |
-| 7 | `src/core/ports/db/IAsnRepository.ts` | ⏳ 待开始 | ~90 |
-| 8 | `src/core/ports/db/IConsumableUsageRepository.ts` | ⏳ 待开始 | ~70 |
+| 1 | `src/core/ports/db/IShippingDocumentRepository.ts` | ✅ 已完成 | ~80 |
+| 2 | `src/core/ports/db/IVehicleRepository.ts` | ✅ 已完成 | ~70 |
+| 3 | `src/core/ports/db/IBillingRuleRepository.ts` | ✅ 已完成 | ~80 |
+| 4 | `src/core/ports/db/IBillingTransactionRepository.ts` | ✅ 已完成 | ~70 |
+| 5 | `src/core/ports/db/IUserRepository.ts` | ✅ 已完成 | ~90 |
+| 6 | `src/core/ports/db/IRoleRepository.ts` | ✅ 已完成 | ~80 |
+| 7 | `src/core/ports/db/IAsnRepository.ts` | ✅ 已完成 | ~90 |
+| 8 | `src/core/ports/db/IConsumableUsageRepository.ts` | ✅ 已完成 | ~70 |
 
 ### 3.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseShippingDocumentRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` | ⏳ 待开始 |
-| 4 | `src/adapters/supabase/repositories/SupabaseBillingTransactionRepository.ts` | ⏳ 待开始 |
-| 5 | `src/adapters/supabase/repositories/SupabaseUserRepository.ts` | ⏳ 待开始 |
-| 6 | `src/adapters/supabase/repositories/SupabaseRoleRepository.ts` | ⏳ 待开始 |
-| 7 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ⏳ 待开始 |
-| 8 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseShippingDocumentRepository.ts` | ✅ 已完成 |
+| 2 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` | ✅ 已完成 |
+| 3 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` | ✅ 已完成 |
+| 4 | `src/adapters/supabase/repositories/SupabaseBillingTransactionRepository.ts` | ✅ 已完成 |
+| 5 | `src/adapters/supabase/repositories/SupabaseUserRepository.ts` | ✅ 已完成 |
+| 6 | `src/adapters/supabase/repositories/SupabaseRoleRepository.ts` | ✅ 已完成 |
+| 7 | `src/adapters/supabase/repositories/SupabaseAsnRepository.ts` | ✅ 已完成 |
+| 8 | `src/adapters/supabase/repositories/SupabaseConsumableUsageRepository.ts` | ✅ 已完成 |
 
 ### 3.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 8 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 8 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 8 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 8 个新实现
 
 ---
 
-## Phase 4: P2 支撑域（6个） - 最后实施
+## Phase 4: P2 支撑域（6个） - 最后实施 ✅ 已完成
 
 ### 4.1 端口定义
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/core/ports/db/IQualityInspectionRepository.ts` | ⏳ 待开始 |
-| 2 | `src/core/ports/db/IVasBomRepository.ts` | ⏳ 待开始 |
-| 3 | `src/core/ports/db/IVerificationRuleRepository.ts` | ⏳ 待开始 |
-| 4 | `src/core/ports/db/ILabelTemplateRepository.ts` | ⏳ 待开始 |
-| 5 | `src/core/ports/db/IInventoryHistoryRepository.ts` | ⏳ 待开始 |
-| 6 | `src/core/ports/db/IPackageSpecRepository.ts` | ⏳ 待开始 |
+| 1 | `src/core/ports/db/IQualityInspectionRepository.ts` | ✅ 已完成 |
+| 2 | `src/core/ports/db/IVasBomRepository.ts` | ✅ 已完成 |
+| 3 | `src/core/ports/db/IVerificationRuleRepository.ts` | ✅ 已完成 |
+| 4 | `src/core/ports/db/ILabelTemplateRepository.ts` | ✅ 已完成 |
+| 5 | `src/core/ports/db/IInventoryHistoryRepository.ts` | ✅ 已完成 |
+| 6 | `src/core/ports/db/IPackageSpecRepository.ts` | ✅ 已完成 |
 
 ### 4.2 Supabase 实现
 | # | 文件 | 状态 |
 |---|------|------|
-| 1 | `src/adapters/supabase/repositories/SupabaseQualityInspectionRepository.ts` | ⏳ 待开始 |
-| 2 | `src/adapters/supabase/repositories/SupabaseVasBomRepository.ts` | ⏳ 待开始 |
-| 3 | `src/adapters/supabase/repositories/SupabaseVerificationRuleRepository.ts` | ⏳ 待开始 |
-| 4 | `src/adapters/supabase/repositories/SupabaseLabelTemplateRepository.ts` | ⏳ 待开始 |
-| 5 | `src/adapters/supabase/repositories/SupabaseInventoryHistoryRepository.ts` | ⏳ 待开始 |
-| 6 | `src/adapters/supabase/repositories/SupabasePackageSpecRepository.ts` | ⏳ 待开始 |
+| 1 | `src/adapters/supabase/repositories/SupabaseQualityInspectionRepository.ts` | ✅ 已完成 |
+| 2 | `src/adapters/supabase/repositories/SupabaseVasBomRepository.ts` | ✅ 已完成 |
+| 3 | `src/adapters/supabase/repositories/SupabaseVerificationRuleRepository.ts` | ✅ 已完成 |
+| 4 | `src/adapters/supabase/repositories/SupabaseLabelTemplateRepository.ts` | ✅ 已完成 |
+| 5 | `src/adapters/supabase/repositories/SupabaseInventoryHistoryRepository.ts` | ✅ 已完成 |
+| 6 | `src/adapters/supabase/repositories/SupabasePackageSpecRepository.ts` | ✅ 已完成 |
 
 ### 4.3 索引更新
-- [ ] `src/core/ports/db/index.ts` - 导出 6 个新端口
-- [ ] `src/adapters/supabase/repositories/index.ts` - 导出 6 个新实现
+- [x] `src/core/ports/db/index.ts` - 导出 6 个新端口
+- [x] `src/adapters/supabase/repositories/index.ts` - 导出 6 个新实现
 
 ---
 
@@ -505,7 +505,7 @@
 ---
 
 *创建时间：2025-07-10*
-*状态：Phase 1/3/4 共 25 个端口+25 个实现已完成（含测试覆盖，已在 origin/main 核实）；Phase 5/6/7 共 10 个端口+10 个实现代码已落地、`tsc` 零错误、`device-api` 全部路由已接入，**已于 2026-07-19 补齐集成测试证据并恢复为「✅ 已完成」**；2026-07-20 经 ECC 多视角复核修正了文档状态不一致，并识别出行为覆盖缺口与工程化缺口，详见 §9「测试补齐完成记录与剩余缺口」*
+*状态：Phase 1/3/4 共 25 个端口+25 个实现已完成（含测试覆盖，已在 origin/main 核实）；Phase 5/6/7 共 10 个端口+10 个实现代码已落地、`tsc` 零错误、`device-api` 全部路由已接入，**已于 2026-07-19 补齐集成测试证据并恢复为「✅ 已完成」**；2026-07-20 经 ECC 多视角复核修正了文档状态不一致，并识别出行为覆盖缺口与工程化缺口，详见 §9「测试补齐完成记录与剩余缺口」；**2026-07-23 修正 Phase 1/3/4 表格状态标记（⏳→✅），消除文档内部矛盾***
 
 ---
 
@@ -521,7 +521,6 @@
 |---|---|---|
 | **P0** | 本文档 + `docs/03-database/DB_SCHEMA.md` 同步到 `HiWmsSupabase` 迁移 009-016 | 两份文档最后一次更新都早于 009 合并时间，完全不知道 dispatcher 权限模型重构（010）、RLS 大批量加固（012/014）、库存写入原语二次收口（015）已经发生——基于旧文档做的新 Repository 开发可能撞上这些新的权限边界 |
 | **P1** | Phase 8（`IInventoryUnitRepository`/`IStorageManagementPolicyRepository`/`IZoneRepository`）补齐集成测试证据 | §8.5 已自行标注为"下一轮排期任务"，对齐 Phase 5-7 的打法（本地一次性 Postgres 沙盒 + 真实并发场景） |
-| **P2** | Phase 1-4 共 66 个 Repository 文件真实状态核实 | 本文档正文表格（§Phase 1/3/4）标注 `⏳ 待开始`，但文末"状态"行又写"已完成"——两处描述自相矛盾，排优先级前必须先跑 `npx tsc --noEmit` + 核对真实 `src/` 目录，确认哪个描述反映真实情况 |
 | **P2** | `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 下游消费方核实 | `HiWmsSupabase` 009 已补 `updated_at`，但本仓库没有记录是否有报表/看板依赖这两张表做增量拉取，若有需要跟着确认逻辑是否要调整 |
 
 **关联文档**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md`、
