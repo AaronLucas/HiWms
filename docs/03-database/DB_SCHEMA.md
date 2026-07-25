@@ -1,6 +1,6 @@
 # DB_SCHEMA.md
 
-> **版本**: v2.4.0 (2026-07-18)  
+> **版本**: v2.6.0 (2026-07-25)  
 > **同步来源**: `supabase/migrations/` 下的初始化脚本（V2.1 主脚本 + 离线同步/统一异常领域增量扩展 + Layer 3/4 修正与新增脚本）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。  
 > **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2（离线同步/统一异常领域，7 张表）**迁移脚本已部署，仓储层已实现**；✅ Layer 3（同步动作扩展 PUTAWAY/COUNT/PACK，2 张表）与 Layer 4（唯一追踪策略+无码/未识别货物，1 张表+3 新列）**已由 DBA 团队部署到生产环境，与 `.readonly/` 参考文件逐字节一致，`src/types/database.ts` 已同步**（工程排期见 `docs/00-project/ROADMAP.md` Phase 1.4/1.4.1/1.4.2、`docs/03-database/REPOSITORY_ROADMAP.md` Phase 5-7）
 
@@ -738,6 +738,10 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | Layer 6：跨租户归属修复（`006_tenant_ownership_fix.sql`） | 不新增表；`fn_apply_pick_action`/`fn_apply_pack_action` 新增 `order_line_id`/`order_id` 归属校验 | ✅ 与 `.readonly/unWMS_Tenant_Ownership_Fix_V1.sql` 逐字节一致，经复核确认修复完整、未被 Layer 7 的 `CREATE OR REPLACE` 意外覆盖；对 TS 应用层完全透明 |
 | Layer 7：库区建模 + 库位人读名/层级 + 序列号持久追踪（`007_zone_location_serial_tracking.sql`） | `zones`/`inventory_units` 2 新表 + `locations` 6 新列 + `v_serial_lookup` 视图 + 3 个函数/触发器 | ✅ 与 `.readonly/unWMS_Zone_Location_Serial_Tracking_V1.sql` 逐字节一致，经复核确认新表 RLS/`updated_at`/序列号并发写入正确。⚠️ 遗留 1 项 HIGH（`zone_type` 反向级联缺失），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md`。应用层：`IInventoryUnitRepository`/`IZoneRepository`/`ILocationRepository` 扩展见 `REPOSITORY_ROADMAP.md` Phase 8 |
 | Layer 8：分层存储管理（`008_storage_management.sql`） | `storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary` 3 新表 + 6 个函数 | ✅ 与 `.readonly/unWMS_Storage_Management_V1.sql` 逐字节一致，经复核确认 RLS 读写权限边界正确、两处已知坑（`auth.uid()` 间接引用、`format()` 精度占位符）修复完整。⚠️ 遗留 1 项 HIGH（两张 daily_summary 表缺 `updated_at`），见 `DBA_ADDENDUM_REQUEST_2026-07-20.md`。应用层：`IStorageManagementPolicyRepository` 见 `REPOSITORY_ROADMAP.md` Phase 8 |
+| Addendum 009-016（HiWmsSupabase，`009_migration_addendum.sql`~`016_fastfollow_indexes_and_recount_guard.sql`） | 不新增表；修复链：`updated_at` 补齐（009）、`fn_resolve_exception` 身份冒用修复+防御性加固（010/017）、RPC 权限收口（010→015 第 1/2 批）、View RLS 硬化（011→012/014 第 1/2/3 批）、跨租户校验补齐（013）、`PROCESSING` 超时清扫（016）、缺口索引补建（016） | ✅ 两轮 addendum 请求覆盖 10 项发现，4 项 CRITICAL/HIGH 已修复（见 `ROADMAP.md` §1.5），2 项非阻塞保留。**这些脚本不在本仓库，权威版本见 HiWmsSupabase** |
+| 017：设备身份防御性加固（`017_fix_resolve_exception_trust_p_resolver_user_id.sql`） | 不新增表；`fn_resolve_exception` 新增 `p_resolver_user_id === fn_current_user_id()` 强制校验 | ✅ ADR-019 前置依赖，已在应用层 `missing-label/confirm`、`unidentified/identify` 路由同步加固（从 `req.context.userId` 派生），详见 `ROADMAP.md` §1.6.1 |
+| 018：设备身份 schema 使能（`018_device_identity_schema.sql`） | `devices.secret_hash`/`secret_rotated_at` 2 新列 + `permissions` 表 `devices` 资源 4 行 | ✅ 应用层 `SupabaseDeviceRepository` 已适配读写、`DeviceAuthMiddleware`/`device-credentials.ts` 已实现三层凭证体系，见 `ROADMAP.md` §1.6 |
+| 019：生产索引 CONCURRENTLY（`019_production_indexes_concurrently.sql`） | `inventory`/`vas_boms`/`vas_bom_items` 4 个缺口索引（CONCURRENTLY IF NOT EXISTS） | ✅ **CI 豁免，手动部署**（CONCURRENTLY 不能在事务块执行，见 `.readonly/unWMS_Production_Index_Deployment_V1.md`） |
 
 ---
 
@@ -752,6 +756,7 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | **2.3.0** | **2026-07-16** | **补充 Layer 3（同步动作扩展 PUTAWAY/COUNT/PACK，对开发团队 PR 的修正重新实现）+ Layer 4（唯一追踪策略+无码/未识别货物处理，全新设计）**：新增 `inventory_count_policies`/`packing_task_items`/`tenant_tracking_policies` 3 表、`containers.lpn_source`/`locations.force_unique_tracking`/`product_constraints.requires_unique_tracking` 3 新列、11 个新函数、2 个新 CHECK 约束、1 处触发器范围扩展、3 个新异常类型（`REFERENCE_NOT_FOUND`/`MISSING_LABEL`/`UNIDENTIFIED_GOODS`）。**本次仅为设计文档补充，本地迁移脚本未改动**（003 现存 bug 未修正，004 不存在），修正/新增均需先与 DBA 团队协调确认 |
 | **2.4.0** | **2026-07-18** | **DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境**：003/004 本地文件均已替换/创建为 DBA 修正版，经 `diff` 核对与 `.readonly/` 参考文件逐字节一致；`src/types/database.ts` 已由 `supabase gen types` 独立核实与远程 schema 一致；应用层仓储（Layer 2/3/4 共 9 端口+9 实现）与 Device API 全部路由已实现，`tsc --noEmit` 零错误、`vitest` 59/59 通过。§0/§11 阻塞提示解除 |
 | **2.5.0** | **2026-07-20** | **补充 Layer 5-8**（并发安全加固/跨租户归属修复/库区库位序列号追踪/分层存储管理）：新增 `zones`/`inventory_units`/`storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary` 5 表、`locations` 6 新列、`v_serial_lookup` 视图、9 个新/重写函数、`sync_events.status` 新增 `PROCESSING`。经 `ecc:database-reviewer`/`ecc:architect`/`ecc:planner` 三轮分析（PR #37）核实无误的部分与遗留问题（1 CRITICAL + 2 HIGH + 1 MEDIUM，已提交 `DBA_ADDENDUM_REQUEST_2026-07-20.md`）均已记录。**迁移脚本本身随本次改动迁出本仓库**，权威版本见独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（`docs/01-architecture/ADR/017-dba-migration-repo-split.md`） |
+| **2.6.0** | **2026-07-25** | **HiWmsSupabase 009-018 交叉核实结果登记**：① 009-016（DBA addendum 修复链：`fn_resolve_exception` 身份冒用→017 强制校验 `p_resolver_user_id`、EXECUTE 权限收口→015、GRANT 策略、`updated_at` 补齐→009、`sync_events` 超时清扫→016，详见 `ROADMAP.md` §1.5 与 `DBA_ADDENDUM_REQUEST_2026-07-23.md`）；② 017（`fn_resolve_exception` 防御性加固）；③ 018（`devices.secret_hash`/`secret_rotated_at` + `permissions` 表 `devices` 四行资源）；④ 019（生产索引 `CONCURRENTLY`，CI 跳过、手动部署）；⑤ 应用层 ADR-019 设备身份子系统实施完成（PR #47）；⑥ Phase 8 仓储集成测试补齐。本文档的表结构/视图/函数/RLS 层面已在 v2.4.0-v2.5.0 覆盖完毕，本次补充的是 DBA 修复链与设备身份使能的交叉核实记录 |
 
 ---
 
