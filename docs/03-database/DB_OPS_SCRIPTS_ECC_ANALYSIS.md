@@ -398,7 +398,7 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 但 `device-credentials.ts:123` 只 hash `randomPart`。这更正确——前缀和 device_id 可预测，验证时
 从 API key 解析出 random 部分后只比对随机字节。代码自洽，不构成不一致。
 
-#### P1-1 验证详情（2026-07-26）
+#### P1-1 修复方案（2026-07-26）
 
 **结论**：`fn_current_user_id()` 在 Express API 会话中**始终返回 NULL**。
 
@@ -410,34 +410,170 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 
 **调用链**：
 ```
-Express auth middleware → verifyToken(JWT) → req.context.user ✅
-WmsSupabaseClient.getClient() → singleton, anonKey only → DB request
-→ Authorization: Bearer <anonKey> (NO user JWT)
-→ auth.uid() → NULL
-→ fn_current_user_id() → EXCEPTION → NULL
+PDA/browser → Express API → auth middleware → verifyToken(JWT) → req.context.user ✅
+                          → WmsSupabaseClient.getClient() → singleton, anonKey only
+                          → Authorization: Bearer <anonKey> (NO user JWT!)
+                          → PostgREST → auth.uid() → NULL
+                          → fn_current_user_id() → EXCEPTION → NULL
 ```
 
-**影响**：
+**当前实际影响**（轻度，因 admin client 掩盖）：
 
-| 调用方 | 文件 | NULL 路径行为 |
-|--------|------|---------------|
-| RLS policies (storage) | `008:101-102,139` | `fn_is_platform_admin(NULL)` → 不识别管理员 |
-| `fn_resolve_exception` | `017:73-76` | 身份校验跳过 → 失去防冒充保护 |
-| `check_user_permission` | `013:55` | 自检场景降级 |
+| 调用方 | 文件:行 | NULL 路径行为 | 当前是否触发 |
+|--------|---------|---------------|:---:|
+| RLS policies | `008:101-102,139` | `fn_is_platform_admin(NULL)` → 永远 FALSE | ❌ 不触发 — app 所有查询用 `getAdminClient()` 绕过 RLS |
+| `fn_resolve_exception` | `017:73-76` | 身份校验跳过，不防冒充 | ❌ 不触发 — 此函数从 admin client 调用 |
+| `check_user_permission` | `013:55` | 自检场景降级 | ❌ 不触发 — 同上 |
 
-**修复方向**：在 `WmsSupabaseClient.rpc()` 增加 `userToken` 选项，支持 per-request 创建
-带用户 JWT 的临时 Supabase client；或在 `ExpressMiddlewareFactory.authenticate()` 中
-将 JWT 注入到请求级 Supabase client。详见 `src/adapters/supabase/SupabaseClient.ts` 和
-`src/adapters/supabase/rpc/SupabaseRpcClient.ts`。
+> **注意**：当前"不触发"是因为全局滥用 `getAdminClient()`（service_role），并非设计合理。
+> 如果未来安全加固把查询从 admin client 切回 anon client（正确做法），这些路径会立刻暴露。
+
+**严重度评估**：🟠 中等架构债务。不是紧急 bug（admin client 掩盖了），但阻塞了从
+service_role 到 RLS+JWT 的安全模型迁移。
+
+---
+
+#### P1-1 修复方案（代码级，开发团队可自主执行）
+
+**目标**：让 `WmsSupabaseClient` 支持 per-request 携带用户 JWT，使 `auth.uid()` 返回真实用户 ID。
+
+**方案选择**：在 `WmsSupabaseClient` 增加 `getAuthenticatedClient(userToken)` 方法，
+每次调用创建临时 Supabase client 注入用户 JWT。这是 Supabase 社区推荐的标准做法。
+
+##### Step 1：新增 `getAuthenticatedClient()` 方法
+
+**文件**：`src/adapters/supabase/SupabaseClient.ts`
+
+在 `getAdminClient()` 方法后（约 line 138）插入：
+
+```typescript
+/** 获取带用户 JWT 的认证客户端（per-request，使 auth.uid() 返回真实用户 ID）
+ *
+ *  每次调用创建新实例——不缓存，因为 token 随请求变化。
+ *  调用方负责在请求结束后释放（Supabase JS client 无连接池，GC 即可回收）。
+ */
+getAuthenticatedClient(userToken: string): SupabaseClient<Database> {
+  return createClient<Database>(this.config.url, this.config.anonKey, {
+    auth: { persistSession: false },
+    db: { schema: 'public' },
+    global: {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+      },
+    },
+  });
+}
+```
+
+##### Step 2：在认证中间件中注入到请求上下文
+
+**文件**：`src/adapters/express/ExpressMiddlewareFactory.ts`
+
+在 `authenticate()` 方法中，token 验证成功后挂载 authenticated client（约 line 59 后插入）：
+
+```typescript
+// 在 req.context = { user: {...}, correlationId: ... } 之后添加：
+
+// 创建 per-request 认证 Supabase client，使 DB 层 auth.uid() 返回真实用户 ID
+(req as any).supabaseAuthenticated = (supabaseClient: WmsSupabaseClient) =>
+  supabaseClient.getAuthenticatedClient(token);
+```
+
+同时在 `ExpressRequestContext` 接口（约 line 13）增加可选字段：
+
+```typescript
+export interface ExpressRequestContext {
+  user?: { ... };
+  tenantId?: string | null;
+  correlationId?: string;
+  supabaseToken?: string;  // 新增：用于 per-request Supabase client 创建
+}
+```
+
+并在 middleware 中存储 token：
+
+```typescript
+req.context = {
+  user: { ... },
+  supabaseToken: token,  // 新增
+  correlationId: ...,
+};
+```
+
+##### Step 3：改造路由中的 DB 调用
+
+**文件**：各 route 文件（`src/apps/device-api/routes.ts` 等）
+
+将需要用户身份的查询从 `getAdminClient()` 改为 `getAuthenticatedClient()`：
+
+```typescript
+// 改造前（用户身份不可见）：
+const { data } = await supabaseAdapters.client.getClient()
+  .from('some_table').select('*');
+
+// 改造后（用户身份可见，auth.uid() = 真实 UUID）：
+const authedClient = supabaseAdapters.client.getAuthenticatedClient(
+  req.context!.supabaseToken!
+);
+const { data } = await authedClient
+  .from('some_table').select('*');
+```
+
+> **迁移策略**：先只改需要 `fn_current_user_id()` 的场景（`fn_resolve_exception` 调用、
+> RLS-protected 表的查询），不要一次性全量替换 `getAdminClient()`——service_role 有其
+> 合理用途（跨租户操作、系统级维护）。
+
+##### Step 4：验证方法
+
+```bash
+# 1. 单元测试：确认 getAuthenticatedClient 注入的 header
+# 2. 集成测试：用真实 JWT 发请求，在 DB 端用 RAISE NOTICE 打印 auth.uid()
+# 3. 手动验证：
+curl -H "Authorization: Bearer <real_user_jwt>" \
+  http://localhost:3001/api/some-route
+# → 检查 PostgREST 日志确认 Authorization header 被转发
+```
+
+```sql
+-- DB 端验证（在某个被调用的函数中临时加）：
+RAISE NOTICE 'auth.uid() = %, fn_current_user_id() = %', auth.uid(), fn_current_user_id();
+-- 预期：auth.uid() = '<调用者 UUID>'，fn_current_user_id() = '<调用者 UUID>'
+```
+
+##### 预估工时
+
+| 步骤 | 内容 | 预估 |
+|------|------|------|
+| Step 1 | 新增 `getAuthenticatedClient()` | 30 分钟 |
+| Step 2 | 中间件改造 + token 存储 | 30 分钟 |
+| Step 3 | 路由渐进迁移 | 2-4 小时（取决于多少路由需要改） |
+| Step 4 | 测试验证 | 1-2 小时 |
+| **合计** | | **4-7 小时（约 1 个开发日）** |
+
+##### 注意事项
+
+1. **不要缓存 authenticated client** — 每个请求的 token 不同，用完即弃
+2. **token 过期处理** — `getAuthenticatedClient()` 创建的 client 携带过期 token 时，
+   PostgREST 返回 401，Supabase JS client 抛出 `AuthRetryableFetchError`，应用层应捕获并返回 401
+3. **性能影响** — 每次 `createClient()` 开销极低（仅构造 JS 对象，不建连接），无实际性能影响
+4. **与 PgBouncer 的交互** — PgBouncer transaction 模式下，有 JWT 的请求和 anon key 的请求
+   共享同一连接池，无冲突（PostgREST 在事务开始时 `SET LOCAL` JWT claims）
 
 ### Phase 2：运维部署
 
-| # | 任务 | 优先级 | 说明 |
-|---|------|--------|------|
-| P2-1 | 生产维护窗口执行 019 迁移（CONCURRENTLY 索引） | P0 | 当前可能尚未执行 |
-| P2-2 | 注册 pg_cron 定时任务（幂等脚本） | P1 | 需确认 pg_cron 扩展已启用 |
-| P2-3 | 部署监控视图 | P1 | 需确认 pg_stat_statements/pgstattuple 扩展已启用 |
-| P2-4 | PgBouncer 部署评估 | P2 | 评估当前连接数是否需连接池 |
+| # | 任务 | 优先级 | 状态 | 执行人 | 预估工时 | 阻塞? |
+|---|------|--------|------|--------|----------|-------|
+| P2-1 | 生产维护窗口执行 019 迁移（CONCURRENTLY 索引） | P0 | ⏳ | **DBA** | 1 次维护窗口 | 🟢 |
+| P2-2 | 注册 pg_cron 定时任务（幂等脚本） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #38 + #39 |
+| P2-3 | 部署监控视图（6 views） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #35 |
+| P2-4 | PgBouncer 部署评估 | P2 | ⏳ | **开发/运维** | 半天评估 + 半天部署压测 | 🟢 |
+
+**P2-4 部署评估清单**：
+1. 统计当前生产活跃连接数（`pg_stat_activity`），判断是否需要连接池
+2. 按 P1-3 的 3 项建议修改配置（`disable_pqexec=1`、`stats_users`、TLS 决策）
+3. 测试环境部署 PgBouncer → 指向测试 PG → 用 `SHOW POOLS`/`SHOW STATS` 确认池工作正常
+4. 压测：模拟生产并发，确认 `default_pool_size=25` 是否够用，无 "too many clients" 错误
+5. 生产上线后首周每日巡检 `SHOW POOLS`，按需调整 `pool_size`
 
 ### Phase 3：测试补全
 
