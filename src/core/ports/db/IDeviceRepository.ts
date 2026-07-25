@@ -19,7 +19,7 @@ export interface IDeviceRepository extends IRepository<DeviceRow, DeviceInsert, 
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; deviceType?: string }
+    options?: { limit?: number; offset?: number; deviceType?: string; isActive?: boolean }
   ): Promise<DeviceRow[]>;
 
   /**
@@ -42,8 +42,28 @@ export interface IDeviceRepository extends IRepository<DeviceRow, DeviceInsert, 
    */
   getStats(tenantId: string): Promise<{
     total: number;
-    online: number;
-    offline: number;
+    active: number;
+    inactive: number;
     byType: Record<string, number>;
   }>;
+
+  /**
+   * 按 secret_hash 查找设备（API Key 登录用）
+   */
+  findBySecretHash(secretHash: string): Promise<DeviceRow | null>;
+
+  /**
+   * 更新设备 secret_hash
+   */
+  updateSecretHash(deviceId: string, secretHash: string, rotatedAt: string): Promise<DeviceRow>;
+
+  /**
+   * 轮换设备密钥
+   */
+  rotateSecret(deviceId: string, newSecretHash: string): Promise<DeviceRow>;
+
+  /**
+   * 撤销设备密钥（设备丢失/注销）
+   */
+  revokeSecret(deviceId: string): Promise<DeviceRow>;
 }

@@ -536,6 +536,8 @@ export type Database = {
           device_type: string
           id: string
           is_active: boolean | null
+          secret_hash: string | null
+          secret_rotated_at: string | null
           tenant_id: string | null
           updated_at: string | null
         }
@@ -545,6 +547,8 @@ export type Database = {
           device_type: string
           id?: string
           is_active?: boolean | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -554,6 +558,8 @@ export type Database = {
           device_type?: string
           id?: string
           is_active?: boolean | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }

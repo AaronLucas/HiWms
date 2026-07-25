@@ -117,11 +117,21 @@ DBA 团队对开发团队提交的同步动作扩展 PR（本地文件 `supabase
 | 列名 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | id | uuid | PK, DEFAULT uuid_generate_v4() | |
-| resource | varchar(100) | NOT NULL | 资源标识（如 orders, inventory） |
-| action | varchar(50) | NOT NULL | 动作（READ, WRITE, DELETE, APPROVE 等） |
+| resource | varchar(100) | NOT NULL | 资源标识（如 orders, inventory, **devices**） |
+| action | varchar(50) | NOT NULL | 动作（READ, WRITE, DELETE, APPROVE, **CREATE, UPDATE** 等） |
 | description | text | | |
 | created_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | UNIQUE(resource, action) | | | |
+
+> **Migration 018 追加权限行**：
+> ```sql
+> INSERT INTO permissions (id, resource, action) VALUES
+>     ('00000000-1000-4000-8000-000000000018', 'devices', 'create'),
+>     ('00000000-1000-4000-8000-000000000019', 'devices', 'read'),
+>     ('00000000-1000-4000-8000-00000000001a', 'devices', 'update'),
+>     ('00000000-1000-4000-8000-00000000001b', 'devices', 'delete')
+> ON CONFLICT (resource, action) DO NOTHING;
+> ```
 
 ### 2.3 roles (角色)
 | 列名 | 类型 | 约束 | 说明 |
@@ -148,7 +158,29 @@ DBA 团队对开发团队提交的同步动作扩展 PR（本地文件 `supabase
 | updated_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | UNIQUE(tenant_id, username) | | | |
 
-### 2.5 products (商品)
+### 2.5 devices (设备)
+
+| 列名 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| id | uuid | PK, DEFAULT uuid_generate_v4() | |
+| tenant_id | uuid | FK→tenants(id) CASCADE, NOT NULL | |
+| device_code | varchar(100) | NOT NULL | 租户内唯一设备编码 |
+| device_type | varchar(50) | NOT NULL | 'PDA', 'SCALE', 'CONVEYOR', 'GPS' 等 |
+| is_active | boolean | DEFAULT TRUE | 设备是否启用 |
+| secret_hash | text | | API Key 哈希值（argon2id/bcrypt） |
+| secret_rotated_at | timestamptz | | 密钥最近轮换时间，用于判断旧令牌是否应拒绝 |
+| created_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
+| updated_at | timestamp | DEFAULT CURRENT_TIMESTAMP | 触发器自动维护 |
+| UNIQUE(tenant_id, device_code) | | | |
+
+> **RLS 策略**：`tenant_isolation`（001 已启用）—— authenticated 用户只能看到本租户的设备行
+> **安全考虑**：`secret_hash` 列仅在 service_role 上下文中读取，不通过 PostgREST 直接暴露给 authenticated 角色
+> **索引**：
+> - `idx_devices_tenant` (tenant_id) —— 租户设备列表查询
+> - `idx_devices_type` (device_type) —— 按类型筛选设备
+> - `idx_devices_active` (is_active) WHERE is_active = TRUE —— 活跃设备快速查找
+
+### 2.6 products (商品)
 | 列名 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | id | uuid | PK, DEFAULT uuid_generate_v4() | |

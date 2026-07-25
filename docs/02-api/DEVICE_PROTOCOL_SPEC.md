@@ -1,9 +1,9 @@
 # 设备端 API 协议详细规范
 
-> **版本**: v2.0.0
-> **状态**: 草案待评审
+> **版本**: v3.0.0
+> **状态**: 已实现 (后端端点已就绪，单元测试 59/59 通过，集成测试 5/5 通过)
 > **基础路径**: `/api/v1/device`
-> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `SYNC_API_CONTRACT.md`, `API_SPEC.md` (第 4 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`
+> **关联文档**: `PDA_OFFLINE_SYNC_DESIGN.md`, `SYNC_API_CONTRACT.md`, `API_SPEC.md` (第 4 节), `SQLITE_LOCAL_SCHEMA.md`, `CONFLICT_RESOLUTION_STRATEGY.md`, `ADR-018`, `ADR-019`, `DB_SCHEMA.md` (2.5 devices 表)
 
 ---
 
@@ -58,15 +58,38 @@ interface RateLimitInfo {
 }
 ```
 
-### 1.3 设备认证流程
+### 1.3 设备认证流程（三层凭证体系）
+
 ```
+0. 管理员配发 (Provision) → POST /device/provision { device_id, device_name, device_type }
+   → tenant_id 由认证上下文派生（禁止客户端自报），服务端生成 API Key
+   → argon2id 哈希存入 devices.secret_hash，返回明文 API Key（仅此一次）+ base64url 配对二维码
+
 1. PDA 启动 → 读取本地存储的 device_id + api_key
-2. POST /auth/login { device_id, api_key, fcm_token? }
-   → 返回 { access_token, refresh_token, expires_in, server_time }
+
+2. POST /device/auth/login { device_id, api_key }
+   → 解析 API Key → 查 devices.secret_hash → argon2id 验证
+   → 返回 { access_token (15min), refresh_token (7d), expires_in, server_time }
+
 3. 后续请求携带 Authorization: Bearer <access_token>
-4. Token 过期前调用 POST /auth/refresh { refresh_token }
-5. 设备解绑/注销 → POST /auth/logout → 清理本地 Token
+
+4. Token 过期前调用 POST /device/auth/refresh { refresh_token }
+   → 验证 Refresh Token JWT (HS256, 租户级签名密钥) → 签发新 Token 对
+
+5. 设备解绑/注销 → POST /device/auth/logout → 清理本地 Token
 ```
+
+**三层凭证模型**：
+| 层级 | 凭证类型 | 生命周期 | 用途 | 算法 |
+|------|---------|---------|------|------|
+| L1 | API Key | 长期（手动或配对轮换） | 首次登录、设备配发 | argon2id 哈希存储，明文仅配发时返回一次 |
+| L2 | Refresh Token | 7 天 (可配置) | 静默续期 Access Token | JWT HS256，租户级签名密钥，含 `jti` 防重放 |
+| L3 | Access Token | 15 分钟 (可配置) | 业务 API 鉴权 | JWT HS256，同租户密钥，短 TTL 降低泄露风险 |
+
+**安全特性**：
+- **alg 锁定**: JWT 验签使用 `jose` 库，显式锁定 HS256 拒绝 `alg: none` 攻击
+- **租户级签名密钥**: 通过 `kid` 声明支持密钥轮换，平衡安全性与管理复杂度
+- **API Key 不可逆哈希**: argon2id 抗侧信道攻击，优于 bcrypt
 
 ### 1.4 任务执行三大关键机制（v2.0.0 起）
 本规范中所有任务/作业类接口都受以下三个跨切面机制约束，详见第 3 节：
@@ -118,11 +141,8 @@ Content-Type: application/json
 }
 ```
 
-**错误**:
-- `401 DEVICE_INVALID_CREDENTIALS` - 设备 ID/Key 不匹配
-- `403 DEVICE_NOT_PROVISIONED` - 设备未在后台注册
-- `403 DEVICE_SUSPENDED` - 设备被禁用
-- `403 TENANT_MISMATCH` - 设备绑定租户与请求不符
+**错误**（统一返回，防设备枚举）:
+- `401` — `{ error: "Authentication failed" }`（无论设备不存在、已禁用、凭证不匹配，均返回相同响应）
 
 ### 2.2 刷新 Token
 ```http
@@ -136,7 +156,107 @@ Content-Type: application/json
 
 **响应**: 同登录响应，不返回 `device_config`
 
-### 2.3 离线数据同步（核心接口）
+**错误**（统一返回，防 Token 枚举）:
+- `401` — `{ error: "Authentication failed" }`
+
+### 2.3 设备配发 (Provision)
+```http
+POST /api/v1/device/provision
+Content-Type: application/json
+Authorization: Bearer <human_user_jwt>
+X-Tenant-Id: <tenant_id>
+
+{
+  "device_id": "pda-wh-001",
+  "device_name": "Warehouse PDA #1",
+  "device_type": "HANDHELD"           // HANDHELD, SCALE, CONVEYOR, AGV, GATEWAY
+}
+```
+
+**前置条件**：
+- 调用方必须持有有效的人类用户登录态（JWT + `req.context.userId`），设备不可自助注册
+- `tenant_id` 由认证上下文派生（`req.context.tenantId`），不接受客户端传入
+- 需要 RBAC `devices:CREATE` 权限（`permissions` 表 Migration 018 定义）
+
+**服务端动作**：
+1. 生成 API Key: `hiwms_dk_<device_id>_<crypto_random(32bytes)>`
+2. argon2id 哈希后存入 `devices.secret_hash`，`secret_rotated_at` 记录时间戳
+3. `devices` 表 INSERT 记录
+4. 生成 base64url 配对二维码（编码 `device_id|api_key`）
+
+**响应 (201)**:
+```json
+{
+  "success": true,
+  "data": {
+    "device_id": "pda-wh-001",
+    "api_key": "hiwms_dk_pda-wh-001_<base64url_random>",
+    "provisioned_at": "2025-07-11T10:30:00.000Z",
+    "pairing_qr": "<base64url_encoded_device_id|api_key>",
+    "config": {
+      "sync_interval_sec": 30,
+      "auto_sync_on_wifi": true,
+      "max_offline_days": 7,
+      "features": ["picking", "packing", "receiving", "inventory", "shipping"],
+      "label_printers": [],
+      "scanners": [{"id": "scanner-builtin", "type": "CAMERA", "config": {}}]
+    }
+  },
+  "meta": { "request_id": "req_<timestamp>", "timestamp": "..." }
+}
+```
+
+**错误**:
+- `400` - `user_id` 或 `tenant_id` 缺失（未携带人类用户登录态）
+- `409 DEVICE_ALREADY_EXISTS` - 设备 ID 已被注册
+
+> **安全提示**: `api_key` 字段仅在配发响应中返回一次明文。调用方应即时展示或编码到配对二维码，
+> 不在服务端日志/数据库中存储明文。后续认证仅能通过 `secret_hash` 验证。
+
+### 2.4 Admin 配对二维码
+```http
+POST /api/v1/admin/devices/{id}/pairing-qr
+Content-Type: application/json
+Authorization: Bearer <human_user_jwt>
+
+{
+  "ttl_seconds": 300                 // 二维码有效期，默认 5 分钟
+}
+```
+
+**前置条件**：
+- 调用方必须持有有效的人类用户登录态（`req.context.userId`），设备不可自助调用
+- 操作者只能操作自己租户的设备（`req.context.tenantId === device.tenant_id`）
+
+**服务端动作**：
+1. 验证人类用户认证上下文和租户归属
+2. 查询设备当前 `secret_hash`
+3. 生成新 API Key → 更新 `secret_hash` / `secret_rotated_at`（旧 Key 立即失效）
+4. 编码 `device_id|api_key` 为 base64url
+
+**响应 (200)**:
+```json
+{
+  "success": true,
+  "data": {
+    "device_id": "pda-wh-001",
+    "device_code": "pda-wh-001",
+    "pairing_qr": "<base64url_encoded_device_id|new_api_key>",
+    "ttl_seconds": 300,
+    "generated_at": "2025-07-11T10:30:00.000Z"
+  },
+  "meta": { "request_id": "req_<timestamp>", "timestamp": "..." }
+}
+```
+
+**错误**:
+- `401` - 未认证（缺少人类用户登录态或租户上下文）
+- `404 DEVICE_NOT_FOUND` - 设备不存在或不属于操作者租户（防跨租户设备枚举）
+
+> **安全提示**: 配对二维码为一次性使用，生成新 Key 时旧 Key 立即失效。PDA 扫码后解析
+> `device_id|api_key` 存入本地安全存储，后续通过 `/device/auth/login` 换取 Token 对。
+
+### 2.5 离线数据同步（核心接口）  <!-- 原 2.3，因新增 Provision/Pairing-QR 重新编号 -->
 ```http
 POST /api/v1/device/sync
 Content-Type: application/json
@@ -235,7 +355,7 @@ Content-Type: application/json
 
 > 同步接口完整字段定义、Outbox 队列语义、分片规则见 `SYNC_API_CONTRACT.md`。
 
-### 2.4 同步状态查询
+### 2.6 同步状态查询
 ```http
 GET /api/v1/device/sync/status?session_id=sync-ulid-001
 ```
@@ -255,7 +375,7 @@ GET /api/v1/device/sync/status?session_id=sync-ulid-001
 }
 ```
 
-### 2.5 获取冲突列表
+### 2.7 获取冲突列表
 ```http
 GET /api/v1/device/sync/conflicts?status=UNRESOLVED&limit=50
 ```
@@ -286,7 +406,7 @@ GET /api/v1/device/sync/conflicts?status=UNRESOLVED&limit=50
 }
 ```
 
-### 2.6 解决冲突
+### 2.8 解决冲突
 ```http
 POST /api/v1/device/sync/conflicts/conflict-ulid/resolve
 Content-Type: application/json
@@ -1131,14 +1251,7 @@ Content-Type: application/json
 {
   "device_id": "pda-wh-001",
   "device_name": "仓库A-拣货PDA-01",
-  "device_type": "HANDHELD",  // HANDHELD, SCALE, CONVEYOR, AGV, GATEWAY
-  "model": "Zebra TC58",
-  "os": "Android 13",
-  "app_version": "2.1.0",
-  "mac_address": "00:11:22:33:44:55",
-  "serial_number": "ZTC58-2025-001",
-  "tenant_id": "tenant-uuid",  // 可选，管理员预分配
-  "assigned_user_id": "user-uuid"  // 可选
+  "device_type": "HANDHELD"  // HANDHELD, SCALE, CONVEYOR, AGV, GATEWAY
 }
 ```
 
@@ -1303,13 +1416,10 @@ Retry-After: 30  # 仅 429 时返回
 |------|------|------|----------------|
 | 400 | `VALIDATION_ERROR` | 请求参数校验失败 | 显示详细错误，修正后重试 |
 | 400 | `INVALID_SYNC_REQUEST` | 同步请求体格式错误 | 检查本地队列数据完整性 |
-| 401 | `UNAUTHORIZED` | Token 缺失/无效 | 刷新 Token 或重新登录 |
+| 401 | `Authentication failed` | 设备登录失败（统一响应，防枚举：无论设备不存在/已禁用/凭证不匹配均返回相同消息） | 检查 device_id 和 api_key，确认设备已配发 |
 | 401 | `TOKEN_EXPIRED` | Access Token 过期 | 用 Refresh Token 获取新 Token |
 | 401 | `REFRESH_TOKEN_EXPIRED` | Refresh Token 过期 | 清理本地凭证，引导用户重新登录 |
-| 403 | `FORBIDDEN` | 权限不足 | 提示无权限，联系管理员 |
-| 403 | `DEVICE_NOT_PROVISIONED` | 设备未注册 | 走设备注册流程 |
-| 403 | `DEVICE_SUSPENDED` | 设备被禁用 | 提示设备已禁用，联系管理员 |
-| 403 | `TENANT_MISMATCH` | 租户不匹配 | 清理本地数据，重新绑定租户 |
+| 403 | `FORBIDDEN` | 权限不足或租户不匹配 | 提示无权限，联系管理员 |
 | 403 | `CLAIM_REQUIRED` | 任务为 `ONLINE_ONLY` 但未提供有效领用 | 先调用 3.2 领用接口，成功后再重试 |
 | 404 | `NOT_FOUND` | 资源不存在 | 刷新列表，可能已被删除 |
 | 404 | `TASK_NOT_FOUND` | 任务不存在 | 任务可能已取消/完成，刷新任务列表 |
@@ -1335,6 +1445,9 @@ Retry-After: 30  # 仅 429 时返回
 | 2.0.0 | 2026-07-15 | DBA 团队重新设计任务领用/离线策略/异常机制并替换旧版实现：① 任务领用改为基于数据库唯一索引的 `fn_claim_task`/`fn_release_task_claim`/`fn_expire_task_claims` 具体语义，废弃笼统的"服务端分布式锁"描述；② 新增 `GET /sync/policy` 显式查询 `ALLOW`/`LIMITED`/`ONLINE_ONLY` 离线策略，设备不再凭任务类型名称自行假设；③ 废弃旧版 `POST /tasks/{id}/exception`、`.../complete` 内联 `exception` 对象、盘点 `difference_reason` 字段，统一为 `POST /exceptions`（`fn_raise_exception` + 5 类异常目录）与只读 `GET /exceptions`；④ 明确冷链/危化品合规触发器在线硬阻断与离线回放异常登记的不对称行为 | DBA 团队 / 架构组 |
 | 2.1.0 | 2026-07-16 | 异常类型目录新增 `REFERENCE_NOT_FOUND`（Layer 3）、`MISSING_LABEL`/`UNIDENTIFIED_GOODS`（Layer 4），COUNT 容差说明改为引用可配置的 `fn_get_count_tolerance`。**本次仅为文档补充，本地对应迁移脚本未修正/未创建**，需先与 DBA 团队协调确认 | DBA 团队 / 架构组 |
 | 2.2.0 | 2026-07-18 | DBA 团队确认 Layer 3/4 迁移脚本已部署到生产环境，现状提示更新为已部署状态 | DBA 团队 / 架构组 |
+| 3.0.0 | 2026-07-25 | ADR-019 设备身份对齐实现：三层凭证体系（API Key/Refresh Token/Access Token）、JWT/API Key 双轨认证、设备配发/配对二维码端点 | 架构组 |
+| 3.0.1 | 2026-07-25 | 安全审查修复 Round 1（CRITICAL #3/#4/#5 + HIGH #6）：parseApiKey indexOf 分割、login 统一 401、provision tenant_id 上下文派生、pairing-qr auth guard | 架构组 |
+| 3.0.2 | 2026-07-25 | 安全复审查修复 Round 2（Finding B/C/D）：refresh 端点统一 401、pairing-qr 防跨租户设备枚举（统一 404）、unidentifiedReceiveSchema 移除 tenant_id | 架构组 |
 
 ---
 

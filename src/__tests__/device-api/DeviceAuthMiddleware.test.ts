@@ -50,6 +50,9 @@ const deviceAuthConfig = {
   jwtSecret: 'test-secret',
   jwtIssuer: 'hiwms-device-api',
   jwtAudience: 'hiwms-devices',
+  accessTokenTtlSec: 900,
+  refreshTokenTtlSec: 604800,
+  apiKeyPrefix: 'hiwms_dev',
 };
 
 describe('DeviceAuthMiddleware', () => {
@@ -93,7 +96,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Missing or invalid device credentials' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -114,7 +117,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Missing or invalid device credentials' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -134,7 +137,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Missing or invalid device credentials' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -154,7 +157,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Missing or invalid device credentials' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -203,7 +206,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Missing or invalid device credentials' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 
@@ -224,7 +227,7 @@ describe('DeviceAuthMiddleware', () => {
       await authenticate(mockReq, mockRes, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Device not found or inactive' });
+      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Authentication failed' });
       expect(mockNext).not.toHaveBeenCalled();
     });
 

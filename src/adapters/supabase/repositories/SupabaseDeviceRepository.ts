@@ -18,11 +18,11 @@ export class SupabaseDeviceRepository extends SupabaseBaseRepository<
   protected tableName = 'devices';
   protected idColumn = 'id';
 
-  async findByCode(code: string, tenantId: string): Promise<DeviceRow | null> {
+  async findByCode(deviceCode: string, tenantId: string): Promise<DeviceRow | null> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .eq('code', code)
+      .eq('device_code', deviceCode)
       .eq('tenant_id', tenantId)
       .single();
 
@@ -35,17 +35,17 @@ export class SupabaseDeviceRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; deviceType?: string }
+    options?: { limit?: number; offset?: number; isActive?: boolean; deviceType?: string }
   ): Promise<DeviceRow[]> {
-    const { limit = 100, offset = 0, status, deviceType } = options || {};
+    const { limit = 100, offset = 0, isActive, deviceType } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .order('code', { ascending: true })
+      .order('device_code', { ascending: true })
       .range(offset, offset + limit - 1);
 
-    if (status) query = query.eq('status', status);
+    if (typeof isActive === 'boolean') query = query.eq('is_active', isActive);
     if (deviceType) query = query.eq('device_type', deviceType);
 
     const { data, error } = await query;
@@ -58,8 +58,7 @@ export class SupabaseDeviceRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'online')
-      .eq('current_task_id', null);
+      .eq('is_active', true);
 
     if (deviceType) query = query.eq('device_type', deviceType);
 
@@ -68,41 +67,76 @@ export class SupabaseDeviceRepository extends SupabaseBaseRepository<
     return (data as DeviceRow[]) || [];
   }
 
+  async updateSecretHash(deviceId: string, secretHash: string, rotatedAt: string): Promise<DeviceRow> {
+    return this.update(deviceId, {
+      secret_hash: secretHash,
+      secret_rotated_at: rotatedAt
+    } as DeviceUpdate);
+  }
+
+  async findBySecretHash(secretHash: string): Promise<DeviceRow | null> {
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('secret_hash', secretHash)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data as DeviceRow;
+  }
+
   async updateStatus(deviceId: string, status: string): Promise<DeviceRow> {
-    return this.update(deviceId, { status } as DeviceUpdate);
+    return this.update(deviceId, { is_active: status === 'active' } as DeviceUpdate);
   }
 
   async updateHeartbeat(deviceId: string): Promise<DeviceRow> {
     return this.update(deviceId, { last_heartbeat_at: new Date().toISOString() } as DeviceUpdate);
   }
 
+  async rotateSecret(deviceId: string, newSecretHash: string): Promise<DeviceRow> {
+    return this.update(deviceId, {
+      secret_hash: newSecretHash,
+      secret_rotated_at: new Date().toISOString()
+    } as DeviceUpdate);
+  }
+
+  async revokeSecret(deviceId: string): Promise<DeviceRow> {
+    return this.update(deviceId, {
+      secret_hash: null,
+      secret_rotated_at: new Date().toISOString()
+    } as DeviceUpdate);
+  }
+
   async getStats(tenantId: string): Promise<{
     total: number;
-    online: number;
-    offline: number;
+    active: number;
+    inactive: number;
     byType: Record<string, number>;
   }> {
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('status, device_type')
+      .select('is_active, device_type')
       .eq('tenant_id', tenantId);
 
     if (error) throw error;
-    const devices = data as { status: string; device_type: string }[];
+    const devices = data as { is_active: boolean | null; device_type: string }[];
 
     const byType: Record<string, number> = {};
-    let online = 0, offline = 0;
+    let active = 0, inactive = 0;
 
     for (const d of devices) {
-      if (d.status === 'online') online++;
-      else if (d.status === 'offline') offline++;
+      if (d.is_active) active++;
+      else inactive++;
       byType[d.device_type] = (byType[d.device_type] || 0) + 1;
     }
 
     return {
       total: devices.length,
-      online,
-      offline,
+      active,
+      inactive,
       byType,
     };
   }
