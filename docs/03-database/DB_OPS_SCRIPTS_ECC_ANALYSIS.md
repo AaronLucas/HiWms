@@ -342,8 +342,31 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 | # | 任务 | 优先级 | 状态 | 说明 |
 |---|------|--------|------|------|
 | P1-1 | 确认 `fn_current_user_id()` 在 Express API 会话中返回正确值 | P0 | ✅ 已验证（有 Gap） | 见 §11 详细分析 |
-| P1-2 | 验证 Device API 的 `secret_hash` 写入格式（bcrypt/argon2） | P1 | ⏳ | 018 新增列 |
+| P1-2 | 验证 Device API 的 `secret_hash` 写入格式（bcrypt/argon2） | P1 | ✅ 一致 | 三层验证通过 |
 | P1-3 | PgBouncer transaction 模式对 Supabase client 兼容性验证 | P2 | ⏳ | 确认 prepared statements 行为 |
+
+#### P1-2 验证详情（2026-07-26）
+
+**结论**：三层一致，无问题。
+
+**三层对照**：
+
+| 层级 | 文件:行 | 内容 |
+|------|---------|------|
+| 迁移 | `018:38` | `secret_hash TEXT` |
+| 设计文档 | `Device_Identity_Schema_V1.md:18` | "bcrypt/argon2 哈希" |
+| 应用代码 | `device-credentials.ts:114-136` | `argon2id type=2, m=65536, t=3, p=4` |
+
+**写入路径**（均用 `getAdminClient()` = service_role）：
+- `POST /device/provision` (routes.ts:720-734): `generateApiKey()` → `INSERT` secret_hash
+- `POST /admin/devices/{id}/pairing-qr` (routes.ts:804-809): `generateApiKey()` → `UPDATE` secret_hash
+
+**验证路径**：
+- `DeviceAuthMiddleware.ts:100-111`: `select secret_hash` → `verifyApiKeySecret(secret, hash)` → argon2 `verify()`
+
+**小差异（无影响）**：设计文档表述"哈希 API key (`hiwms_dk_<id>_<random>`)"暗示 hash 整个 key，
+但 `device-credentials.ts:123` 只 hash `randomPart`。这更正确——前缀和 device_id 可预测，验证时
+从 API key 解析出 random 部分后只比对随机字节。代码自洽，不构成不一致。
 
 #### P1-1 验证详情（2026-07-26）
 
