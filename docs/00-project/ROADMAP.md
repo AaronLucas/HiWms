@@ -329,17 +329,19 @@ DBA 团队在 HiWmsSupabase 仓库交付了新的运维脚本和设计文档。�
 | **功能** | 6 个监控视图 + 3 个 cron 任务 + 1 个连接池配置；1 个脚本已废弃 |
 | **设计** | 19 层严格顺序依赖架构 + 完整设计文档追溯链（19 × 文档 + 7 × 架构图） |
 | **测试** | 3 个新增脚本缺少专项测试（监控视图冒烟/cron 幂等性/PgBouncer 压测） |
-| **安全** | 2 个 CRITICAL 发现（无批量 DELETE / 全库全表扫描风险）；3 个 MEDIUM 发现 |
+| **安全** | 3 CRITICAL（视图无 ACL / superuser RLS 绕过 / payload 泄露）+ 2 HIGH + 4 MEDIUM |
 | **运维** | 部署顺序：迁移 001-018 → 019 手动执行 → cron jobs → 监控视图 → PgBouncer |
 
 **ECC 落地计划阶段**：Phase 0（文档同步 ✅）→ Phase 1（应用层适配验证 ⏳）→ Phase 2（运维部署 ⏳）→ Phase 3（测试补全 ⏳）→ Phase 4（持续治理 ⏳）
 
 **需提交至 HiWmsSupabase 的 Issue**：
-- 🔴 `fn_purge_old_action_logs` 改为批量删除（CRITICAL）
+- 🔴 `fn_purge_old_action_logs` 改为批量删除（CRITICAL — database-reviewer）
+- 🔴 监控视图补 GRANT/REVOKE 访问控制（CRITICAL — security-reviewer）
+- 🔴 `fn_expire_stalled_sync_events` payload 写入 exceptions 表（CRITICAL — security-reviewer）
 - 🟡 `v_table_bloat_detailed` 改为参数化函数（HIGH）
 - 🟡 `fn_expire_task_claims` 未注册为 cron job（ROADMAP §1.4 遗漏）
 
----
+> **2026-07-25 更新**：PR #49 已将 Phase 1.4 TypeScript 仓储层集成 + 休眠 bug 修复标记完成，Phase 8 集成测试补齐（Zone/InventoryUnit/StorageManagementPolicy）。与 ops-scripts ECC 分析正交——ops-scripts 是 DB 层运维能力，PR #49 是应用层仓储补全。
 
 ---
 
