@@ -52,6 +52,84 @@
 | **边缘计算** | 1m | Worker 执行时间、KV 命中率、错误分布 |
 | **租户隔离** | 5m | 租户级 QPS、错误率、资源配额使用率 |
 
+### 1.4 DB 层监控视图（DBA 团队交付，2026-07-25）
+
+> 脚本来源：`supabase/ops-scripts/unWMS_Monitoring_Views_V1.sql`  
+> ECC 分析：`docs/03-database/DB_OPS_SCRIPTS_ECC_ANALYSIS.md`
+
+DBA 团队交付了 6 个 PostgreSQL 原生监控视图，作为应用层 Prometheus/Grafana 监控的补充：
+
+| 视图 | 数据来源 | 用途 | 巡检频率 | 告警阈值 |
+|------|----------|------|----------|----------|
+| `v_slow_queries` | `pg_stat_statements` | 慢查询 Top N | 每日/每周 | `mean_exec_time > 1000ms` |
+| `v_unused_indexes` | `pg_stat_user_indexes` + `pg_index` | 无用索引候选清理（含 CANDIDATE_DROP 推荐） | 月度 | `recommendation='CANDIDATE_DROP' 且 > 10MB` |
+| `v_table_bloat` | `pg_class` 公式估算 | 表膨胀估算 | 每周 | `bloat_pct > 30% 且 > 100MB` |
+| `v_table_bloat_detailed` | `pgstattuple()` 精确扫描 | 精确死元组占比 | 维护窗口按需 | `dead_tuple_percent > 20%` |
+| `v_rls_perf` | `pg_policy` + `pg_class` | RLS 策略性能审计 | 新增 RLS 策略后 | Seq Scan 检测 |
+| `v_pg_cron_jobs` | `cron.job` + `cron.job_run_details` | 定时任务运行状态 | 每日 | `last_status != 'succeeded'` |
+
+**⚠️ 关键风险**：
+- `v_table_bloat_detailed` 使用 `CROSS JOIN LATERAL pgstattuple()` 无 WHERE 过滤——**严禁无表名过滤的全表查询**，会触发全库所有表的全表扫描。维护窗口按需针对特定表使用。
+- 监控视图当前无 GRANT 授权——仅 superuser 和创建角色可查询。建议创建专用运维角色 `unwms_ops` 并授予 6 个视图的 SELECT 权限。
+
+**与应用层监控的桥接策略**（待实施）：
+- 方案 A：Prometheus PostgreSQL Exporter 定时查询视图 → Prometheus → Grafana
+- 方案 B：Grafana PostgreSQL 数据源直连查询视图
+- 方案 C：Express 中间件查询视图 → 暴露为 Prometheus-format metrics
+
+### 1.5 pg_cron 定时任务（DBA 团队交付，2026-07-25）
+
+> 脚本来源：`supabase/ops-scripts/unWMS_Setup_Cron_Jobs_V2.1.sql`
+
+| 任务名 | 调度 | 调用函数 | 业务含义 | 数据操作 |
+|--------|------|----------|----------|----------|
+| `cross-dock-timeout-sweep` | `*/5 * * * *` | `fn_cross_dock_timeout_sweep()` | 直通作业超时自动降级 FALLBACK | UPDATE `cross_dock_jobs.status` |
+| `purge-old-action-logs` | `0 3 * * *` | `fn_purge_old_action_logs(180)` | 清理 180 天前操作日志和库存历史 | DELETE from `wo_action_logs`, `inventory_history` |
+| `expire-stalled-sync-events` | `*/5 * * * *` | `fn_expire_stalled_sync_events()` | 卡死 PROCESSING 超过 5 分钟的事件标记 EXCEPTION | UPDATE `sync_events` |
+
+**🔴 CRITICAL 风险**：
+- `fn_purge_old_action_logs` 使用**单条无批量 DELETE**——在高频仓库中可能涉及数千万行，单事务 DELETE 会导致长时间持锁、海量 WAL、可能超过 `statement_timeout`。**必须改为分批删除**（每批 10,000 行 + COMMIT + pg_sleep）。
+
+**⚠️ 运维要点**：
+- 幂等性：采用 `unschedule` + `schedule` 模式，可安全重复执行
+- 依赖：需 `pg_cron` 扩展（Supabase 预装；自托管 PG 需 `shared_preload_libraries='pg_cron'`）
+- 前置条件：001-018 迁移必须已执行完成
+- 监控：每日检查 `cron.job_run_details` 确认 `last_status = 'succeeded'`
+- 审计归档：日志清理是硬删除无归档——清理前如需保留，先 COPY 到 Supabase Storage
+- **遗漏**：ROADMAP §1.4 期望注册 `fn_expire_task_claims` 作为 cron job，但当前脚本未包含此任务
+
+**部署**：
+```bash
+psql $DATABASE_URL -v ON_ERROR_STOP=1 -f supabase/ops-scripts/unWMS_Setup_Cron_Jobs_V2.1.sql
+```
+
+### 1.6 PgBouncer 连接池管理（DBA 团队交付，2026-07-25）
+
+> 配置来源：`supabase/ops-scripts/unWMS_PgBouncer_Config_V1.ini`
+
+| 参数 | 建议值 | 说明 |
+|------|--------|------|
+| `pool_mode` | `transaction` | 事务完成后归还连接 |
+| `default_pool_size` | `25` | 每库/用户对的服务端连接数 |
+| `max_client_conn` | `100` | 前端连接总数上限（⚠️ WMS 大量 PDA 设备时可能不足） |
+| `idle_transaction_timeout` | `30s` | 空闲事务超时强断——**应用层事务必须 < 30s 完成** |
+| `query_wait_timeout` | `10s` | 等待可用连接超时 |
+| `server_lifetime` | `3600s` | 1h 轮换连接（⚠️ 可能偏激进，建议 2-4h） |
+
+**⚠️ 运维要点**：
+- `disable_pqexec = 1` 需取消注释——transaction 模式下 prepared statements 无法跨事务复用
+- `stats_users` 需配置——否则无法执行 `SHOW POOLS` / `SHOW STATS` 管理命令
+- TLS 建议：生产环境启用 `client_tls_sslmode = require`
+- 部署后首周每日执行 `SHOW POOLS` 巡检，按需调整 pool_size
+
+**部署**：
+```bash
+cp supabase/ops-scripts/unWMS_PgBouncer_Config_V1.ini /etc/pgbouncer/pgbouncer.ini
+# 修改 [databases] 指向真实 PostgreSQL 地址
+# 配置 userlist.txt 或 auth_query
+systemctl reload pgbouncer
+```
+
 ---
 
 ## 2. 日志体系
