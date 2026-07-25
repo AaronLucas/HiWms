@@ -173,7 +173,7 @@ describe('SupabaseRpcClient - P1-1 rawWithAuth', () => {
     it('should inject tenant_id when provided in options', async () => {
       const userToken = 'test-token';
       const functionName = 'fn_resolve_exception';
-      const args = { p_exception_id: '123', p_tenant_id: undefined };
+      const args = { p_exception_id: '123' };
       const tenantId = 'tenant-456';
 
       await rpcClient.rawWithAuth(userToken, functionName, args, { tenantId });
