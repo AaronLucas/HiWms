@@ -339,11 +339,43 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 
 ### Phase 1：应用层适配验证
 
-| # | 任务 | 优先级 | 说明 |
-|---|------|--------|------|
-| P1-1 | 确认 `fn_current_user_id()` 在 Express API 会话中返回正确值 | P0 | 010/013/015/017 均依赖此函数 |
-| P1-2 | 验证 Device API 的 `secret_hash` 写入格式（bcrypt/argon2） | P1 | 018 新增列 |
-| P1-3 | PgBouncer transaction 模式对 Supabase client 兼容性验证 | P2 | 确认 prepared statements 行为 |
+| # | 任务 | 优先级 | 状态 | 说明 |
+|---|------|--------|------|------|
+| P1-1 | 确认 `fn_current_user_id()` 在 Express API 会话中返回正确值 | P0 | ✅ 已验证（有 Gap） | 见 §11 详细分析 |
+| P1-2 | 验证 Device API 的 `secret_hash` 写入格式（bcrypt/argon2） | P1 | ⏳ | 018 新增列 |
+| P1-3 | PgBouncer transaction 模式对 Supabase client 兼容性验证 | P2 | ⏳ | 确认 prepared statements 行为 |
+
+#### P1-1 验证详情（2026-07-26）
+
+**结论**：`fn_current_user_id()` 在 Express API 会话中**始终返回 NULL**。
+
+**根因**：`WmsSupabaseClient` 是单例，用 `anonKey` 创建（`SupabaseClient.ts:92-95`），
+无 per-request JWT 注入机制。Express auth middleware 提取 JWT 后仅存入 `req.context.user`
+内存对象，未注入到下游 Supabase client。所有 DB 请求带着 `Authorization: Bearer <anonKey>`
+发出，`auth.uid()` 无用户 JWT → 返回 NULL，`fn_current_user_id()` 的 EXCEPTION handler
+捕获并返回 NULL。
+
+**调用链**：
+```
+Express auth middleware → verifyToken(JWT) → req.context.user ✅
+WmsSupabaseClient.getClient() → singleton, anonKey only → DB request
+→ Authorization: Bearer <anonKey> (NO user JWT)
+→ auth.uid() → NULL
+→ fn_current_user_id() → EXCEPTION → NULL
+```
+
+**影响**：
+
+| 调用方 | 文件 | NULL 路径行为 |
+|--------|------|---------------|
+| RLS policies (storage) | `008:101-102,139` | `fn_is_platform_admin(NULL)` → 不识别管理员 |
+| `fn_resolve_exception` | `017:73-76` | 身份校验跳过 → 失去防冒充保护 |
+| `check_user_permission` | `013:55` | 自检场景降级 |
+
+**修复方向**：在 `WmsSupabaseClient.rpc()` 增加 `userToken` 选项，支持 per-request 创建
+带用户 JWT 的临时 Supabase client；或在 `ExpressMiddlewareFactory.authenticate()` 中
+将 JWT 注入到请求级 Supabase client。详见 `src/adapters/supabase/SupabaseClient.ts` 和
+`src/adapters/supabase/rpc/SupabaseRpcClient.ts`。
 
 ### Phase 2：运维部署
 
