@@ -497,7 +497,7 @@ DBA 团队评审原 PDA 离线同步设计（状态同步 + OT/CRDT 冲突合并
 
 | 优先级 | 任务 | 跟踪位置 |
 |---|---|---|
-| P0 | `wms7` 侧 `DB_SCHEMA.md`/`REPOSITORY_ROADMAP.md` 同步到 009-016 | `docs/03-database/REPOSITORY_ROADMAP.md`「跨仓库同步与状态核实」 |
+| ✅ **P0 已完成** | `wms7` 侧 `DB_SCHEMA.md`/`REPOSITORY_ROADMAP.md` 同步到 009-016 | `docs/03-database/REPOSITORY_ROADMAP.md`「跨仓库同步与状态核实」 |
 | P1 | Phase 8 补齐集成测试证据 | 同上 |
 | P2 | Phase 1-4 共 66 个 Repository 文件真实状态核实 | 同上，文档正文与文末总结自相矛盾，需先核实再排期 |
 | P2 | daily_summary 两表下游消费方核实 | 同上 |
