@@ -343,7 +343,37 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 |---|------|--------|------|------|
 | P1-1 | 确认 `fn_current_user_id()` 在 Express API 会话中返回正确值 | P0 | ✅ 已验证（有 Gap） | 见 §11 详细分析 |
 | P1-2 | 验证 Device API 的 `secret_hash` 写入格式（bcrypt/argon2） | P1 | ✅ 一致 | 三层验证通过 |
-| P1-3 | PgBouncer transaction 模式对 Supabase client 兼容性验证 | P2 | ⏳ | 确认 prepared statements 行为 |
+| P1-3 | PgBouncer transaction 模式对 Supabase client 兼容性验证 | P2 | ✅ 兼容（3 项建议） | 见下方详情 |
+
+#### P1-3 验证详情（2026-07-26）
+
+**结论**：PostgREST + Supabase JS client 与 PgBouncer transaction 模式**兼容**，
+`unWMS_PgBouncer_Config_V1.ini` 配置基本合理。发现 3 项优化建议，无阻断性风险。
+
+**兼容性扫描**（6 维度）：
+
+| 维度 | 检测结果 | 交易模式兼容? |
+|------|----------|:---:|
+| Prepared statements | migrations 无 `PREPARE`/`DEALLOCATE`；PostgREST 用扩展查询协议的匿名语句 | ✅ |
+| `SET LOCAL` / `current_setting` | 仅 `001:1767` `fn_current_tenant_id()` 读 `request.jwt.claims` — PostgREST 每请求 `SET LOCAL`，交易级作用域 | ✅ |
+| `LISTEN`/`NOTIFY` | migrations 全量 grep，零使用 | ✅ |
+| Advisory locks | migrations 全量 grep，零使用 | ✅ |
+| Temp tables / `WITH HOLD` cursors | 零使用 | ✅ |
+| Supabase Realtime / WebSocket | app 代码中零引用 | ✅ |
+
+**发现的 3 项建议**：
+
+| # | 配置项 | 当前 | 建议 | 原因 |
+|---|--------|------|------|------|
+| 1 | `disable_pqexec` (line 133) | ❌ 注释掉 | ✅ 取消注释为 `disable_pqexec = 1` | 虽然 PostgREST 不用命名 prepared statement，但任何直连 PG 的工具（psql、pgAdmin、DB migration 脚本）可能在交易池中意外触发。显式关闭是最佳实践 |
+| 2 | `stats_users` (line 89) | ❌ 注释掉 | 配置一个只读监控用户 | 部署后无法执行 `SHOW POOLS`/`SHOW STATS` 监控池状态，运维盲区 |
+| 3 | TLS (lines 119-127) | ❌ 全部注释 | 根据部署拓扑评估：若 PgBouncer 与 PG 部署在同一主机/内网，内网明文可接受；若跨网络，必须启用 | 注释标注"如需"是合理的，但部署前需明确决策并记录 |
+
+**`server_reset_query` 与 Supabase 交互验证**：
+- 配置：`ABORT; RESET ALL; SET SESSION AUTHORIZATION DEFAULT;`
+- `RESET ALL` 清除 `role`、`request.jwt.claims` 等 — ✅ 正确，PostgREST 下个请求会重新 `SET LOCAL`
+- `SET SESSION AUTHORIZATION DEFAULT` 重置认证用户 — ✅ 正确
+- 这是 PgBouncer 官方推荐的交易模式清理语句
 
 #### P1-2 验证详情（2026-07-26）
 
