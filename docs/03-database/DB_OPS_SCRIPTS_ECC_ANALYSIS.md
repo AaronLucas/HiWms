@@ -635,14 +635,217 @@ WHERE indexrelname IN (
 - 若建索引失败（极少见），不会影响已有索引，表保持可读写状态
 | P2-2 | 注册 pg_cron 定时任务（幂等脚本） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #38 + #39 |
 | P2-3 | 部署监控视图（6 views） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #35 |
-| P2-4 | PgBouncer 部署评估 | P2 | ⏳ | **开发/运维** | 半天评估 + 半天部署压测 | 🟢 |
+| P2-4 | PgBouncer 部署评估 | P2 | ✅ 已评估（无需部署独立 PgBouncer） | **开发/运维** | 0.5 天（文档更新 + 连接确认） | 🟢 |
 
-**P2-4 部署评估清单**：
-1. 统计当前生产活跃连接数（`pg_stat_activity`），判断是否需要连接池
-2. 按 P1-3 的 3 项建议修改配置（`disable_pqexec=1`、`stats_users`、TLS 决策）
-3. 测试环境部署 PgBouncer → 指向测试 PG → 用 `SHOW POOLS`/`SHOW STATS` 确认池工作正常
-4. 压测：模拟生产并发，确认 `default_pool_size=25` 是否够用，无 "too many clients" 错误
-5. 生产上线后首周每日巡检 `SHOW POOLS`，按需调整 `pool_size`
+#### P2-4 审查详情（2026-07-26）
+
+**结论**：当前 wms7 使用 **Supabase 托管平台**，Supabase 已内置 PgBouncer（端口 6543），
+应用层（PostgREST HTTP）**无需额外部署**独立 PgBouncer。
+DBA 配置文件的正确目标场景是 **DBA 直连 PG 的连接池化**（migrations / psql / pgAdmin），
+而非在 PostgREST 前端再套一层 pooler。配置本身质量高，但需要根据 Supabase 部署拓扑重新定位用途。
+
+---
+
+##### 1. 连接拓扑分析
+
+**当前 wms7 数据库连接路径**：
+
+```
+┌──────────────────────────────────────────────────┐
+│                 wms7 Application                  │
+│  ┌──────────────┐  ┌──────────────┐              │
+│  │ React SPA    │  │ Express API  │              │
+│  │ (PDA/Web)    │  │ (device-api) │              │
+│  └──────┬───────┘  └──────┬───────┘              │
+│         │                 │                       │
+│         └────────┬────────┘                       │
+│                  ▼                                │
+│    Supabase JS Client (@supabase/supabase-js)     │
+│    createClient(SUPABASE_URL, SUPABASE_ANON_KEY)  │
+│    .env: SUPABASE_URL=https://xxx.supabase.co     │
+└──────────────────┬───────────────────────────────┘
+                   │ HTTPS (port 443)
+                   ▼
+┌──────────────────────────────────────────────────┐
+│           Supabase 托管平台 (Cloud)               │
+│  ┌────────────────────────────────────────────┐  │
+│  │  PostgREST (HTTP API)                      │  │
+│  │  → 内部连接池 → PgBouncer (Supabase 内置)   │  │
+│  │  → PostgreSQL                              │  │
+│  └────────────────────────────────────────────┘  │
+│                                                   │
+│  ┌────────────────────────────────────────────┐  │
+│  │  Supabase PgBouncer (端口 6543, 可选)      │  │
+│  │  用于直连 PG 的客户端 (psql, DBA tools)     │  │
+│  └────────────────────────────────────────────┘  │
+│                                                   │
+│  PostgreSQL (多租户)                              │
+│  ├── Migrations 001-019                          │
+│  ├── pg_cron Jobs                                │
+│  ├── Monitoring Views                            │
+│  └── RLS Policies                                │
+└──────────────────────────────────────────────────┘
+```
+
+**关键事实**：
+
+| 连接方式 | 使用的端口/路径 | 是否需要额外 PgBouncer | 原理 |
+|----------|:--------------:|:----------------------:|------|
+| Supabase JS client (HTTP) | `https://xxx.supabase.co` (443) | ❌ | PostgREST 是 HTTP API，Supabase 后台已管理连接池。`supabase-js` 不建 PG TCP 连接 |
+| PostgREST → PG | Supabase 内部 | ❌ | PostgREST 自带连接池（`db-pool` 配置），Supabase 托管平台已在前置 PgBouncer |
+| 直连 PG（psql / DBA 工具） | `xxx.supabase.co:6543` (PgBouncer) 或 `:5432` (直连) | ⚠️ 可选 | 若 DBA 团队频繁用 psql/pgAdmin/migration CI，走 6543 端口（Supabase PgBouncer）更安全 |
+| pg_cron 内部调用 | PG 内部 | ❌ | 定时任务在 PG 进程内执行，不经过外部连接 |
+
+##### 2. Supabase 内置 PgBouncer 能力
+
+Supabase 每个项目自带 PgBouncer，关键参数：
+
+| 参数 | Supabase 默认 | 当前 DBA 配置对应值 | 差异 |
+|------|:------------:|:-----------------:|------|
+| Port | `6543` | `5432`（本地） | Supabase PgBouncer 在独立端口 |
+| Pool mode | `transaction` | `transaction` | ✅ 一致 |
+| Default pool size | 15 (Starter) / 按 Plan 自动 | `25` | Supabase 托管自动管理，**用户不可调** |
+| Max client conn | 200 (Pro) | `100` | Supabase 自动管理 |
+| `server_reset_query` | `DISCARD ALL` | `ABORT; RESET ALL; SET SESSION AUTHORIZATION DEFAULT` | DBA 配置更精细（保留临时表/序列） |
+| Connection string | `postgres://...:6542/postgres` | `host=127.0.0.1 port=5432` | Supabase pooler 在 6543，使用 connection URI |
+
+> **Supabase 文档**：https://supabase.com/docs/guides/database/connecting-to-postgres#connection-pooler
+> PgBouncer 连接使用端口 `6543`，直连使用端口 `5432`。
+
+**重要**：Supabase 托管 PgBouncer 的 pool size 由 Supabase 按计算计划自动管理，**用户无法通过 `pgbouncer.ini` 调参**。
+`unWMS_PgBouncer_Config_V1.ini` 中的 `default_pool_size=25`、`max_client_conn=100` 等参数在 Supabase 环境下无法直接应用。
+
+##### 3. 配置文件适用性 Gap 分析
+
+将 DBA 配置文件逐项对照 Supabase 部署环境：
+
+| 配置段 | DBA 建议 | Supabase 环境匹配 | 差距 |
+|--------|----------|:---:|------|
+| `[databases]` `* = host=127.0.0.1 port=5432` | 本地 PG | ❌ | Supabase 是远程云服务，非 `127.0.0.1` |
+| `pool_mode = transaction` | ✅ | ✅ | 一致 |
+| `default_pool_size = 25` | 手动设定 | ⚠️ | Supabase 托管自动管理，用户不可设 |
+| `max_client_conn = 100` | 手动设定 | ⚠️ | 同上，Supabase 自动管理 |
+| `idle_transaction_timeout = 30` | 30s | ⚠️ | Supabase PgBouncer 默认 0（不超时），如直接使用需与 Supabase 确认 |
+| `query_wait_timeout = 10` | 10s | ⚠️ | 需确认 Supabase 侧配置，避免两层超时叠加 |
+| `server_lifetime = 3600` | 1h | ⚠️ | Supabase 管理，不可调 |
+| `server_reset_query` | `ABORT; RESET ALL; ...` | ⚠️ | Supabase PgBouncer 用 `DISCARD ALL`，DBA 配置更精细 |
+| `auth_type = scram-sha-256` | ✅ 正确 | ✅ | Supabase 同样要求 |
+| `disable_pqexec` | 注释掉 | ⚠️ | **Supabase PgBouncer 默认 `disable_pqexec = 1`**（P1-3 已指出需取消注释） |
+| `stats_users` | 注释掉 | ⚠️ | Supabase pooler 用户不可管理 admin/stats 角色 |
+| TLS | 全部注释 | ⚠️ | Supabase 强制 TLS，应用层无需配置 |
+
+**分数**：16 项配置中 4 项直接匹配（✅），12 项需要适配或有差异（❌/⚠️）。
+
+**根本原因**：配置文件的设计假设是「在应用服务器或跳板机上自建 PgBouncer 进程，指向本地 PostgreSQL」，
+这是标准自托管 PostgreSQL 架构。但 wms7 使用 Supabase 托管平台，PgBouncer 由平台管理，
+独立部署一层 PgBouncer 不仅不必要，还可能引入额外的网络跳点和延迟。
+
+##### 4. 部署决策树
+
+```
+当前 PG 是否使用 Supabase 托管平台？
+├── YES (wms7 现状)
+│   ├── 应用层连接 (supabase-js / PostgREST)
+│   │   └── ❌ 不需要独立 PgBouncer（Supabase 已内置）
+│   │
+│   ├── DBA 直连 (psql / pgAdmin / CI migration)
+│   │   ├── 连接数 < 20 → 直连 5432 端口即可
+│   │   └── 连接数 > 20 或 CI/CD 并发高 → 使用 Supabase PgBouncer (端口 6543)
+│   │
+│   └── 配置文件用途
+│       └── 转为「Supabase PgBouncer 使用指南」文档，记录：
+│           - 连接端口 6543 的适用场景
+│           - 应用层不需要 pooler 的原因
+│           - DBA 工具的连接字符串模板
+│
+└── NO (未来自建 PG 或从 Supabase 迁出)
+    └── ✅ 此配置文件可直接使用，仅需修改 [databases] 指向实际 PG 地址
+```
+
+##### 5. 具体建议
+
+| # | 建议 | 目标 | 优先级 |
+|---|------|------|:---:|
+| 1 | **不需要部署独立 PgBouncer 进程** | 应用层已通过 Supabase 内置 PgBouncer 池化 | P0 |
+| 2 | **DBA 工具连接改用 6543 端口**（若当前用 5432） | `psql "postgres://...:6543/postgres?sslmode=require"` | P1 |
+| 3 | **将配置文件转为「运维参考」而非「部署物料」** | 在文件头增加注释说明：此配置用于自托管 PG 场景，Supabase 平台请使用内置 PgBouncer (端口 6543) | P1 |
+| 4 | **CI/CD 迁移 job 走 PgBouncer 端口** | `.github/workflows/ci.yml` 中 `migrations-apply-clean` job 若直连 PG，改为 `DB_PORT=6543` | P2 |
+| 5 | **记录 `server_reset_query` 差异到运维 runbook** | `DISCARD ALL` vs `ABORT; RESET ALL; ...` 的行为差异在迁移脚本依赖临时表时才有意义——当前所有迁移无临时表，差异无影响。但应记录在案 | P2 |
+
+##### 6. 配置参数有效性评价
+
+以下参数适用于**任何将来可能需要的自建 PgBouncer 场景**（如从 Supabase 迁出、或 DBA 需要本地 pooler）：
+
+| 参数 | DBA 设定 | 评价 |
+|------|----------|------|
+| `pool_mode = transaction` | ✅ | 正确。与 PostgREST 和 Supabase 推荐一致 |
+| `default_pool_size = 25` | ✅ | 合理的起步值。监控后按需调整 |
+| `max_client_conn = 100` | ✅ | 合理。中等规模应用足够 |
+| `idle_transaction_timeout = 30` | ✅ | 激进但正确——强制事务快进快出。若业务有长事务需调高 |
+| `query_wait_timeout = 10` | ✅ | 合理。配合应用层重试机制 |
+| `server_idle_timeout = 600` | ✅ | 10 分钟合理 |
+| `server_lifetime = 3600` | ✅ | 1 小时轮换合理，防止连接积累状态 |
+| `server_check_delay = 30` | ✅ | 及时检测坏连接 |
+| `auth_type = scram-sha-256` | ✅ | 正确。Supabase 同样要求 |
+| `server_reset_query` | ✅ | 精细清理，优于 `DISCARD ALL`（保留临时表/序列） |
+| `syslog = 1` | ✅ | 正确。生产应接入 syslog → 集中式日志系统 |
+| `stats_period = 60` | ✅ | 1 分钟统计间隔合理 |
+
+**总评**：参数选择体现了 DBA 团队对 transaction 模式 PgBouncer 的深入理解。
+所有超时、生命周期、清理参数的设定都有明确的防止连接泄漏/死锁/状态污染的目标，
+且值的选择在业界最佳实践范围内。配置文件质量高，**唯一的问题是它被放在了错误的部署拓扑里**。
+
+##### 7. 执行清单（更新版）
+
+基于以上分析，P2-4 的实际可执行任务：
+
+```bash
+# === 不需要做的 ===
+# ❌ 不要在应用服务器上安装 PgBouncer
+# ❌ 不要在 Supabase PostgREST 前加 PgBouncer 层
+# ❌ 不要修改 Supabase 内置 PgBouncer 的配置（不可调）
+
+# === 需要做的 ===
+
+# 1. [P1] 确认 DBA 工具连接方式
+# 检查 DBA 团队当前用哪个端口连接 PG:
+psql "postgres://user:pass@db.xxx.supabase.co:5432/postgres"  # 直连
+# vs
+psql "postgres://user:pass@db.xxx.supabase.co:6543/postgres"  # PgBouncer
+# → 若用 5432，建议切换到 6543
+
+# 2. [P1] 更新配置文件注释
+# 在 unWMS_PgBouncer_Config_V1.ini 头部增加 Supabase 部署说明:
+# "注意：若使用 Supabase 托管平台，PgBouncer 已内置（端口 6543）。
+#  此配置文件适用于自托管 PostgreSQL 场景。详见 P2-4 部署评估。"
+
+# 3. [P2] 统计当前直连 PG 的连接数
+# 判断 6543 端口是否够用：
+psql -h db.xxx.supabase.co -p 6543 -c "
+SELECT application_name, state, count(*) 
+FROM pg_stat_activity 
+GROUP BY application_name, state 
+ORDER BY count(*) DESC;
+"
+
+# 4. [P2] 验证 Supabase PgBouncer 配置
+# 连接到 6543 端口，检查池模式：
+psql -h db.xxx.supabase.co -p 6543 -c "SHOW pool_mode;"  # 预期: transaction
+psql -h db.xxx.supabase.co -p 6543 -c "SHOW pools;"       # 预期: 可见池状态
+psql -h db.xxx.supabase.co -p 6543 -c "SHOW stats;"       # 预期: 吞吐统计
+```
+
+##### 8. 总结
+
+| 维度 | 评估 |
+|------|------|
+| 是否需要部署 | ❌ **不需要**——Supabase 已内置 PgBouncer |
+| 配置文件质量 | ⭐⭐⭐⭐⭐ 参数选择专业，适合自托管 PG 场景 |
+| 配置适用性 | ⭐⭐ 仅 ~25% 配置项适用于 Supabase 环境 |
+| 安全影响 | 🟢 无——不部署即无新增攻击面 |
+| PgBouncer 当前状态 | Supabase 托管，端口 6543 可用，transaction 模式 |
+| 推荐行动 | 配置文件转为参考文档 + DBA 工具切到 6543 + CI migration job 走 pooler 端口 |
+| 预估工时 | 0.5 天（文档更新 + 连接确认 + CI 配置调整） |
 
 ### Phase 3：测试补全
 
