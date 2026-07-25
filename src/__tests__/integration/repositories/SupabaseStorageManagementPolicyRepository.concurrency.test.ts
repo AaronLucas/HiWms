@@ -82,16 +82,6 @@ describe.skipIf(!RUN)('SupabaseStorageManagementPolicyRepository 存储策略正
   });
 
   test('findByTenant：按租户查找策略 / 不存在返回 null', async () => {
-    const created = await repo.create({
-      tenant_id: tenantId,
-      budget_tier: 'PREMIUM',
-      hot_retention_days: 90,
-      warn_threshold_pct: 60,
-      critical_threshold_pct: 85,
-      archive_enabled: false,
-    });
-    createdPolicyIds.push(created.id);
-
     const found = await repo.findByTenant(tenantId);
     expect(found).not.toBeNull();
     expect(found!.tenant_id).toBe(tenantId);
@@ -101,24 +91,15 @@ describe.skipIf(!RUN)('SupabaseStorageManagementPolicyRepository 存储策略正
   });
 
   test('update：更新存储策略', async () => {
-    const created = await repo.create({
-      tenant_id: tenantId,
-      budget_tier: 'STANDARD',
-      hot_retention_days: 7,
-      warn_threshold_pct: 50,
-      critical_threshold_pct: 80,
-      archive_enabled: false,
-    });
-    createdPolicyIds.push(created.id);
-
-    const updated = await repo.update(created.id, {
+    const existingId = createdPolicyIds[0];
+    const updated = await repo.update(existingId, {
       warn_threshold_pct: 75,
       hot_retention_days: 14,
     });
 
     expect(updated.warn_threshold_pct).toBe(75);
     expect(updated.hot_retention_days).toBe(14);
-    expect(updated.critical_threshold_pct).toBe(80);
+    expect(updated.critical_threshold_pct).toBe(90);
   });
 
   test('getEffectivePolicy：获取生效策略（RPC fn_get_storage_policy）', async () => {
