@@ -102,7 +102,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
       anonKey: SUPABASE_SERVICE_ROLE_KEY,
       serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
     });
-    client = adapters.client.getClient();
+    client = adapters.client.getAdminClient();
 
     const { data: tenant, error: tenantErr } = await client
       .from('tenants')

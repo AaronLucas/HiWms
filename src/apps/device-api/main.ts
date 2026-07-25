@@ -31,9 +31,11 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<Expre
     deps.supabaseAdapters.auth.provider,
     deps.supabaseAdapters.auth.tenantResolver,
     {
-      jwtSecret: config.device.jwtSecret,
       jwtIssuer: config.device.jwtIssuer,
       jwtAudience: config.device.jwtAudience,
+      apiKeyPrefix: 'hiwms_dk',
+      accessTokenTtlSec: 900,
+      refreshTokenTtlSec: 604800,
     }
   );
 

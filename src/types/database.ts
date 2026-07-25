@@ -7,31 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       barcode_mappings: {
@@ -536,6 +511,8 @@ export type Database = {
           device_type: string
           id: string
           is_active: boolean | null
+          secret_hash: string | null
+          secret_rotated_at: string | null
           tenant_id: string | null
           updated_at: string | null
         }
@@ -545,6 +522,8 @@ export type Database = {
           device_type: string
           id?: string
           is_active?: boolean | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -554,6 +533,8 @@ export type Database = {
           device_type?: string
           id?: string
           is_active?: boolean | null
+          secret_hash?: string | null
+          secret_rotated_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -4338,9 +4319,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

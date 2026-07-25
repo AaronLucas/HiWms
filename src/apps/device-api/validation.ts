@@ -241,12 +241,10 @@ export const missingLabelConfirmSchema = z.object({
   scanned_lpn_code: z.string().min(1),
 });
 
-/** 接收未识别货物请求 */
-// 注意：actor_user_id 同上，改由 req.context.userId 派生（保持可选，纯设备
-// 认证场景下 context.userId 本就可能不存在）。
+/** 接收未识别货物请求
+ *  tenant_id 由认证上下文派生（req.context.tenantId），不接受客户端传入
+ */
 export const unidentifiedReceiveSchema = z.object({
-  /** 租户 ID */
-  tenant_id: uuidSchema,
   /** 库位 ID */
   location_id: uuidSchema,
   /** 数量 */
@@ -273,6 +271,53 @@ export type GenerateInternalLpnRequest = z.infer<typeof missingLabelGenerateSche
 export type ConfirmLabelAppliedRequest = z.infer<typeof missingLabelConfirmSchema>;
 export type ReceiveUnidentifiedGoodsRequest = z.infer<typeof unidentifiedReceiveSchema>;
 export type IdentifyUnidentifiedGoodsRequest = z.infer<typeof unidentifiedIdentifySchema>;
+
+// ========== Device Authentication Endpoints (ADR-019) ==========
+
+/** POST /device/auth/login 请求体 */
+export const deviceAuthLoginSchema = z.object({
+  device_id: uuidSchema,
+  api_key: z.string().min(1, 'API Key is required'),
+  fcm_token: z.string().optional(),
+  app_version: z.string().optional(),
+  os_version: z.string().optional(),
+  device_model: z.string().optional(),
+});
+
+/** POST /device/auth/refresh 请求体 */
+export const deviceAuthRefreshSchema = z.object({
+  refresh_token: z.string().min(1, 'Refresh token is required'),
+});
+
+/** POST /device/provision 请求体 (Admin API - 租户自助配发)
+ *  tenant_id 由认证上下文派生，不接受客户端传入
+ */
+export const deviceProvisionSchema = z.object({
+  device_id: z.string().min(1).max(100),
+  device_name: z.string().min(1).max(200),
+  device_type: z.enum(['HANDHELD', 'SCALE', 'CONVEYOR', 'AGV', 'GATEWAY']),
+});
+
+/** POST /admin/devices/:id/pairing-qr 请求体 */
+export const devicePairingQrSchema = z.object({
+  /** 二维码有效期（秒），默认 300 秒 (5 分钟) */
+  ttl_seconds: z.coerce.number().int().positive().max(3600).default(300),
+});
+
+export type DeviceAuthLoginRequest = z.infer<typeof deviceAuthLoginSchema>;
+export type DeviceAuthRefreshRequest = z.infer<typeof deviceAuthRefreshSchema>;
+export type DeviceProvisionRequest = z.infer<typeof deviceProvisionSchema>;
+export type DevicePairingQrRequest = z.infer<typeof devicePairingQrSchema>;
+
+// Admin 设备配对二维码路径参数 schema
+export const devicePairingQrParamsSchema = z.object({
+  id: uuidSchema,
+});
+
+// 导出 z 用于 routes.ts
+export { z };
+
+// ========== 验证中间件 ==========
 
 /**
  * 创建请求体验证中间件

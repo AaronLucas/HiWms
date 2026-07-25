@@ -94,12 +94,41 @@
 - [x] **第一轮**（`DBA_ADDENDUM_REQUEST_2026-07-20.md`，覆盖迁移 005-008）：4/5 项已由
       009/010/015/016 修复（1 项 CRITICAL 因反复发现更深层同类问题，历时 4 个迁移才完全
       收口），1 项（GRANT 缺失，INFO）保持非阻塞
-- [ ] **第二轮**（`DBA_ADDENDUM_REQUEST_2026-07-23.md`，2026-07-23 新增，覆盖迁移
-      009-016）：6 项新发现，其中新发现 1（`fn_resolve_exception` 信任调用方传入的
-      `p_resolver_user_id`，与 013 修复的 `check_user_permission` 同一类身份冒用漏洞模式，
-      **至今未修复**）优先级最高；详见该文档
-- [ ] **`HiWmsSupabase#1`**（GitHub Issue，镜像第一轮 addendum）目前仍是 OPEN——第二轮
-      文档已建议 DBA 团队据实更新，应用团队不代为编辑该仓库 issue
+- [x] **第二轮**（`DBA_ADDENDUM_REQUEST_2026-07-23.md`，2026-07-23 新增，覆盖迁移
+      009-016）：6 项新发现，**新发现 1（`fn_resolve_exception` 身份冒用）已由 Migration 017 修复**；新发现 2 GRANT 策略 ADR 待定；新发现 3 `fn_expire_stalled_sync_events` pg_cron 挂载待确认；新发现 4-6 非阻塞记录
+- [x] **`HiWmsSupabase#1`**（GitHub Issue，镜像第一轮 addendum）——建议 DBA 团队据实更新（4/5 已关闭，1 项非阻塞保留）
+- [x] **设备身份签发子系统 Schema 使能**（`DBA_ADDENDUM_REQUEST_DEVICE_IDENTITY_2026-07-23.md`）：**Migration 018 已落地**（`devices.secret_hash`/`secret_rotated_at` + `permissions.devices` 资源行）
+
+---
+
+### 1.6 ADR-019 设备身份签发子系统应用层实施（新增阶段，依赖 Migration 017/018 已完成）
+
+> **背景**：ADR-019 设计已定稿（2026-07-23），Migration 017/018 已在 HiWmsSupabase 完成部署，现需在 wms7 应用层落地三层凭证体系与三大端点。
+
+#### 1.6.1 前置依赖（已就绪）
+- [x] **Migration 017**：`fn_resolve_exception` 强制校验 `p_resolver_user_id === fn_current_user_id()`（纵深防御）
+- [x] **Migration 018**：`devices.secret_hash`/`secret_rotated_at` 两列 + `permissions` 表 `devices` 资源行（CREATE/READ/UPDATE/DELETE）
+- [x] 本地同步：`scripts/sync-db-migrations.sh` 已同步 017/018 到 `./supabase/migrations/`，`.readonly/` 同步设计文档
+
+#### 1.6.2 应用层实施任务（✅ 已完成，待 code review + PR）
+- [x] **SupabaseDeviceRepository.ts 字段漂移修复**（`src/adapters/supabase/repositories/SupabaseDeviceRepository.ts`）
+  - ✅ 移除对不存在列的查询（`code`、`status`、`current_task_id`、`last_heartbeat_at` 等）
+  - ✅ 补齐：`secret_hash`/`secret_rotated_at` 读写支持（`updateSecretHash`/`rotateSecret`/`revokeSecret`/`getStats`）
+- [x] **密钥生成/哈希/JWT 验签核心实现**（`src/apps/device-api/auth/device-credentials.ts`, 432 行）
+  - ✅ API Key 生成：`hiwms_dk_<device_id>_<random>`
+  - ✅ 密钥哈希：argon2id（`verifyApiKeySecret`）
+  - ✅ JWT 签发/验签：`jose`，HS256，锁定 `alg` 拒绝 `none`，租户级签名密钥（`kid` 声明）
+- [x] **设备认证三端点实现**（`src/apps/device-api/routes.ts`）
+  - ✅ `POST /device/provision` — 需人类登录态 + `req.context.userId`
+  - ✅ `POST /device/auth/login` — API Key 换 Access Token + Refresh Token
+  - ✅ `POST /device/auth/refresh` — Refresh Token 换新 Token 对
+- [x] **DeviceAuthMiddleware JWT/API Key 双轨验证**（`src/apps/device-api/DeviceAuthMiddleware.ts`）
+  - ✅ `jose.jwtVerify` HS256 验签，锁定 `alg` 拒绝 `none`
+  - ✅ API Key 解析 `hiwms_dk_<device_id>_<secret>` → 查 `secret_hash` → argon2id 验证
+- [x] **二维码配对流程端点**（`POST /admin/devices/:id/pairing-qr`）
+  - ✅ 生成新 API Key → 轮换 `secret_hash`/`secret_rotated_at` → 返回 base64url 二维码
+- [x] **测试覆盖**：单元测试 59/59 ✅ | 集成测试 5/5 ✅（sync 端点 HTTP 契约）
+- [ ] **device auth HTTP 集成测试补充**（login/refresh/provision/pairing-qr 端到端，待后续迭代）
 
 ---
 

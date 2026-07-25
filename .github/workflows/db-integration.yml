@@ -1,7 +1,7 @@
 name: DB Integration Tests
 
 # 数据库集成/并发测试：从独立仓库 HiWmsSupabase 拉取迁移脚本，起一次性本地
-# Docker Postgres（`supabase start`），跑 001-008 迁移，再跑标记为
+# Docker Postgres（`supabase start`），跑全量迁移（019 除外部署），再跑标记为
 # RUN_DB_CONCURRENCY_TESTS 的并发/集成测试套件。
 #
 # HiWmsSupabase 是与本仓库完全独立的仓库（DBA 团队管理迁移脚本），本 job 只通过
@@ -39,6 +39,15 @@ jobs:
       - name: Stage migrations into ./supabase
         run: cp -r hiwms-supabase-src/supabase ./supabase
 
+      - name: Skip 019 migrations (CONCURRENTLY incompatible with CI transactions)
+        run: |
+          for f in supabase/migrations/019_*; do
+            if [ -f "$f" ]; then
+              echo "NOTICE: 跳过 $(basename "$f")（CONCURRENTLY 不能在事务块执行，生产环境需手动部署）"
+              rm "$f"
+            fi
+          done
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -61,7 +70,7 @@ jobs:
       - name: Start local Supabase (one-shot Docker Postgres)
         run: supabase start
 
-      - name: Apply migrations (001-008) + seed
+      - name: Apply migrations (excl. 019 CONCURRENTLY) + seed
         run: supabase db reset
 
       - name: Fix up role grants (CI-only, not a DBA migration)
