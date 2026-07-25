@@ -34,11 +34,11 @@ describe('WmsSupabaseClient - P1-1 getAuthenticatedClient', () => {
     mockAuthedClient = {
       from: vi.fn(),
       rpc: vi.fn().mockResolvedValue({ data: 'test-result', error: null }),
-    };
+    } as any;
 
     // 先返回 admin client（getInstance 调用），再返回 authed client
     mockCreateClient
-      .mockReturnValueOnce({ from: vi.fn(), rpc: vi.fn().mockResolvedValue({ data: null, error: null }) }) // getInstance 调用
+      .mockReturnValueOnce({ from: vi.fn(), rpc: vi.fn().mockResolvedValue({ data: null, error: null }) } as any) // getInstance 调用
       .mockReturnValue(mockAuthedClient); // getAuthenticatedClient 调用
 
     supabase = WmsSupabaseClient.getInstance(config);
@@ -75,8 +75,8 @@ describe('WmsSupabaseClient - P1-1 getAuthenticatedClient', () => {
       mockCreateClient.mockReset();
       mockCreateClient
         .mockReturnValueOnce({ from: vi.fn(), rpc: vi.fn().mockResolvedValue({ data: null, error: null }) }) // getInstance
-        .mockReturnValueOnce({ id: 'client-1' }) // 第 1 次 getAuthenticatedClient
-        .mockReturnValueOnce({ id: 'client-2' }); // 第 2 次 getAuthenticatedClient
+        .mockReturnValueOnce({ id: 'client-1' as any }) // 第 1 次 getAuthenticatedClient
+        .mockReturnValueOnce({ id: 'client-2' as any }); // 第 2 次 getAuthenticatedClient
 
       (WmsSupabaseClient as any).instance = null;
       supabase = WmsSupabaseClient.getInstance(config);
@@ -140,7 +140,7 @@ describe('SupabaseRpcClient - P1-1 rawWithAuth', () => {
     it('should call getAuthenticatedClient with userToken and invoke RPC', async () => {
       const userToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.user-jwt';
       const functionName = 'fn_resolve_exception';
-      const args = { p_exception_id: '123', p_resolver_user_id: '456' };
+      const args = { p_exception_id: '123', p_resolver_user_id: '456' } as any;
 
       const result = await rpcClient.rawWithAuth(userToken, functionName, args);
 
@@ -173,11 +173,14 @@ describe('SupabaseRpcClient - P1-1 rawWithAuth', () => {
     it('should inject tenant_id when provided in options', async () => {
       const userToken = 'test-token';
       const functionName = 'fn_resolve_exception';
-      const args = { p_exception_id: '123', p_tenant_id: undefined };
+      // Include p_tenant_id in args so the injection logic finds the key
+      const args = { p_exception_id: '123', p_tenant_id: undefined } as any;
       const tenantId = 'tenant-456';
 
       await rpcClient.rawWithAuth(userToken, functionName, args, { tenantId });
 
+      // 注意：options 被传递后，rpcOptions 会包含从 options 提取的 head/get/count
+      // 这里 options = { tenantId: 'tenant-456' }，所以 head/get/count 都是 undefined
       expect(mockAuthedClient.rpc).toHaveBeenCalledWith(
         functionName,
         expect.objectContaining({
@@ -195,7 +198,7 @@ describe('SupabaseRpcClient - P1-1 rawWithAuth', () => {
     it('should NOT inject tenant_id when injectTenantId: false', async () => {
       const userToken = 'test-token';
       const functionName = 'fn_resolve_exception';
-      const args = { p_exception_id: '123' };
+      const args = { p_exception_id: '123' } as any;
 
       await rpcClient.rawWithAuth(userToken, functionName, args, { injectTenantId: false });
 
@@ -235,7 +238,7 @@ describe('SupabaseRpcClient - P1-1 rawWithAuth', () => {
       supabase = WmsSupabaseClient.getInstance(config);
       rpcClient = new SupabaseRpcClient(supabase);
 
-      const result = await rpcClient.raw('fn_resolve_exception', { p_exception_id: '123' }, { useAdmin: true });
+      const result = await rpcClient.raw('fn_resolve_exception', { p_exception_id: '123' } as any, { useAdmin: true });
 
       expect(result).toBe('admin-result');
     });
