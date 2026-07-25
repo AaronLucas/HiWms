@@ -846,6 +846,7 @@ psql -h db.xxx.supabase.co -p 6543 -c "SHOW stats;"       # 预期: 吞吐统计
 | PgBouncer 当前状态 | Supabase 托管，端口 6543 可用，transaction 模式 |
 | 推荐行动 | 配置文件转为参考文档 + DBA 工具切到 6543 + CI migration job 走 pooler 端口 |
 | 预估工时 | 0.5 天（文档更新 + 连接确认 + CI 配置调整） |
+| HiWmsSupabase Issue | [#40](https://github.com/AaronLucas/HiWmsSupabase/issues/40) PgBouncer 配置审查：Supabase 部署拓扑适配 + 3 项配置优化 |
 
 ### Phase 3：测试补全
 
@@ -918,6 +919,7 @@ psql -h db.xxx.supabase.co -p 6543 -c "SHOW stats;"       # 预期: 吞吐统计
 | [#37](https://github.com/AaronLucas/HiWmsSupabase/issues/37) | HiWmsSupabase | v_table_bloat_detailed 全库表扫描 | 🟡 HIGH | 待处理 |
 | [#38](https://github.com/AaronLucas/HiWmsSupabase/issues/38) | HiWmsSupabase | fn_expire_task_claims 未注册 cron job | 🔵 MEDIUM | 待处理 |
 | [#39](https://github.com/AaronLucas/HiWmsSupabase/issues/39) | HiWmsSupabase | fn_purge_old_action_logs 无批量删除 | 🔴 CRITICAL | 待处理 |
+| [#40](https://github.com/AaronLucas/HiWmsSupabase/issues/40) | HiWmsSupabase | PgBouncer 配置审查：Supabase 部署拓扑适配 + 3 项配置优化 | 🟡 MEDIUM | 待处理 |
 
 ---
 
