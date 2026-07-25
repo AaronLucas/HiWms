@@ -372,6 +372,62 @@ DB 团队本次交付的是一个**成熟的生产运维体系**。对 wms7 应�
 
 ---
 
+## 十一、阻塞/非阻塞分析（逐任务）
+
+> 以下分析基于 2026-07-25 向 HiWmsSupabase 提交的 5 个 Issue 的修复状态。
+> 阻塞标记：🔴 = 无法执行，🟡 = 部分阻塞，🟢 = 可立即执行
+
+### 11.1 依赖关系矩阵
+
+| # | 任务 | 阻塞状态 | 依赖的 Issue | 能否先行 |
+|---|------|----------|-------------|----------|
+| **P1-1** | fn_current_user_id() 验证 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P1-2** | Device API secret_hash 验证 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P1-3** | PgBouncer 兼容性验证 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P2-1** | 执行 019 迁移 (CONCURRENTLY 索引) | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P2-2** | 注册 pg_cron 定时任务 | 🔴 阻塞 | [#39](https://github.com/AaronLucas/HiWmsSupabase/issues/39) fn_purge_old_action_logs 无批量删除<br>[#38](https://github.com/AaronLucas/HiWmsSupabase/issues/38) fn_expire_task_claims 未注册为 cron job | ❌ 等 DBA 修复 |
+| **P2-3** | 部署监控视图 (6 views) | 🔴 阻塞 | [#35](https://github.com/AaronLucas/HiWmsSupabase/issues/35) 监控视图无访问控制 | ❌ 等 DBA 修复 |
+| **P2-4** | PgBouncer 部署评估 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P3-1** | 监控视图冒烟测试 | 🟡 本地可跑 | [#35](https://github.com/AaronLucas/HiWmsSupabase/issues/35) (仅生产阻塞) | ✅ 本地/测试环境可跑 |
+| **P3-2** | Cron job 幂等性测试 | 🟢 无阻塞 | [#39](https://github.com/AaronLucas/HiWmsSupabase/issues/39) (生产才触发，测试环境数据量小) | ✅ 可立即执行 |
+| **P3-3** | Cron job 功能验证 | 🟢 无阻塞 | [#39](https://github.com/AaronLucas/HiWmsSupabase/issues/39) (测试环境不触发) | ✅ 可立即执行 |
+| **P4-1** | 定期同步 SOP | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P4-2** | 监控巡检手册 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+| **P4-3** | 数据归档方案 | 🟢 无阻塞 | — | ✅ 可立即执行 |
+
+### 11.2 统计
+
+| 分类 | 数量 | 任务 |
+|------|------|------|
+| 🟢 可立即执行 | **9** | P1-1, P1-2, P1-3, P2-1, P2-4, P3-2, P3-3, P4-1, P4-2 |
+| 🟡 本地/测试环境可跑 | **1** | P3-1 (生产环境需等 #35) |
+| 🔴 阻塞 | **2** | P2-2 (等 #38 + #39), P2-3 (等 #35) |
+| **总计** | **12** | — |
+
+### 11.3 执行路径建议
+
+```
+立即执行（无需等 DBA）:
+  P1-1 → P1-2 → P1-3 (应用层验证, 并行)
+  P2-1 → P2-4 (运维基础设施, 顺序)
+  P3-2 → P3-3 → P3-1 (测试, 测试环境)
+  P4-1 → P4-2 → P4-3 (治理, 并行)
+                                ↓ 等 DBA 修复后
+  P2-2 → P2-3 (运维部署收尾)
+```
+
+### 11.4 关联 Issue 状态
+
+| Issue | 仓库 | 标题 | 严重度 | 状态 |
+|-------|------|------|--------|------|
+| [#35](https://github.com/AaronLucas/HiWmsSupabase/issues/35) | HiWmsSupabase | 监控视图无访问控制：v_slow_queries 暴露原始 SQL | 🔴 CRITICAL | 待处理 |
+| [#36](https://github.com/AaronLucas/HiWmsSupabase/issues/36) | HiWmsSupabase | fn_expire_stalled_sync_events 将 payload 写入 exceptions | 🔴 CRITICAL | 待处理 |
+| [#37](https://github.com/AaronLucas/HiWmsSupabase/issues/37) | HiWmsSupabase | v_table_bloat_detailed 全库表扫描 | 🟡 HIGH | 待处理 |
+| [#38](https://github.com/AaronLucas/HiWmsSupabase/issues/38) | HiWmsSupabase | fn_expire_task_claims 未注册 cron job | 🔵 MEDIUM | 待处理 |
+| [#39](https://github.com/AaronLucas/HiWmsSupabase/issues/39) | HiWmsSupabase | fn_purge_old_action_logs 无批量删除 | 🔴 CRITICAL | 待处理 |
+
+---
+
 ## 附录：部署顺序
 
 ```
