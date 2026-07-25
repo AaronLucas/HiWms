@@ -244,7 +244,15 @@ pg_cron 扩展 ──→ 3 个 cron jobs + v_pg_cron_jobs
 
 ## 七、安全维度分析
 
-### 7.1 ECC security-reviewer 评估
+### 7.1 ECC security-reviewer 评估（3 个 CRITICAL + 2 个 HIGH + 4 个 MEDIUM）
+
+| ID | 严重度 | 发现 | 详情 |
+|----|--------|------|------|
+| **SEC-01** | 🔴 **CRITICAL** | 监控视图无访问控制——敏感数据暴露 | 6 个视图均为 `CREATE VIEW` 无 `GRANT`/`REVOKE`。`v_slow_queries.query_preview` 暴露原始 SQL（含可能的 PII）。`v_rls_perf` 暴露所有 RLS 策略的 USING/WITH CHECK 表达式，为攻击者提供精确的绕过地图 |
+| **SEC-02** | 🔴 **CRITICAL** | Cron 函数以 superuser 身份运行——RLS 全绕过 | pg_cron 以超级用户运行，`fn_purge_old_action_logs`/`fn_cross_dock_timeout_sweep`/`fn_expire_stalled_sync_events` 均为 SECURITY INVOKER，绕过所有租户 RLS。函数内无 `WHERE tenant_id IN (...)` 防御，无异常阈值检测 |
+| **SEC-03** | 🔴 **CRITICAL** | `fn_expire_stalled_sync_events` 将完整 payload 泄露到 exceptions 表 | `sync_events.payload`（含 PDA 操作数据：SKU/数量/库位）被整体写入 `exceptions.details`，导致敏感数据在异常表中冗余持久化。建议仅保留 `action_type` + payload hash |
+| **SEC-04** | 🟡 **HIGH** | PgBouncer TLS 全部注释 | `client_tls_sslmode`、`server_tls_sslmode` 及证书路径全部注释。认证后所有查询结果和会话状态以明文传输 |
+| **SEC-05** | 🟡 **HIGH** | `fn_purge_old_action_logs` 无逐租户审计 | 硬删除返回总数，无租户级明细。若租户争议删除数据，无审计轨迹。建议切换至 008 迁移的 `fn_run_storage_maintenance()`（含聚合+逐租户归档） |
 
 | 检查项 | 状态 | 详情 |
 |--------|------|------|
