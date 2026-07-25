@@ -314,6 +314,35 @@
 
 ---
 
+## DB 运维脚本同步与 ECC 分析 (2026-07-25)
+
+> ECC 分析报告：`docs/03-database/DB_OPS_SCRIPTS_ECC_ANALYSIS.md`  
+> 来源仓库：HiWmsSupabase (AaronLucas/HiWmsSupabase)  
+> 分析代理：database-reviewer / architect / security-reviewer
+
+DBA 团队在 HiWmsSupabase 仓库交付了新的运维脚本和设计文档。已完成本地同步和多维度 ECC 分析：
+
+| 维度 | 关键发现 |
+|------|----------|
+| **业务** | ops-scripts 对 wms7 应用层无直接代码变更需求；日志清理策略需业务确认 180 天保留期 |
+| **架构** | 引入 3 个新系统组件（pg_cron 调度器/PgBouncer 连接池/监控视图）；隐含 4 个 ADR 级决策（建议 ADR-020 ~ ADR-023） |
+| **功能** | 6 个监控视图 + 3 个 cron 任务 + 1 个连接池配置；1 个脚本已废弃 |
+| **设计** | 19 层严格顺序依赖架构 + 完整设计文档追溯链（19 × 文档 + 7 × 架构图） |
+| **测试** | 3 个新增脚本缺少专项测试（监控视图冒烟/cron 幂等性/PgBouncer 压测） |
+| **安全** | 2 个 CRITICAL 发现（无批量 DELETE / 全库全表扫描风险）；3 个 MEDIUM 发现 |
+| **运维** | 部署顺序：迁移 001-018 → 019 手动执行 → cron jobs → 监控视图 → PgBouncer |
+
+**ECC 落地计划阶段**：Phase 0（文档同步 ✅）→ Phase 1（应用层适配验证 ⏳）→ Phase 2（运维部署 ⏳）→ Phase 3（测试补全 ⏳）→ Phase 4（持续治理 ⏳）
+
+**需提交至 HiWmsSupabase 的 Issue**：
+- 🔴 `fn_purge_old_action_logs` 改为批量删除（CRITICAL）
+- 🟡 `v_table_bloat_detailed` 改为参数化函数（HIGH）
+- 🟡 `fn_expire_task_claims` 未注册为 cron job（ROADMAP §1.4 遗漏）
+
+---
+
+---
+
 ## 文档结构重构记录 (2025-07-07)
 
 已完成项目文档归档到 `docs/` 分类目录：

@@ -1,8 +1,9 @@
 # DB_SCHEMA.md
 
-> **版本**: v2.4.0 (2026-07-18)  
-> **同步来源**: `supabase/migrations/` 下的初始化脚本（V2.1 主脚本 + 离线同步/统一异常领域增量扩展 + Layer 3/4 修正与新增脚本）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。  
-> **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2（离线同步/统一异常领域，7 张表）**迁移脚本已部署，仓储层已实现**；✅ Layer 3（同步动作扩展 PUTAWAY/COUNT/PACK，2 张表）与 Layer 4（唯一追踪策略+无码/未识别货物，1 张表+3 新列）**已由 DBA 团队部署到生产环境，与 `.readonly/` 参考文件逐字节一致，`src/types/database.ts` 已同步**（工程排期见 `docs/00-project/ROADMAP.md` Phase 1.4/1.4.1/1.4.2、`docs/03-database/REPOSITORY_ROADMAP.md` Phase 5-7）
+> **版本**: v2.7.0 (2026-07-25)  
+> **同步来源**: `supabase/migrations/`（001-019 编号迁移）+ `supabase/ops-scripts/`（运维脚本）+ `supabase/design-docs/`（DBA 设计文档）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。HiWmsSupabase 仓库同步机制见 `scripts/sync-db-migrations.sh`。  
+> **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2-19 全部 19 层迁移已由 DBA 团队部署到生产环境；✅ ops-scripts（监控视图/cron 任务/PgBouncer 配置）已同步至本地；✅ 设计文档（19 份 `unWMS_*_V1.md`）已同步至 `supabase/design-docs/`  
+> **ECC 分析**: 本次 ops-scripts 同步的多维度 ECC 分析报告见 `docs/03-database/DB_OPS_SCRIPTS_ECC_ANALYSIS.md`（2026-07-25）
 
 ---
 
