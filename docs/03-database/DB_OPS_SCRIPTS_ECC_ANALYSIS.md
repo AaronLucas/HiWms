@@ -563,7 +563,76 @@ RAISE NOTICE 'auth.uid() = %, fn_current_user_id() = %', auth.uid(), fn_current_
 
 | # | 任务 | 优先级 | 状态 | 执行人 | 预估工时 | 阻塞? |
 |---|------|--------|------|--------|----------|-------|
-| P2-1 | 生产维护窗口执行 019 迁移（CONCURRENTLY 索引） | P0 | ⏳ | **DBA** | 1 次维护窗口 | 🟢 |
+| P2-1 | 生产维护窗口执行 019 迁移（CONCURRENTLY 索引） | P0 | ✅ 就绪（DBA 执行） | **DBA** | 1 次维护窗口 | 🟢 |
+
+#### P2-1 审查详情（2026-07-26）
+
+**结论**：019 迁移已就绪，独立于所有阻塞 Issue，**DBA 可以立即执行**。
+
+**迁移内容**：019 将 016 的 4 个普通 `CREATE INDEX` 升级为 `CREATE INDEX CONCURRENTLY`：
+
+| 索引 | 表 | 列 | 目的 |
+|------|-----|-----|------|
+| `idx_inventory_tenant` | `inventory` | `tenant_id` | RLS 策略全表扫描 → 索引扫描 |
+| `idx_vas_boms_output_product` | `vas_boms` | `output_product_id` | RLS 策略关联 products.tenant_id |
+| `idx_vas_bom_items_input_product` | `vas_bom_items` | `input_product_id` | 同上 |
+| `idx_vas_bom_items_bom` | `vas_bom_items` | `bom_id` | FK 外键，替代全表扫描 |
+
+**关键特性**：
+- `CONCURRENTLY` — `SHARE UPDATE EXCLUSIVE` 锁，**不阻塞读写**，适合 `inventory` 等核心表
+- `IF NOT EXISTS` — 全幂等，可重复执行
+- 有运行时守卫 — 检测 016 的 4 个索引是否存在，缺失则 RAISE EXCEPTION
+
+**独立性验证**：
+
+| Issue | 与 019 的关系 |
+|-------|---------------|
+| #35 监控视图 ACL | ❌ 无关 — 监控视图不依赖索引 |
+| #36 payload 泄露 | ❌ 无关 |
+| #37 v_table_bloat | ❌ 无关 |
+| #38 task_claims cron | ❌ 无关 |
+| #39 批量删除 | ❌ 无关 |
+
+**依赖链**：001 → … → 016 → 018（PR #47 已部署）→ **019（本次）**
+
+**DBA 执行清单**：
+
+```bash
+# 1. 确认前置条件
+psql $DATABASE_URL -c "
+SELECT indexname FROM pg_indexes 
+WHERE schemaname = 'public' 
+  AND indexname IN (
+    'idx_inventory_tenant',
+    'idx_vas_boms_output_product', 
+    'idx_vas_bom_items_input_product',
+    'idx_vas_bom_items_bom'
+  );
+"
+# 预期：4 行（016 已部署）
+
+# 2. 维护窗口执行 019
+psql $DATABASE_URL -v ON_ERROR_STOP=1 \
+  -f supabase/migrations/019_production_indexes_concurrently.sql
+
+# 3. 部署后验证
+psql $DATABASE_URL -c "
+SELECT indexrelname, idx_scan, idx_tup_read 
+FROM pg_stat_user_indexes 
+WHERE indexrelname IN (
+  'idx_inventory_tenant',
+  'idx_vas_boms_output_product',
+  'idx_vas_bom_items_input_product',
+  'idx_vas_bom_items_bom'
+) AND schemaname = 'public';
+"
+```
+
+**注意事项**：
+- 不可包在事务里 — `CREATE INDEX CONCURRENTLY` 每条独立执行
+- CI 不跑 019 — CONCURRENTLY 不能在事务块内执行，需手动部署
+- 若 4 个索引已存在（016 已建），019 跳过全部（`IF NOT EXISTS`）
+- 若建索引失败（极少见），不会影响已有索引，表保持可读写状态
 | P2-2 | 注册 pg_cron 定时任务（幂等脚本） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #38 + #39 |
 | P2-3 | 部署监控视图（6 views） | P1 | 🔴 阻塞 | **DBA** | 执行 1 个 SQL 文件 | 等 #35 |
 | P2-4 | PgBouncer 部署评估 | P2 | ⏳ | **开发/运维** | 半天评估 + 半天部署压测 | 🟢 |
