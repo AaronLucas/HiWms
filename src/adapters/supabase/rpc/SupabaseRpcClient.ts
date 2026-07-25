@@ -99,8 +99,34 @@ export class SupabaseRpcClient implements IRpcClient {
     args: Database['public']['Functions'][F]['Args'],
     options?: RpcOptions
   ): Promise<Database['public']['Functions'][F]['Returns']> {
-    const client = options?.useAdmin ? this.supabase.getAdminClient() : this.supabase.getClient()
+    return this.callWithClient(
+      options?.useAdmin ? this.supabase.getAdminClient() : this.supabase.getClient(),
+      functionName,
+      args,
+      options
+    )
+  }
 
+  /**
+   * 带用户 JWT 的 RPC 调用（使 auth.uid() 返回真实用户 ID）
+   * 用于需要用户身份的场景：fn_resolve_exception、RLS 保护表查询等
+   */
+  async rawWithAuth<F extends keyof Database['public']['Functions']>(
+    userToken: string,
+    functionName: F,
+    args: Database['public']['Functions'][F]['Args'],
+    options?: Omit<RpcOptions, 'useAdmin'>
+  ): Promise<Database['public']['Functions'][F]['Returns']> {
+    const authedClient = this.supabase.getAuthenticatedClient(userToken)
+    return this.callWithClient(authedClient, functionName, args, options)
+  }
+
+  private async callWithClient<F extends keyof Database['public']['Functions']>(
+    client: any,
+    functionName: F,
+    args: Database['public']['Functions'][F]['Args'],
+    options?: RpcOptions
+  ): Promise<Database['public']['Functions'][F]['Returns']> {
     // 自动注入 tenant_id
     const finalArgs = { ...args } as Record<string, unknown>
     if (options?.injectTenantId !== false) {
@@ -113,8 +139,6 @@ export class SupabaseRpcClient implements IRpcClient {
       }
     }
 
-    // Supabase rpc 方法只接受 PostgREST 选项，不是我们的 RpcOptions
-    // 所以我们需要提取 Supabase 支持的选项
     const rpcOptions = options ? {
       head: (options as any).head,
       get: (options as any).get,

@@ -137,6 +137,24 @@ export class WmsSupabaseClient {
     return this.adminClient;
   }
 
+  /**
+   * 获取带用户 JWT 的认证客户端（per-request，使 auth.uid() 返回真实用户 ID）
+   *
+   * 每次调用创建新实例——不缓存，因为 token 随请求变化。
+   * 调用方负责在请求结束后释放（Supabase JS client 无连接池，GC 即可回收）。
+   */
+  getAuthenticatedClient(userToken: string): SupabaseClient<Database> {
+    return createClient<Database>(this.config.url, this.config.anonKey, {
+      auth: { persistSession: false },
+      db: { schema: 'public' },
+      global: {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+        },
+      },
+    });
+  }
+
   /** 设置默认租户 ID（用于 RLS 上下文注入） */
   setTenantId(tenantId: string) {
     this.defaultTenantId = tenantId;

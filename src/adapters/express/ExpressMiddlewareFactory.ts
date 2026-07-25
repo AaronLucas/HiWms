@@ -20,6 +20,7 @@ export interface ExpressRequestContext {
   };
   tenantId?: string | null;
   correlationId?: string;
+  supabaseToken?: string;  // 新增：用于 per-request Supabase client 创建
 }
 
 /** 扩展 Express Request 类型 */
@@ -64,6 +65,7 @@ export class ExpressMiddlewareFactory {
             roles: user.roles,
             permissions: user.permissions,
           },
+          supabaseToken: token,  // 新增：存储 token 供 per-request Supabase client 使用
           correlationId: (req.headers['x-correlation-id'] as string) || `req-${Date.now()}`,
         };
 
