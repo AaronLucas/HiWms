@@ -15,11 +15,11 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
   ContainerUpdate,
   string
 > implements IContainerRepository {
-  protected tableName = 'containers';
+  protected tableName = 'containers' as const;
   protected idColumn = 'id';
 
   async findByCode(code: string, tenantId: string): Promise<ContainerRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('lpn_code', code)
@@ -34,7 +34,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
   }
 
   async findByParent(parentContainerId: string): Promise<ContainerRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('parent_container_id', parentContainerId)
@@ -49,7 +49,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; containerType?: string }
   ): Promise<ContainerRow[]> {
     const { limit = 100, offset = 0, status, containerType } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -68,7 +68,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     tenantId: string,
     options?: { minVolume?: number; minWeight?: number }
   ): Promise<ContainerRow[]> {
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -102,7 +102,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
     maxWeight: number;
     utilizationPct: number;
   }>> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('id, lpn_code')
       .eq('tenant_id', tenantId)
