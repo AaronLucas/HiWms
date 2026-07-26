@@ -8,8 +8,16 @@ import { IRepository } from '../../../core/ports/db/IRepository';
 import type { Database } from '../../../types/database';
 import type { PostgrestError } from '@supabase/supabase-js';
 
-export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends string = string> implements IRepository<T, TInsert, TUpdate, TId> {
-  protected abstract tableName: string;
+export type TableNameLiteral = keyof Database['public']['Tables'];
+
+export abstract class SupabaseBaseRepository<
+  T,
+  TInsert,
+  TUpdate,
+  TId extends string = string,
+  TTableName extends TableNameLiteral = TableNameLiteral
+> implements IRepository<T, TInsert, TUpdate, TId> {
+  protected abstract tableName: TTableName;
   protected abstract idColumn: string;
 
   constructor(protected supabase: WmsSupabaseClient) {}
@@ -29,17 +37,17 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
 
   /**
    * 从表创建查询构建器（内部使用，支持 authToken）
-   * 使用类型断言绕过 TypeScript 的严格表名检查（表名在运行时是动态字符串）
+   * 使用类型参数确保表名类型安全
    */
-  protected from(authToken?: string): any {
-    return (this.getClient(false, authToken) as any).from(this.tableName);
+  protected from(authToken?: string) {
+    return this.getClient(false, authToken).from(this.tableName);
   }
 
   /**
    * 从表创建查询构建器（管理员权限）
    */
-  protected fromAdmin(): any {
-    return (this.getClient(true) as any).from(this.tableName);
+  protected fromAdmin() {
+    return this.getClient(true).from(this.tableName);
   }
 
   async findById(id: TId, authToken?: string): Promise<T | null> {
@@ -67,7 +75,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
 
     let query = this.from(authToken)
       .select('*')
-      .order(orderBy, { ascending })
+      .order(orderBy as string, { ascending })
       .range(offset, offset + limit - 1);
 
     // 应用过滤器

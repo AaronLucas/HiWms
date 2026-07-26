@@ -8,14 +8,15 @@ import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database
 export class SupabaseTenantRepository extends SupabaseBaseRepository<
   Tables<'tenants'>,
   TablesInsert<'tenants'>,
-  TablesUpdate<'tenants'>
+  TablesUpdate<'tenants'>,
+  string,
+  'tenants'
 > implements ITenantRepository {
-  protected tableName = 'tenants';
+  protected tableName = 'tenants' as const;
   protected idColumn = 'id';
 
   async findByName(name: string): Promise<Tables<'tenants'> | null> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
+    const { data, error } = await this.from()
       .select('*')
       .eq('name', name)
       .single();
