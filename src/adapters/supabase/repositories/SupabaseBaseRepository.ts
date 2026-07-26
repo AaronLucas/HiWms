@@ -27,10 +27,23 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
     return useAdmin ? this.supabase.getAdminClient() : this.supabase.getClient();
   }
 
+  /**
+   * 从表创建查询构建器（内部使用，支持 authToken）
+   * 使用 any 类型绕过 TypeScript 的严格表名检查（表名在运行时是动态字符串）
+   */
+  protected from(authToken?: string): any {
+    return this.getClient(false, authToken).from(this.tableName);
+  }
+
+  /**
+   * 从表创建查询构建器（管理员权限）
+   */
+  protected fromAdmin(): any {
+    return this.getClient(true).from(this.tableName);
+  }
+
   async findById(id: TId, authToken?: string): Promise<T | null> {
-    const client = this.getClient(false, authToken);
-    const { data, error } = await client
-      .from(this.tableName)
+    const { data, error } = await this.from(authToken)
       .select('*')
       .eq(this.idColumn, id)
       .single();
@@ -52,9 +65,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   } = {}): Promise<T[]> {
     const { limit = 100, offset = 0, orderBy = this.idColumn, ascending = true, filters = {}, authToken } = options;
 
-    const client = this.getClient(false, authToken);
-    let query = client
-      .from(this.tableName)
+    let query = this.from(authToken)
       .select('*')
       .order(orderBy, { ascending })
       .range(offset, offset + limit - 1);
@@ -72,9 +83,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async count(filters: Record<string, unknown> = {}, authToken?: string): Promise<number> {
-    const client = this.getClient(false, authToken);
-    let query = client
-      .from(this.tableName)
+    let query = this.from(authToken)
       .select('*', { count: 'exact', head: true });
 
     for (const [key, value] of Object.entries(filters)) {
@@ -89,9 +98,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async create(data: TInsert, authToken?: string): Promise<T> {
-    const client = this.getClient(false, authToken);
-    const { data: result, error } = await client
-      .from(this.tableName)
+    const { data: result, error } = await this.from(authToken)
       .insert(data as any)
       .select()
       .single();
@@ -101,9 +108,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async createMany(data: TInsert[], authToken?: string): Promise<T[]> {
-    const client = this.getClient(false, authToken);
-    const { data: result, error } = await client
-      .from(this.tableName)
+    const { data: result, error } = await this.from(authToken)
       .insert(data as any)
       .select();
 
@@ -112,9 +117,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async update(id: TId, data: TUpdate, authToken?: string): Promise<T> {
-    const client = this.getClient(false, authToken);
-    const { data: result, error } = await client
-      .from(this.tableName)
+    const { data: result, error } = await this.from(authToken)
       .update(data as any)
       .eq(this.idColumn, id)
       .select()
@@ -125,9 +128,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async delete(id: TId, authToken?: string): Promise<void> {
-    const client = this.getClient(false, authToken);
-    const { error } = await client
-      .from(this.tableName)
+    const { error } = await this.from(authToken)
       .delete()
       .eq(this.idColumn, id);
 
@@ -135,9 +136,7 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
   }
 
   async exists(id: TId, authToken?: string): Promise<boolean> {
-    const client = this.getClient(false, authToken);
-    const { data, error } = await client
-      .from(this.tableName)
+    const { data, error } = await this.from(authToken)
       .select(this.idColumn)
       .eq(this.idColumn, id)
       .single();
