@@ -519,9 +519,9 @@
 
 | 优先级 | 任务 | 说明 |
 |---|---|---|
-| **P0** | 本文档 + `docs/03-database/DB_SCHEMA.md` 同步到 `HiWmsSupabase` 迁移 009-016 | 两份文档最后一次更新都早于 009 合并时间，完全不知道 dispatcher 权限模型重构（010）、RLS 大批量加固（012/014）、库存写入原语二次收口（015）已经发生——基于旧文档做的新 Repository 开发可能撞上这些新的权限边界 |
-| **P1** | Phase 8（`IInventoryUnitRepository`/`IStorageManagementPolicyRepository`/`IZoneRepository`）补齐集成测试证据 | §8.5 已自行标注为"下一轮排期任务"，对齐 Phase 5-7 的打法（本地一次性 Postgres 沙盒 + 真实并发场景） |
-| **P2** | `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 下游消费方核实 | `HiWmsSupabase` 009 已补 `updated_at`，但本仓库没有记录是否有报表/看板依赖这两张表做增量拉取，若有需要跟着确认逻辑是否要调整 |
+| ✅ **P0 已完成** | 本文档 + `docs/03-database/DB_SCHEMA.md` 同步到 `HiWmsSupabase` 迁移 009-016 | 两份文档最后一次更新都早于 009 合并时间，完全不知道 dispatcher 权限模型重构（010）、RLS 大批量加固（012/014）、库存写入原语二次收口（015）已经发生——基于旧文档做的新 Repository 开发可能撞上这些新的权限边界 |
+| P1 | Phase 8（`IInventoryUnitRepository`/`IStorageManagementPolicyRepository`/`IZoneRepository`）补齐集成测试证据 | §8.5 已自行标注为"下一轮排期任务"，对齐 Phase 5-7 的打法（本地一次性 Postgres 沙盒 + 真实并发场景） |
+| P2 | `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 下游消费方核实 | `HiWmsSupabase` 009 已补 `updated_at`，但本仓库没有记录是否有报表/看板依赖这两张表做增量拉取，若有需要跟着确认逻辑是否要调整 |
 
 **关联文档**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-23.md`、
 `docs/00-project/ROADMAP.md`「HiWmsSupabase 009-016 跨仓库综合分析与任务规划」、
