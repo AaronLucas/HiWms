@@ -41,6 +41,9 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 
+# Merge conflict artifacts
+*.orig
+
 # Vite
 .vite/
 

@@ -108,7 +108,7 @@ describe.skipIf(!RUN)('SupabaseMissingLabelRepository 漏码闭环正确性（Ph
 
     const { data: user, error: userErr } = await client
       .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p1-3-user-${Date.now()}`, password_hash: 'x' })
+      .insert({ tenant_id: tenantId, username: `ecc-p1-3-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
       .select()
       .single();
     if (userErr) throw userErr;

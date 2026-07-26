@@ -133,7 +133,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     // operator_user_id 的路由代码路径，不会触发这个约束）。
     const { data: user, error: userErr } = await client
       .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p2-http-user-${Date.now()}`, password_hash: 'x' })
+      .insert({ tenant_id: tenantId, username: `ecc-p2-http-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
       .select()
       .single();
     if (userErr) throw userErr;

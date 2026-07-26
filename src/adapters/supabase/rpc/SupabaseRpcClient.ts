@@ -4,7 +4,22 @@
  */
 import { WmsSupabaseClient } from '../SupabaseClient'
 import { IRpcClient, RpcOptions, RpcError } from '../../../core/ports/rpc/IRpcClient'
+import { PURGE_BATCH_SIZE_MIN, PURGE_BATCH_SIZE_MAX } from '../../../core/ports/rpc/IPurgeOldLogsRpc'
 import type { Database } from '../../../types/database'
+
+/** RPC-capable client 最小接口，替代 `any` 以保持类型安全。
+ *  返回 `PromiseLike`（非 `Promise`）：Supabase PostgrestBuilder 实现
+ *  PromiseLike 而非完整 Promise，需保持兼容。 */
+interface RpcCapableClient {
+  rpc(
+    functionName: string,
+    args: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): PromiseLike<{
+    data: unknown
+    error: { code: string; message: string; details?: string; hint?: string } | null
+  }>
+}
 
 export class SupabaseRpcClient implements IRpcClient {
   constructor(private supabase: WmsSupabaseClient) {}
@@ -86,10 +101,23 @@ export class SupabaseRpcClient implements IRpcClient {
     },
   }
 
-  // 清理旧日志 RPC
+  // 清理旧日志 RPC（迁移 021 新增批量清理重载）
+  // p_batch_size 必填：确保 PostgREST 路由到安全的批量重载，绕过旧 ghost function
   purgeOldLogs = {
-    purge: async (params: { p_days?: number }, options?: RpcOptions) => {
-      return this.supabase.rpc('fn_purge_old_action_logs', params, options)
+    purge: async (params: { p_days?: number; p_batch_size: number }, options?: RpcOptions) => {
+      // 防御性参数校验：p_batch_size 必须在有效范围内
+      if (params.p_batch_size < PURGE_BATCH_SIZE_MIN || params.p_batch_size > PURGE_BATCH_SIZE_MAX) {
+        throw new RpcError(
+          'INVALID_PARAM',
+          `p_batch_size must be between ${PURGE_BATCH_SIZE_MIN} and ${PURGE_BATCH_SIZE_MAX}, got ${params.p_batch_size}`,
+          {},
+          'fn_purge_old_action_logs'
+        )
+      }
+      // `as ReturnType<...>` 必要：fn_purge_old_action_logs 在 database.ts
+      // 中是联合类型（两个重载），Supabase JS client 无法自动推导返回类型，
+      // 此处手动锁定为端口接口契约类型。若 DB schema 变更需同步更新 IRpcClient。
+      return this.supabase.rpc('fn_purge_old_action_logs', params, options) as ReturnType<IRpcClient['purgeOldLogs']['purge']>
     },
   }
 
@@ -122,7 +150,7 @@ export class SupabaseRpcClient implements IRpcClient {
   }
 
   private async callWithClient<F extends keyof Database['public']['Functions']>(
-    client: any,
+    client: RpcCapableClient,
     functionName: F,
     args: Database['public']['Functions'][F]['Args'],
     options?: RpcOptions

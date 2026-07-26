@@ -119,14 +119,9 @@ export interface IRpcClient {
     sweep(): Promise<number>;
   };
 
-  /** 清理旧日志 RPC */
+  /** 清理旧日志 RPC（迁移 021 新增批量清理重载） */
   purgeOldLogs: {
-    purge(params: {
-      p_days?: number;
-    }): Promise<Array<{
-      purged_inventory_history: number;
-      purged_wo_logs: number;
-    }>>;
+    purge(params: PurgeOldLogsParams): Promise<PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched>;
   };
 
   /** 通用 RPC 调用 */
@@ -171,3 +166,4 @@ export class RpcError extends Error {
 
 /** 数据库类型引用（仅用于类型推导） */
 import type { Database } from '../../../types/database';
+import type { PurgeOldLogsParams, PurgeOldLogsResultLegacy, PurgeOldLogsResultBatched } from './IPurgeOldLogsRpc';

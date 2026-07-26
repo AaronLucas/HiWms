@@ -135,7 +135,7 @@ describe.skipIf(!RUN)('SupabaseExceptionRepository 统一异常领域正确性�
 
     const { data: authUser, error: authUserErr } = await client
       .from('users')
-      .insert({ tenant_id: tenantId, username: `exc-auth-user-${Date.now()}`, password_hash: 'x' })
+      .insert({ tenant_id: tenantId, username: `exc-auth-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
       .select()
       .single();
     if (authUserErr) throw authUserErr;
@@ -143,7 +143,7 @@ describe.skipIf(!RUN)('SupabaseExceptionRepository 统一异常领域正确性�
 
     const { data: unauthUser, error: unauthUserErr } = await client
       .from('users')
-      .insert({ tenant_id: tenantId, username: `exc-unauth-user-${Date.now()}`, password_hash: 'x' })
+      .insert({ tenant_id: tenantId, username: `exc-unauth-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
       .select()
       .single();
     if (unauthUserErr) throw unauthUserErr;
