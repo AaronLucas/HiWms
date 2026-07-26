@@ -14,7 +14,7 @@ export class SupabaseInventoryCountPolicyRepository extends SupabaseBaseReposito
   InventoryCountPolicyUpdate,
   string
 > implements IInventoryCountPolicyRepository {
-  protected tableName = 'inventory_count_policies';
+  protected tableName = 'inventory_count_policies' as const;
   protected idColumn = 'id';
 
   constructor(

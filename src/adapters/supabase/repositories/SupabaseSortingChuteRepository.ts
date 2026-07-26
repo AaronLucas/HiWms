@@ -15,7 +15,7 @@ export class SupabaseSortingChuteRepository extends SupabaseBaseRepository<
   SortingChuteUpdate,
   string
 > implements ISortingChuteRepository {
-  protected tableName = 'sorting_chutes';
+  protected tableName = 'sorting_chutes' as const;
   protected idColumn = 'id';
 
   async findByWave(waveId: string): Promise<SortingChuteRow[]> {

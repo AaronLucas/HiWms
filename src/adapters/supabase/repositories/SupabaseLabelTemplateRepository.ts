@@ -15,7 +15,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
   LabelTemplateUpdate,
   string
 > implements ILabelTemplateRepository {
-  protected tableName = 'label_templates';
+  protected tableName = 'label_templates' as const;
   protected idColumn = 'id';
 
   async findByCode(code: string, tenantId: string): Promise<LabelTemplateRow | null> {

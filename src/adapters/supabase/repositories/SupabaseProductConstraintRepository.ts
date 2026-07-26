@@ -11,7 +11,7 @@ export class SupabaseProductConstraintRepository extends SupabaseBaseRepository<
   ProductConstraintUpdate,
   string
 > implements IProductConstraintRepository {
-  protected tableName = 'product_constraints';
+  protected tableName = 'product_constraints' as const;
   protected idColumn = 'sku_id';
 
   async findBySku(skuId: string): Promise<ProductConstraintRow | null> {

@@ -17,7 +17,7 @@ export class SupabaseSyncEventRepository extends SupabaseBaseRepository<
   SyncEventUpdate,
   string
 > implements ISyncEventRepository {
-  protected tableName = 'sync_events';
+  protected tableName = 'sync_events' as const;
   protected idColumn = 'id';
 
   constructor(

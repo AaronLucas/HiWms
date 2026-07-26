@@ -15,7 +15,7 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
   ProductUpdate,
   string
 > implements IProductRepository {
-  protected tableName = 'products';
+  protected tableName = 'products' as const;
   protected idColumn = 'id';
 
   async findBySku(sku: string): Promise<ProductRow | null> {

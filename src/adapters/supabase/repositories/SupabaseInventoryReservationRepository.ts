@@ -22,7 +22,7 @@ export class SupabaseInventoryReservationRepository extends SupabaseBaseReposito
   InventoryReservationUpdate,
   string
 > implements IInventoryReservationRepository {
-  protected tableName = 'inventory_reservations';
+  protected tableName = 'inventory_reservations' as const;
   protected idColumn = 'id';
 
   async findByInventory(inventoryId: string): Promise<InventoryReservationRow[]> {

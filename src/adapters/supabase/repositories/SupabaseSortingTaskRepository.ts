@@ -19,7 +19,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
   SortingTaskUpdate,
   string
 > implements ISortingTaskRepository {
-  protected tableName = 'sorting_tasks';
+  protected tableName = 'sorting_tasks' as const;
   protected idColumn = 'id';
 
   async findByTenant(

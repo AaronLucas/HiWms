@@ -15,7 +15,7 @@ export class SupabaseLoadingTaskRepository extends SupabaseBaseRepository<
   LoadingTaskUpdate,
   string
 > implements ILoadingTaskRepository {
-  protected tableName = 'loading_tasks';
+  protected tableName = 'loading_tasks' as const;
   protected idColumn = 'id';
 
   async findByWave(waveId: string): Promise<LoadingTaskRow[]> {

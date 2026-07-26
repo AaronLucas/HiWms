@@ -15,7 +15,7 @@ export class SupabasePackageSpecRepository extends SupabaseBaseRepository<
   PackageSpecUpdate,
   string
 > implements IPackageSpecRepository {
-  protected tableName = 'package_specs';
+  protected tableName = 'package_specs' as const;
   protected idColumn = 'id';
 
   async findBySku(skuId: string, tenantId: string): Promise<PackageSpecRow[]> {

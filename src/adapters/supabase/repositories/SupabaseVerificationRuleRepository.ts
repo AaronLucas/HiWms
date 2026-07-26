@@ -15,7 +15,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   VerificationRuleUpdate,
   string
 > implements IVerificationRuleRepository {
-  protected tableName = 'verification_rules';
+  protected tableName = 'verification_rules' as const;
   protected idColumn = 'id';
 
   async findActiveBySku(skuId: string, at: Date = new Date()): Promise<VerificationRuleRow | null> {

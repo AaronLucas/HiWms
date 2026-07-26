@@ -11,7 +11,7 @@ export class SupabaseZoneRepository extends SupabaseBaseRepository<
   ZoneUpdate,
   string
 > implements IZoneRepository {
-  protected tableName = 'zones';
+  protected tableName = 'zones' as const;
   protected idColumn = 'id';
 
   async findByCode(tenantId: string, code: string): Promise<ZoneRow | null> {

@@ -19,7 +19,7 @@ export class SupabaseTenantTrackingPolicyRepository extends SupabaseBaseReposito
   TenantTrackingPolicyUpdate,
   string
 > implements ITenantTrackingPolicyRepository {
-  protected tableName = 'tenant_tracking_policies';
+  protected tableName = 'tenant_tracking_policies' as const;
   protected idColumn = 'id';
 
   constructor(

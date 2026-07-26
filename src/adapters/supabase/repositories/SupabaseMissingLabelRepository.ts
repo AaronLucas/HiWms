@@ -22,7 +22,7 @@ export class SupabaseMissingLabelRepository extends SupabaseBaseRepository<
   ContainerUpdate,
   string
 > implements IMissingLabelRepository {
-  protected tableName = 'containers';
+  protected tableName = 'containers' as const;
   protected idColumn = 'id';
 
   constructor(

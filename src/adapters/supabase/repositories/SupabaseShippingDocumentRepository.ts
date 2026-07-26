@@ -15,7 +15,7 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
   ShippingDocumentUpdate,
   string
 > implements IShippingDocumentRepository {
-  protected tableName = 'shipping_documents';
+  protected tableName = 'shipping_documents' as const;
   protected idColumn = 'id';
 
   async findByDocNo(docNo: string, tenantId: string): Promise<ShippingDocumentRow | null> {

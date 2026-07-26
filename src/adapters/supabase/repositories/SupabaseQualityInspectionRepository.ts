@@ -19,7 +19,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   QualityInspectionUpdate,
   string
 > implements IQualityInspectionRepository {
-  protected tableName = 'quality_inspections';
+  protected tableName = 'quality_inspections' as const;
   protected idColumn = 'id';
 
   async findByInspectionNo(inspectionNo: string, tenantId: string): Promise<QualityInspectionRow | null> {

@@ -15,7 +15,7 @@ export class SupabaseDeviceRepository extends SupabaseBaseRepository<
   DeviceUpdate,
   string
 > implements IDeviceRepository {
-  protected tableName = 'devices';
+  protected tableName = 'devices' as const;
   protected idColumn = 'id';
 
   async findByCode(deviceCode: string, tenantId: string): Promise<DeviceRow | null> {

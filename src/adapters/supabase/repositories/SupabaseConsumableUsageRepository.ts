@@ -15,7 +15,7 @@ export class SupabaseConsumableUsageRepository extends SupabaseBaseRepository<
   ConsumableUsageUpdate,
   string
 > implements IConsumableUsageRepository {
-  protected tableName = 'consumable_usages';
+  protected tableName = 'consumable_usages' as const;
   protected idColumn = 'id';
 
   async findByTenant(

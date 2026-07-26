@@ -15,7 +15,7 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
   VehicleUpdate,
   string
 > implements IVehicleRepository {
-  protected tableName = 'vehicles';
+  protected tableName = 'vehicles' as const;
   protected idColumn = 'id';
 
   async findByPlate(plate: string, tenantId: string): Promise<VehicleRow | null> {
