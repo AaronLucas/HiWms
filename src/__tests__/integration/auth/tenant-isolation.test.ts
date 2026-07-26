@@ -8,18 +8,17 @@
  * 3. 租户 A 无法查询/修改/删除租户 B 的数据
  * 4. 平台超管可跨租户访问
  * 5. fn_current_tenant_id() 在 authenticated 角色下返回正确值
+ *
+ * 注意：需要本地 Supabase 实例运行，通过环境变量 RUN_DB_INTEGRATION_TESTS=1 启用
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, skipIf } from 'vitest';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../../types/database';
 
-// 使用环境变量或测试配置
-const SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test-anon-key';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-service-role-key';
+const RUN_INTEGRATION_TESTS = process.env.RUN_DB_INTEGRATION_TESTS === '1';
 
-describe('ADR-015: 跨租户隔离集成测试 (RLS 生效验证)', () => {
+describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (RLS 生效验证)', () => {
   let adminClient: SupabaseClient<Database>;
   let tenantAClient: SupabaseClient<Database>;
   let tenantBClient: SupabaseClient<Database>;
