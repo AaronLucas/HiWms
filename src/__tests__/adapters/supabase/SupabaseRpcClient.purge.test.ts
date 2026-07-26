@@ -66,7 +66,7 @@ const config = {
 // 测试套件
 // ---------------------------------------------------------------------------
 
-describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
+describe('SupabaseRpcClient - purgeOldLogs (迁移 023)', () => {
   let supabase: WmsSupabaseClient;
   let rpcClient: SupabaseRpcClient;
   let mockInnerClient: { rpc: ReturnType<typeof vi.fn> };
