@@ -7,6 +7,31 @@ export type Json =
   | Json[]
 
 export type Database = {
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       barcode_mappings: {
@@ -4100,13 +4125,24 @@ export type Database = {
         }
         Returns: string
       }
-      fn_purge_old_action_logs: {
-        Args: { p_days?: number }
-        Returns: {
-          purged_inventory_history: number
-          purged_wo_logs: number
-        }[]
-      }
+      fn_purge_old_action_logs:
+        | {
+            Args: { p_days?: number }
+            Returns: {
+              purged_inventory_history: number
+              purged_wo_logs: number
+            }[]
+          }
+        | {
+            Args: { p_batch_size?: number; p_days?: number }
+            Returns: {
+              batch_deleted_inventory_history: number
+              batch_deleted_wo_logs: number
+              more_batches_available: boolean
+              total_deleted_inventory_history: number
+              total_deleted_wo_logs: number
+            }[]
+          }
       fn_putaway_serialized_unit: {
         Args: {
           p_batch_no?: string
@@ -4319,6 +4355,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

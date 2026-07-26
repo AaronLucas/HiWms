@@ -86,10 +86,10 @@ export class SupabaseRpcClient implements IRpcClient {
     },
   }
 
-  // 清理旧日志 RPC
+  // 清理旧日志 RPC（迁移 021 新增批量清理重载）
   purgeOldLogs = {
-    purge: async (params: { p_days?: number }, options?: RpcOptions) => {
-      return this.supabase.rpc('fn_purge_old_action_logs', params, options)
+    purge: async (params: { p_days?: number } | { p_days?: number; p_batch_size?: number }, options?: RpcOptions) => {
+      return this.supabase.rpc('fn_purge_old_action_logs', params, options) as ReturnType<IRpcClient['purgeOldLogs']['purge']>
     },
   }
 

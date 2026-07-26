@@ -119,14 +119,12 @@ export interface IRpcClient {
     sweep(): Promise<number>;
   };
 
-  /** 清理旧日志 RPC */
+  /** 清理旧日志 RPC（迁移 021 新增批量清理重载） */
   purgeOldLogs: {
-    purge(params: {
-      p_days?: number;
-    }): Promise<Array<{
-      purged_inventory_history: number;
-      purged_wo_logs: number;
-    }>>;
+    purge(params: { p_days?: number } | { p_days?: number; p_batch_size?: number }): Promise<
+      | Array<{ purged_inventory_history: number; purged_wo_logs: number }>
+      | Array<{ batch_deleted_inventory_history: number; batch_deleted_wo_logs: number; more_batches_available: boolean; total_deleted_inventory_history: number; total_deleted_wo_logs: number }>
+    >;
   };
 
   /** 通用 RPC 调用 */
