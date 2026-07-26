@@ -4,6 +4,7 @@
  */
 import { WmsSupabaseClient } from '../SupabaseClient'
 import { IRpcClient, RpcOptions, RpcError } from '../../../core/ports/rpc/IRpcClient'
+import { PURGE_BATCH_SIZE_MIN, PURGE_BATCH_SIZE_MAX } from '../../../core/ports/rpc/IPurgeOldLogsRpc'
 import type { Database } from '../../../types/database'
 
 export class SupabaseRpcClient implements IRpcClient {
@@ -87,8 +88,18 @@ export class SupabaseRpcClient implements IRpcClient {
   }
 
   // 清理旧日志 RPC（迁移 021 新增批量清理重载）
+  // p_batch_size 必填：确保 PostgREST 路由到安全的批量重载，绕过旧 ghost function
   purgeOldLogs = {
-    purge: async (params: { p_days?: number } | { p_days?: number; p_batch_size?: number }, options?: RpcOptions) => {
+    purge: async (params: { p_days?: number; p_batch_size: number }, options?: RpcOptions) => {
+      // 防御性参数校验：p_batch_size 必须在有效范围内
+      if (params.p_batch_size < PURGE_BATCH_SIZE_MIN || params.p_batch_size > PURGE_BATCH_SIZE_MAX) {
+        throw new RpcError(
+          'INVALID_PARAM',
+          `p_batch_size must be between ${PURGE_BATCH_SIZE_MIN} and ${PURGE_BATCH_SIZE_MAX}, got ${params.p_batch_size}`,
+          {},
+          'fn_purge_old_action_logs'
+        )
+      }
       return this.supabase.rpc('fn_purge_old_action_logs', params, options) as ReturnType<IRpcClient['purgeOldLogs']['purge']>
     },
   }

@@ -59,25 +59,26 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_inventory_history_changed_at
 
 ## Phase 3: MEDIUM — wms7 应用层修复（本工作树可执行）
 
-### P3-1 [MEDIUM] 为 purgeOldLogs 添加单元测试
+### P3-1 [MEDIUM] ✅ 已完成 — 为 purgeOldLogs 添加单元测试
 
-**新建文件**: `src/__tests__/adapters/supabase/SupabaseRpcClient.purge.test.ts`
+**文件**: `src/__tests__/adapters/supabase/SupabaseRpcClient.purge.test.ts`
 
-**测试用例**:
-1. `purge({ p_days: 180 })` 正确委托到 `supabase.rpc()`
-2. `purge({ p_days: 180, p_batch_size: 5000 })` 正确传递 batch 参数
-3. 返回 `PurgeOldLogsResultBatched` 时正确解构
-4. 返回 `PurgeOldLogsResultLegacy` 时向后兼容
+**已完成** (commit `2164566` + ECC 安全加固更新):
+1. ✅ `purge({ p_days: 180, p_batch_size: 5000 })` 正确传递 batch 参数
+2. ✅ 返回 `PurgeOldLogsResultBatched` 时正确解构
+3. ✅ 返回 `PurgeOldLogsResultLegacy` 时向后兼容
+4. ✅ p_batch_size 参数校验（零/负数/超限 → RpcError）
+5. ✅ 错误传播 + 空结果处理
 
 ### P3-2 [MEDIUM] 修复 concurrency test 脚本的列名错误
 
-**文件**: `supabase/tests/repro-scenarios/39-batched-purge-concurrency.sh`
+**文件**: `supabase/tests/repro-scenarios/39-batched-purge-concurrency.sh`（HiWmsSupabase 仓库，DBA 侧）
 
 **问题**: 引用了不存在的 `wo_action_logs.tenant_id`（实际表无此列，通过 FK `wo_id → work_orders.tenant_id` 关联）
 
-### P3-3 [LOW] TypeScript 类型收窄辅助函数
+### P3-3 [LOW] ✅ 已完成 — TypeScript 类型收窄辅助函数
 
-在 `IPurgeOldLogsRpc.ts` 添加类型守卫：
+在 `IPurgeOldLogsRpc.ts` 已添加类型守卫 (commit `ebc19f7`)：
 
 ```typescript
 export function isBatchedResult(
@@ -86,6 +87,13 @@ export function isBatchedResult(
   return result.length > 0 && 'more_batches_available' in result[0];
 }
 ```
+
+### P3-4 [ECC REVIEW] ✅ 已完成 — 安全加固 + DRY 修复 (2026-07-26 ECC 审查)
+
+- **H1 修复**: `p_batch_size` 改为必填，确保 PostgREST 路由到安全批量重载
+- **H2 修复**: 添加 `1 <= p_batch_size <= 100_000` 参数校验
+- **H3 修复**: `IRpcClient.ts` 导入命名类型 `PurgeOldLogsParams` / `PurgeOldLogsResultLegacy` / `PurgeOldLogsResultBatched`，消除内联类型重复
+- **M1 修复**: 删除 `.orig` 合并残留 + `*.orig` 加入 `.gitignore`
 
 ---
 
@@ -104,14 +112,21 @@ export function isBatchedResult(
 
 ```
 Phase 1 (CRITICAL)           Phase 2 (HIGH)              Phase 3 (MEDIUM - wms7)
-├─ P1-1: Ghost function ──── ├─ P2-1: Purge indexes ──── ├─ P3-1: Unit tests
-│   (DBA PR to HiWmsSupabase)│   (DBA PR to HiWmsSupabase)│   (wms7 PR)
+├─ P1-1: Ghost function ──── ├─ P2-1: Purge indexes ──── ├─ P3-1: ✅ Unit tests (done)
+│   (DBA PR to HiWmsSupabase)│   (DBA PR to HiWmsSupabase)│   (wms7 PR #53)
 │                            │                            │
 │                            ├─ P2-2: Tenant filter ───── ├─ P3-2: Fix test script
-│                            │   (DBA PR to HiWmsSupabase)│   (wms7 PR)
+│                            │   (DBA PR to HiWmsSupabase)│   (DBA — HiWmsSupabase)
 │                            │                            │
-│                            │                            └─ P3-3: Type guard
-│                            │                                (wms7 PR)
+│                            │                            ├─ P3-3: ✅ Type guard (done)
+│                            │                            │   (wms7 PR #53)
+│                            │                            │
+│                            │                            └─ P3-4: ✅ ECC加固 (done)
+│                            │                                (wms7 PR #53)
+│                            │                                H1 p_batch_size必填
+│                            │                                H2 1-100000校验
+│                            │                                H3 DRY类型修复
+│                            │                                M1 .orig清理
 ```
 
 ---

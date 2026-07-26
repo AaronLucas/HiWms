@@ -7,7 +7,7 @@ export { ICurrentTenantRpc } from './ICurrentTenantRpc';
 export { IInventoryAdjustRpc } from './IInventoryAdjustRpc';
 export { IInventorySyncRpc } from './IInventorySyncRpc';
 export { IPermissionCheckRpc } from './IPermissionCheckRpc';
-export { IPurgeOldLogsRpc, isBatchedResult } from './IPurgeOldLogsRpc';
+export { IPurgeOldLogsRpc, isBatchedResult, PURGE_BATCH_SIZE_MIN, PURGE_BATCH_SIZE_MAX } from './IPurgeOldLogsRpc';
 export type { PurgeOldLogsResultLegacy, PurgeOldLogsResultBatched, PurgeOldLogsParams } from './IPurgeOldLogsRpc';
 export { IRpcClient } from './IRpcClient';
 export { IStockAllocationRpc } from './IStockAllocationRpc';

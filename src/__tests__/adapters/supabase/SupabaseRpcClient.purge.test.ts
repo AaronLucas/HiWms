@@ -2,21 +2,29 @@
  * 迁移 021 批量清理 RPC 适配器单元测试
  *
  * 覆盖 SupabaseRpcClient.purgeOldLogs.purge() 的委托行为、
- * 返回类型、错误传播，以及 IPurgeOldLogsRpc 导出的 isBatchedResult()
- * 类型守卫。
+ * 返回类型、错误传播、参数校验，以及 IPurgeOldLogsRpc 导出的
+ * isBatchedResult() 类型守卫。
+ *
+ * p_batch_size 必填（安全加固 H1）：确保 PostgREST 始终路由到迁移 021
+ * 批量重载，绕过旧 ghost function fn_purge_old_action_logs(INT)。
  *
  * 测试范围：
- *   1. 传统清理委托（p_days 仅）→ PurgeOldLogsResultLegacy
- *   2. 批量清理委托（p_days + p_batch_size）→ PurgeOldLogsResultBatched
- *   3. isBatchedResult() 类型守卫正确区分两种结果
- *   4. RPC 错误 → RpcError 抛出
- *   5. 空结果数组处理
+ *   1. 批量清理委托（p_days + p_batch_size）→ PurgeOldLogsResultBatched
+ *   2. 最小参数委托（仅 p_batch_size）→ 服务端使用默认 p_days
+ *   3. p_batch_size 参数校验（范围外/零/负数 → RpcError）
+ *   4. isBatchedResult() 类型守卫正确区分两种结果
+ *   5. RPC 错误 → RpcError 抛出
+ *   6. 空结果数组处理
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
-import { isBatchedResult } from '../../../core/ports/rpc/IPurgeOldLogsRpc';
+import {
+  isBatchedResult,
+  PURGE_BATCH_SIZE_MIN,
+  PURGE_BATCH_SIZE_MAX,
+} from '../../../core/ports/rpc/IPurgeOldLogsRpc';
 import type {
   PurgeOldLogsResultLegacy,
   PurgeOldLogsResultBatched,
@@ -33,12 +41,6 @@ const mockCreateClient = vi.mocked(createClient);
 // ---------------------------------------------------------------------------
 // 共享夹具
 // ---------------------------------------------------------------------------
-
-/** 预构建的传统清理 mock 返回值（单条记录） */
-const legacyMockRow: PurgeOldLogsResultLegacy[number] = {
-  purged_inventory_history: 150,
-  purged_wo_logs: 300,
-};
 
 /** 预构建的批量清理 mock 返回值（多 batch 场景的第一条记录） */
 const batchedMockRow: PurgeOldLogsResultBatched[number] = {
@@ -94,49 +96,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
   // =========================================================================
 
   describe('purge()', () => {
-    // ---------- 传统清理（仅 p_days）----------
-
-    it('should delegate p_days-only params to supabase.rpc and return legacy result', async () => {
-      mockInnerClient.rpc.mockResolvedValueOnce({
-        data: [legacyMockRow],
-        error: null,
-      });
-
-      const result = await rpcClient.purgeOldLogs.purge({ p_days: 180 });
-
-      // 委托验证：RPC 函数名正确，参数透传
-      expect(mockInnerClient.rpc).toHaveBeenCalledTimes(1);
-      expect(mockInnerClient.rpc).toHaveBeenCalledWith(
-        'fn_purge_old_action_logs',
-        { p_days: 180 }
-      );
-
-      // 返回结果与被 mock 的 data 一致
-      expect(result).toEqual([legacyMockRow]);
-    });
-
-    it('should return legacy result with multiple rows', async () => {
-      const multiRow: PurgeOldLogsResultLegacy = [
-        { purged_inventory_history: 100, purged_wo_logs: 200 },
-        { purged_inventory_history: 50, purged_wo_logs: 100 },
-      ];
-
-      mockInnerClient.rpc.mockResolvedValueOnce({
-        data: multiRow,
-        error: null,
-      });
-
-      const result = await rpcClient.purgeOldLogs.purge({ p_days: 90 });
-
-      expect(result).toEqual(multiRow);
-      expect(result).toHaveLength(2);
-      expect(mockInnerClient.rpc).toHaveBeenCalledWith(
-        'fn_purge_old_action_logs',
-        { p_days: 90 }
-      );
-    });
-
-    // ---------- 批量清理（p_days + p_batch_size）----------
+    // ---------- 批量清理委托 ----------
 
     it('should delegate batch params to supabase.rpc and return batched result', async () => {
       mockInnerClient.rpc.mockResolvedValueOnce({
@@ -189,46 +149,105 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
       );
     });
 
-    it('should handle p_batch_size=0 as a valid batch param (no-op batch)', async () => {
-      const zeroBatchRow: PurgeOldLogsResultBatched[number] = {
-        batch_deleted_inventory_history: 0,
-        batch_deleted_wo_logs: 0,
-        more_batches_available: false,
-        total_deleted_inventory_history: 0,
-        total_deleted_wo_logs: 0,
-      };
-
+    it('should delegate minimum params (only p_batch_size) to supabase.rpc', async () => {
       mockInnerClient.rpc.mockResolvedValueOnce({
-        data: [zeroBatchRow],
+        data: [batchedMockRow],
+        error: null,
+      });
+
+      const result = await rpcClient.purgeOldLogs.purge({ p_batch_size: 5000 });
+
+      expect(mockInnerClient.rpc).toHaveBeenCalledTimes(1);
+      expect(mockInnerClient.rpc).toHaveBeenCalledWith(
+        'fn_purge_old_action_logs',
+        { p_batch_size: 5000 }
+      );
+      expect(result).toEqual([batchedMockRow]);
+    });
+
+    it('should delegate p_days + p_batch_size with minimum valid batch size', async () => {
+      mockInnerClient.rpc.mockResolvedValueOnce({
+        data: [batchedMockRow],
         error: null,
       });
 
       const result = await rpcClient.purgeOldLogs.purge({
         p_days: 180,
-        p_batch_size: 0,
+        p_batch_size: PURGE_BATCH_SIZE_MIN,
       });
 
-      expect(result).toEqual([zeroBatchRow]);
       expect(mockInnerClient.rpc).toHaveBeenCalledWith(
         'fn_purge_old_action_logs',
-        { p_days: 180, p_batch_size: 0 }
+        { p_days: 180, p_batch_size: 1 }
       );
+      expect(result).toEqual([batchedMockRow]);
     });
 
-    // ---------- 默认参数 ----------
-
-    it('should forward RPC call with empty object when no params given (server defaults)', async () => {
+    it('should delegate p_days + p_batch_size with maximum valid batch size', async () => {
       mockInnerClient.rpc.mockResolvedValueOnce({
-        data: [legacyMockRow],
+        data: [batchedMockRow],
         error: null,
       });
 
-      await rpcClient.purgeOldLogs.purge({});
+      const result = await rpcClient.purgeOldLogs.purge({
+        p_days: 180,
+        p_batch_size: PURGE_BATCH_SIZE_MAX,
+      });
 
       expect(mockInnerClient.rpc).toHaveBeenCalledWith(
         'fn_purge_old_action_logs',
-        {}
+        { p_days: 180, p_batch_size: 100_000 }
       );
+      expect(result).toEqual([batchedMockRow]);
+    });
+
+    // ---------- 参数校验（安全加固 H2）----------
+
+    it('should throw RpcError for p_batch_size=0 (below minimum)', async () => {
+      let caught: unknown = null;
+      try {
+        await rpcClient.purgeOldLogs.purge({ p_days: 180, p_batch_size: 0 });
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(RpcError);
+      expect((caught as RpcError).code).toBe('INVALID_PARAM');
+      expect((caught as RpcError).message).toContain(
+        `p_batch_size must be between ${PURGE_BATCH_SIZE_MIN} and ${PURGE_BATCH_SIZE_MAX}`
+      );
+      expect((caught as RpcError).functionName).toBe('fn_purge_old_action_logs');
+      // 不应该发出 RPC 调用
+      expect(mockInnerClient.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should throw RpcError for negative p_batch_size', async () => {
+      let caught: unknown = null;
+      try {
+        await rpcClient.purgeOldLogs.purge({ p_days: 180, p_batch_size: -1 });
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(RpcError);
+      expect((caught as RpcError).code).toBe('INVALID_PARAM');
+      expect(mockInnerClient.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should throw RpcError for p_batch_size exceeding maximum', async () => {
+      let caught: unknown = null;
+      try {
+        await rpcClient.purgeOldLogs.purge({
+          p_days: 180,
+          p_batch_size: PURGE_BATCH_SIZE_MAX + 1,
+        });
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(RpcError);
+      expect((caught as RpcError).code).toBe('INVALID_PARAM');
+      expect(mockInnerClient.rpc).not.toHaveBeenCalled();
     });
 
     // ---------- 错误传播 ----------
@@ -248,7 +267,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
 
       let caught: unknown = null;
       try {
-        await rpcClient.purgeOldLogs.purge({ p_days: 180 });
+        await rpcClient.purgeOldLogs.purge({ p_days: 180, p_batch_size: 5000 });
       } catch (e) {
         caught = e;
       }
@@ -278,7 +297,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
 
       let caught: RpcError | null = null;
       try {
-        await rpcClient.purgeOldLogs.purge({ p_days: 180 });
+        await rpcClient.purgeOldLogs.purge({ p_days: 180, p_batch_size: 5000 });
       } catch (e) {
         caught = e as RpcError;
       }
@@ -317,7 +336,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
         error: null,
       });
 
-      const result = await rpcClient.purgeOldLogs.purge({ p_days: 180 });
+      const result = await rpcClient.purgeOldLogs.purge({ p_days: 180, p_batch_size: 5000 });
 
       expect(result).toEqual([]);
       expect(Array.isArray(result)).toBe(true);
@@ -346,7 +365,9 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
 
   describe('isBatchedResult() type guard', () => {
     it('should return false for a legacy result', () => {
-      const legacyResult: PurgeOldLogsResultLegacy = [legacyMockRow];
+      const legacyResult: PurgeOldLogsResultLegacy = [
+        { purged_inventory_history: 150, purged_wo_logs: 300 },
+      ];
 
       expect(isBatchedResult(legacyResult)).toBe(false);
     });
@@ -399,7 +420,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
 
     it('should fall through to else branch for legacy result via type discrimination', () => {
       const unionResult: PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched =
-        [legacyMockRow];
+        [{ purged_inventory_history: 150, purged_wo_logs: 300 }];
 
       if (isBatchedResult(unionResult)) {
         expect.unreachable('isBatchedResult should have returned false');

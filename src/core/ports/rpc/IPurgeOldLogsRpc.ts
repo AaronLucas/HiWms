@@ -26,11 +26,24 @@ export type PurgeOldLogsResultBatched = Array<{
   total_deleted_wo_logs: number;
 }>;
 
-export type PurgeOldLogsParams =
-  | { p_days?: number }
-  | { p_days?: number; p_batch_size?: number };
+/** 清理参数（p_batch_size 必填，确保 PostgREST 路由到迁移 021 批量重载，绕过 ghost function） */
+export type PurgeOldLogsParams = {
+  /** 保留天数（默认 180） */
+  p_days?: number;
+  /** 批量大小（1-100000，必填以确保安全路由） */
+  p_batch_size: number;
+};
 
-/** 类型守卫：判断批量清理结果（迁移 021 新增） */
+/** 有效的 p_batch_size 范围 */
+export const PURGE_BATCH_SIZE_MIN = 1;
+export const PURGE_BATCH_SIZE_MAX = 100_000;
+
+/**
+ * 类型守卫：判断批量清理结果（迁移 021 新增）
+ *
+ * 通过检查 `more_batches_available` 属性区分 legacy 和 batched 结果。
+ * 空数组返回 false（归为 legacy 分支，语义安全——空结果在两种模式下无差别）。
+ */
 export function isBatchedResult(
   result: PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched
 ): result is PurgeOldLogsResultBatched {
