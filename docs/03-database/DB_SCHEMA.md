@@ -549,7 +549,8 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `fn_update_updated_at()` | 通用 | updated_at 自动维护 |
 | `fn_current_tenant_id()` | 认证 | **获取当前租户 ID**（优先 JWT app_metadata.tenant_id，回退 users 表） |
 | `fn_cross_dock_timeout_sweep()` | 维护 | **直通超时自动降级**（MATCHED/STAGING→FALLBACK，每 5 分钟跑批） |
-| `fn_purge_old_action_logs(p_days INT DEFAULT 180)` | 维护 | **历史日志清理**（wo_action_logs + inventory_history，每天凌晨 3 点） |
+| `fn_purge_old_action_logs(p_days INT DEFAULT 180)` / `fn_purge_old_action_logs(p_days INT DEFAULT 180, p_batch_size INT DEFAULT 5000)` | 维护 | **历史日志清理**（wo_action_logs + inventory_history）。迁移 021 新增批量重载：加传 `p_batch_size` 时使用 `ctid IN (SELECT ctid ... LIMIT)` 分批删除，避免长事务锁表。**安全警告**：旧 `fn_purge_old_action_logs(INT)` 单参重载（ghost function）仍存在，必须传 `p_batch_size` 以路由到安全批量重载。 |
+| `chk_password_hash_format` | 约束 | **迁移 022 新增**：`users.password_hash` CHECK 约束，要求 bcrypt 格式 `^\$2[aby]\$\d{2}\$.{53}$`（恰好 60 字符）。 |
 | `fn_claim_task(p_work_order_id, p_user_id, p_device_id, p_lease_seconds=300)` | 离线同步 | **竞争性任务租约领用**：插入成功即领用成功；因唯一约束冲突失败时返回明确失败原因（不抛异常） |
 | `fn_release_task_claim(p_claim_id)` | 离线同步 | 任务正常完成后主动释放租约 |
 | `fn_expire_task_claims()` | 维护 | **定时清扫过期租约**（建议每 1~5 分钟），发现工单未完成则标记 EXCEPTION + 登记 `TASK_CLAIM_EXPIRED` 异常 |
@@ -690,7 +691,7 @@ WITH CHECK (id = fn_current_tenant_id());
 | 任务名 | 调度 | 调用函数 | 说明 |
 |--------|------|----------|------|
 | `cross-dock-timeout-sweep` | `*/5 * * * *` (每 5 分钟) | `fn_cross_dock_timeout_sweep()` | 直通超时自动降级 FALLBACK |
-| `purge-old-action-logs` | `0 3 * * *` (每天凌晨 3 点) | `fn_purge_old_action_logs(180)` | 清理 180 天前日志，释放 Supabase 免费版 500MB 配额 |
+| `purge-old-action-logs` | `0 3 * * *` (每天凌晨 3 点) | `fn_purge_old_action_logs(180)` | 清理 180 天前日志，释放 Supabase 免费版 500MB 配额（迁移 021 新增批量模式后建议改用 `fn_run_storage_maintenance()` 一站式维护，见 §8 第 532-533 行） |
 | `task-claim-expiry-sweep` | 建议 `*/1-5 * * * *` (每 1~5 分钟，v2.2.0 新增) | `fn_expire_task_claims()` | 清扫过期任务租约，未完成工单自动标记异常 |
 
 **pg_cron 启用方式**（主脚本已含异常捕获）：

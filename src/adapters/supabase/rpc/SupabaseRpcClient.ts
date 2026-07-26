@@ -7,6 +7,20 @@ import { IRpcClient, RpcOptions, RpcError } from '../../../core/ports/rpc/IRpcCl
 import { PURGE_BATCH_SIZE_MIN, PURGE_BATCH_SIZE_MAX } from '../../../core/ports/rpc/IPurgeOldLogsRpc'
 import type { Database } from '../../../types/database'
 
+/** RPC-capable client 最小接口，替代 `any` 以保持类型安全。
+ *  返回 `PromiseLike`（非 `Promise`）：Supabase PostgrestBuilder 实现
+ *  PromiseLike 而非完整 Promise，需保持兼容。 */
+interface RpcCapableClient {
+  rpc(
+    functionName: string,
+    args: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): PromiseLike<{
+    data: unknown
+    error: { code: string; message: string; details?: string; hint?: string } | null
+  }>
+}
+
 export class SupabaseRpcClient implements IRpcClient {
   constructor(private supabase: WmsSupabaseClient) {}
 
@@ -100,6 +114,9 @@ export class SupabaseRpcClient implements IRpcClient {
           'fn_purge_old_action_logs'
         )
       }
+      // `as ReturnType<...>` 必要：fn_purge_old_action_logs 在 database.ts
+      // 中是联合类型（两个重载），Supabase JS client 无法自动推导返回类型，
+      // 此处手动锁定为端口接口契约类型。若 DB schema 变更需同步更新 IRpcClient。
       return this.supabase.rpc('fn_purge_old_action_logs', params, options) as ReturnType<IRpcClient['purgeOldLogs']['purge']>
     },
   }
@@ -133,7 +150,7 @@ export class SupabaseRpcClient implements IRpcClient {
   }
 
   private async callWithClient<F extends keyof Database['public']['Functions']>(
-    client: any,
+    client: RpcCapableClient,
     functionName: F,
     args: Database['public']['Functions'][F]['Args'],
     options?: RpcOptions

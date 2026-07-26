@@ -7,6 +7,9 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // graphql_public schema：pg_graphql 扩展自动生成的 GraphQL 端点。
+  // 本应用不直接调用该 schema；访问控制（REVOKE EXECUTE / RLS）
+  // 由 Supabase 平台层和 DBA 团队在 HiWmsSupabase 仓库管理。
   graphql_public: {
     Tables: {
       [_ in never]: never
