@@ -88,7 +88,7 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*, locations(picking_threshold_pct, picking_max_qty)')
       .eq('tenant_id', tenantId)
-      .lt('quantity', this.getClient().rpc('calculate_replenishment_threshold')); // 简化，实际需更复杂的查询
+      .lt('quantity', (this.getClient() as any).rpc('calculate_replenishment_threshold')); // 简化，实际需更复杂的查询
 
     if (error) throw error;
     return (data as Tables<'inventory'>[]) || [];

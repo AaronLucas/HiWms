@@ -23,7 +23,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   protected idColumn = 'id';
 
   async findByInspectionNo(inspectionNo: string, tenantId: string): Promise<QualityInspectionRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('inspection_no', inspectionNo)
@@ -42,7 +42,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; result?: string; orderId?: string; waveId?: string }
   ): Promise<QualityInspectionRow[]> {
     const { limit = 100, offset = 0, status, result, orderId, waveId } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -63,7 +63,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     inspection: QualityInspectionRow;
     items: InspectionItemRow[];
   } | null> {
-    const { data: inspection, error: inspectionError } = await this.getClient()
+    const { data: inspection, error: inspectionError } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('id', inspectionId)
@@ -74,7 +74,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       throw inspectionError;
     }
 
-    const { data: items, error: itemsError } = await this.getClient()
+    const { data: items, error: itemsError } = await (this.getClient() as any)
       .from('inspection_items')
       .select('*')
       .eq('inspection_id', inspectionId)
@@ -89,7 +89,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async findPendingInspection(tenantId: string): Promise<QualityInspectionRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -101,7 +101,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async findPendingReinspection(tenantId: string): Promise<QualityInspectionRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -113,7 +113,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async findPending(tenantId: string): Promise<QualityInspectionRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -125,7 +125,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async findDiscrepancy(tenantId: string): Promise<QualityInspectionRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -152,7 +152,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async createInspectionItems(items: InspectionItemInsert[]): Promise<InspectionItemRow[]> {
-    const { data: insertedData, error } = await this.getClient()
+    const { data: insertedData, error } = await (this.getClient() as any)
       .from('inspection_items')
       .insert(items as any)
       .select();
@@ -162,7 +162,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   }
 
   async updateInspectionItem(itemId: string, data: Partial<InspectionItemUpdate>): Promise<InspectionItemRow> {
-    const { data: updatedData, error } = await this.getClient()
+    const { data: updatedData, error } = await (this.getClient() as any)
       .from('inspection_items')
       .update(data as any)
       .eq('id', itemId)
@@ -179,7 +179,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from('inspection_items')
       .select('result')
       .eq('inspection_id', inspectionId);
@@ -202,7 +202,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     failedCount: number;
     avgDurationMinutes: number;
   }>> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('inspector_id, result, status, started_at, completed_at')
       .eq('tenant_id', tenantId)
@@ -249,7 +249,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     passRate: number;
     byInspector: Record<string, { total: number; passed: number; failed: number }>;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('result, inspector_id')
       .eq('tenant_id', tenantId)

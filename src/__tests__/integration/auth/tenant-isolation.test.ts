@@ -12,11 +12,21 @@
  * 注意：需要本地 Supabase 实例运行，通过环境变量 RUN_DB_INTEGRATION_TESTS=1 启用
  */
 
-import { describe, it, expect, beforeAll, afterAll, skipIf } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../../types/database';
 
 const RUN_INTEGRATION_TESTS = process.env.RUN_DB_INTEGRATION_TESTS === '1';
+
+const SUPABASE_URL = process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321';
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY ??
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@test.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
 describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (RLS 生效验证)', () => {
   let adminClient: SupabaseClient<Database>;
@@ -92,8 +102,8 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
 
     // 超管登录
     const { data: adminSignIn, error: adminSignInError } = await adminClient.auth.signInWithPassword({
-      email: process.env.ADMIN_EMAIL || 'admin@test.com',
-      password: process.env.ADMIN_PASSWORD || 'admin123',
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
     });
     if (!adminSignInError && adminSignIn.session) {
       adminToken = adminSignIn.session.access_token;
@@ -291,16 +301,14 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
         tenant_id: tenantAId,
         product_id: productAId,
         location_id: locationAId,
-        qty_on_hand: 100,
-        qty_available: 100,
+        quantity: 100,
       });
 
       await tenantBClient.from('inventory').insert({
         tenant_id: tenantBId,
         product_id: productBId,
         location_id: locationBId,
-        qty_on_hand: 200,
-        qty_available: 200,
+        quantity: 200,
       });
     });
 
@@ -308,23 +316,23 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       const { data, error } = await tenantAClient.from('inventory').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].qty_on_hand).toBe(100);
+      expect(data![0].quantity).toBe(100);
     });
 
     it('租户 B 只能看到自己的库存', async () => {
       const { data, error } = await tenantBClient.from('inventory').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].qty_on_hand).toBe(200);
+      expect(data![0].quantity).toBe(200);
     });
 
     it('租户 A 无法通过 RPC 修改租户 B 的库存', async () => {
       // 尝试跨租户调用库存调整 RPC
       const { error } = await tenantAClient.rpc('fn_adjust_inventory_at_location', {
+        p_tenant_id: tenantAId,
         p_location_id: locationBId,
         p_product_id: productBId,
-        p_qty_delta: -50,
-        p_batch_no: null,
+        p_delta: -50,
       });
       // RLS 或 RPC 内部校验应该阻止
       expect(error).toBeTruthy();
@@ -338,14 +346,14 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     beforeAll(async () => {
       const { data: orderA } = await tenantAClient
         .from('orders')
-        .insert({ tenant_id: tenantAId, order_no: 'ORD-A-001', status: 'PENDING', order_type: 'OUTBOUND' })
+        .insert({ tenant_id: tenantAId, external_order_id: 'ORD-A-001', status: 'PENDING', order_type: 'OUTBOUND' })
         .select()
         .single();
       orderAId = orderA!.id;
 
       const { data: orderB } = await tenantBClient
         .from('orders')
-        .insert({ tenant_id: tenantBId, order_no: 'ORD-B-001', status: 'PENDING', order_type: 'OUTBOUND' })
+        .insert({ tenant_id: tenantBId, external_order_id: 'ORD-B-001', status: 'PENDING', order_type: 'OUTBOUND' })
         .select()
         .single();
       orderBId = orderB!.id;
@@ -355,20 +363,20 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       const { data, error } = await tenantAClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].order_no).toBe('ORD-A-001');
+      expect(data![0].external_order_id).toBe('ORD-A-001');
     });
 
     it('租户 B 只能看到自己的订单', async () => {
       const { data, error } = await tenantBClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].order_no).toBe('ORD-B-001');
+      expect(data![0].external_order_id).toBe('ORD-B-001');
     });
 
     it('租户 A 无法创建属于租户 B 的订单', async () => {
       const { error } = await tenantAClient.from('orders').insert({
         tenant_id: tenantBId, // 尝试伪造 tenant_id
-        order_no: 'ORD-FAKE',
+        external_order_id: 'ORD-FAKE',
         status: 'PENDING',
         order_type: 'OUTBOUND',
       });

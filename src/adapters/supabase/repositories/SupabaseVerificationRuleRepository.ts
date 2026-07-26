@@ -19,7 +19,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   protected idColumn = 'id';
 
   async findActiveBySku(skuId: string, at: Date = new Date()): Promise<VerificationRuleRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('sku_id', skuId)
@@ -42,7 +42,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; isActive?: boolean; version?: number }
   ): Promise<VerificationRuleRow[]> {
     const { limit = 100, offset = 0, isActive, version } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -58,7 +58,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   }
 
   async findByVersion(version: number): Promise<VerificationRuleRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('version', version)
@@ -72,7 +72,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
   }
 
   async findHistoryBySku(skuId: string): Promise<VerificationRuleRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('sku_id', skuId)
@@ -84,7 +84,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
 
   async createNewVersion(data: VerificationRuleInsert): Promise<VerificationRuleRow> {
     // Get latest version for this SKU
-    const { data: latest } = await this.getClient()
+    const { data: latest } = await (this.getClient() as any)
       .from(this.tableName)
       .select('version')
       .eq('sku_id', data.sku_id)
@@ -108,7 +108,7 @@ export class SupabaseVerificationRuleRepository extends SupabaseBaseRepository<
     latestVersion: number;
     bySku: Record<string, number>;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('version, sku_id, is_active')
       .eq('tenant_id', tenantId);

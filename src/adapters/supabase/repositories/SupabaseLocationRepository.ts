@@ -81,7 +81,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .neq('picking_threshold_pct', null)
-      .lt('current_volume', this.getClient().rpc('calculate_replenishment_threshold'));
+      .lt('current_volume', (this.getClient() as any).rpc('calculate_replenishment_threshold'));
 
     if (error) throw error;
     return (data as LocationRow[]) || [];

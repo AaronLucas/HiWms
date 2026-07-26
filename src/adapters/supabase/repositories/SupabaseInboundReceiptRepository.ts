@@ -23,7 +23,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   protected idColumn = 'id';
 
   async findByReceiptNo(receiptNo: string, tenantId: string): Promise<InboundReceiptRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('receipt_no', receiptNo)
@@ -42,7 +42,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; supplierName?: string }
   ): Promise<InboundReceiptRow[]> {
     const { limit = 100, offset = 0, status, supplierName } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -61,7 +61,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     receipt: InboundReceiptRow;
     items: InspectionItemRow[];
   } | null> {
-    const { data: receipt, error: receiptError } = await this.getClient()
+    const { data: receipt, error: receiptError } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('id', receiptId)
@@ -72,7 +72,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       throw receiptError;
     }
 
-    const { data: items, error: itemsError } = await this.getClient()
+    const { data: items, error: itemsError } = await (this.getClient() as any)
       .from('inspection_items')
       .select('*')
       .eq('receipt_id', receiptId)
@@ -87,7 +87,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   }
 
   async findPendingReceipt(tenantId: string): Promise<InboundReceiptRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -99,7 +99,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   }
 
   async findPendingInspection(tenantId: string): Promise<InboundReceiptRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -112,7 +112,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
 
   async findCompleted(tenantId: string, options?: { limit?: number; offset?: number }): Promise<InboundReceiptRow[]> {
     const { limit = 100, offset = 0 } = options || {};
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -136,7 +136,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   }
 
   async createInspectionItems(items: InspectionItemInsert[]): Promise<InspectionItemRow[]> {
-    const { data: insertedData, error } = await this.getClient()
+    const { data: insertedData, error } = await (this.getClient() as any)
       .from('inspection_items')
       .insert(items as any)
       .select();
@@ -146,7 +146,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   }
 
   async updateInspectionItem(itemId: string, data: Partial<InspectionItemUpdate>): Promise<InspectionItemRow> {
-    const { data: updatedData, error } = await this.getClient()
+    const { data: updatedData, error } = await (this.getClient() as any)
       .from('inspection_items')
       .update(data as any)
       .eq('id', itemId)
@@ -163,7 +163,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from('inspection_items')
       .select('status')
       .eq('receipt_id', receiptId);
@@ -183,7 +183,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     receiptCount: number;
     totalQty: number;
   }>> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('supplier_name, id')
       .eq('tenant_id', tenantId)
