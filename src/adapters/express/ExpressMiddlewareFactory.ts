@@ -147,13 +147,16 @@ export class ExpressMiddlewareFactory {
     };
   }
 
-  /** RLS 上下文注入中间件：为 Supabase 客户端设置租户上下文 */
+  /** RLS 上下文注入中间件：为 Supabase 客户端设置租户上下文
+   * ADR-015: 注入 access_token 供 per-request authenticated client 使用
+   * 路由处理器应使用 req.getSupabaseAuthToken() 获取 token 并传给仓储方法
+   */
   injectRlsContext() {
     return async (req: Request, res: Response, next: NextFunction) => {
-      if (req.context?.tenantId) {
-        // 设置请求级别的 RLS 上下文
-        // 实际使用时，在 Supabase 客户端调用前设置
-        (req as any).rlsContext = { tenantId: req.context.tenantId };
+      if (req.context?.supabaseToken) {
+        // 将 token 挂载到请求对象供后续使用
+        // 仓储调用时传入此 token 以创建 per-request authenticated client
+        (req as any).getSupabaseAuthToken = () => req.context!.supabaseToken;
       }
       next();
     };
