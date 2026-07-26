@@ -30,6 +30,13 @@ export type PurgeOldLogsParams =
   | { p_days?: number }
   | { p_days?: number; p_batch_size?: number };
 
+/** 类型守卫：判断批量清理结果（迁移 021 新增） */
+export function isBatchedResult(
+  result: PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched
+): result is PurgeOldLogsResultBatched {
+  return result.length > 0 && 'more_batches_available' in result[0];
+}
+
 export interface IPurgeOldLogsRpc {
   /**
    * 清理历史日志：wo_action_logs + inventory_history（挂 pg_cron 每天 3 点）
