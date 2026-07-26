@@ -29,17 +29,17 @@ export abstract class SupabaseBaseRepository<T, TInsert, TUpdate, TId extends st
 
   /**
    * 从表创建查询构建器（内部使用，支持 authToken）
-   * 使用 any 类型绕过 TypeScript 的严格表名检查（表名在运行时是动态字符串）
+   * 使用类型断言绕过 TypeScript 的严格表名检查（表名在运行时是动态字符串）
    */
   protected from(authToken?: string): any {
-    return this.getClient(false, authToken).from(this.tableName);
+    return (this.getClient(false, authToken) as any).from(this.tableName);
   }
 
   /**
    * 从表创建查询构建器（管理员权限）
    */
   protected fromAdmin(): any {
-    return this.getClient(true).from(this.tableName);
+    return (this.getClient(true) as any).from(this.tableName);
   }
 
   async findById(id: TId, authToken?: string): Promise<T | null> {
