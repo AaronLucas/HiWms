@@ -68,7 +68,7 @@ describe.skipIf(!RUN)('SupabaseTaskClaimRepository 竞争性任务领用正确�
     for (let i = 0; i < 6; i++) {
       const { data: user, error: userErr } = await client
         .from('users')
-        .insert({ tenant_id: tenantId, username: `ecc-p0-user-${i}-${Date.now()}`, password_hash: '$2b$12$LJ3m4ys3LkBCVxJGqOjPkuF0mJqVxJGqOjPkuF0mJqVxJGqOjPku' })
+        .insert({ tenant_id: tenantId, username: `ecc-p0-user-${i}-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
         .select()
         .single();
       if (userErr) throw userErr;
