@@ -15,7 +15,7 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   InventoryUpdate,
   string
 > implements IInventoryRepository {
-  protected tableName = 'inventory' as const;
+  protected tableName = 'inventory';
   protected idColumn = 'id';
 
   async findByLocation(locationId: string): Promise<InventoryRow[]> {

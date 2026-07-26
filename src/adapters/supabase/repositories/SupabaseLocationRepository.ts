@@ -15,7 +15,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
   LocationUpdate,
   string
 > implements ILocationRepository {
-  protected tableName = 'locations' as const;
+  protected tableName = 'locations';
   protected idColumn = 'id';
 
   async findByCode(code: string, tenantId: string): Promise<LocationRow | null> {

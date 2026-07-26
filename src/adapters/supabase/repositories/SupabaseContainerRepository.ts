@@ -15,7 +15,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
   ContainerUpdate,
   string
 > implements IContainerRepository {
-  protected tableName = 'containers' as const;
+  protected tableName = 'containers';
   protected idColumn = 'id';
 
   async findByCode(code: string, tenantId: string): Promise<ContainerRow | null> {

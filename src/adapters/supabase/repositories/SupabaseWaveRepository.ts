@@ -19,7 +19,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
   WaveUpdate,
   string
 > implements IWaveRepository {
-  protected tableName = 'waves' as const;
+  protected tableName = 'waves';
   protected idColumn = 'id';
 
   async findByWaveNo(waveNo: string, tenantId: string): Promise<WaveRow | null> {

@@ -19,7 +19,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   InboundReceiptUpdate,
   string
 > implements IInboundReceiptRepository {
-  protected tableName = 'inbound_receipts' as const;
+  protected tableName = 'inbound_receipts';
   protected idColumn = 'id';
 
   async findByReceiptNo(receiptNo: string, tenantId: string): Promise<InboundReceiptRow | null> {

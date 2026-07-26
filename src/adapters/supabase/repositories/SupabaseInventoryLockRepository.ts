@@ -15,7 +15,7 @@ export class SupabaseInventoryLockRepository extends SupabaseBaseRepository<
   InventoryLockUpdate,
   string
 > implements IInventoryLockRepository {
-  protected tableName = 'inventory_locks' as const;
+  protected tableName = 'inventory_locks';
   protected idColumn = 'id';
 
   async findByInventory(inventoryId: string): Promise<InventoryLockRow[]> {

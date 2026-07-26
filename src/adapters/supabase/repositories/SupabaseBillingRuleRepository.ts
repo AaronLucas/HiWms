@@ -17,14 +17,14 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
   BillingRuleRow,
   BillingRuleInsert,
   BillingRuleUpdate,
-  string,
-  'billing_rules'
+  string
 > implements IBillingRuleRepository {
-  protected tableName = 'billing_rules' as const;
+  protected tableName = 'billing_rules';
   protected idColumn = 'id';
 
   async findByName(name: string, tenantId: string): Promise<BillingRuleRow | null> {
-    const { data, error } = await this.from()
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
       .select('*')
       .eq('rule_name', name)
       .eq('tenant_id', tenantId)
@@ -38,7 +38,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
   }
 
   async findActiveDefault(tenantId: string): Promise<BillingRuleRow | null> {
-    const { data, error } = await this.from()
+    const { data, error } = await this.getClient()
+      .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_default', true)
@@ -57,7 +58,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; isDefault?: boolean; isActive?: boolean }
   ): Promise<BillingRuleRow[]> {
     const { limit = 100, offset = 0, isDefault, isActive } = options || {};
-    let query = this.from()
+    let query = this.getClient()
+      .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
@@ -75,7 +77,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     rule: BillingRuleRow;
     tiers: BillingRuleTierRow[];
   } | null> {
-    const { data: rule, error: ruleError } = await this.from()
+    const { data: rule, error: ruleError } = await this.getClient()
+      .from(this.tableName)
       .select('*')
       .eq('id', ruleId)
       .single();
@@ -85,7 +88,7 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
       throw ruleError;
     }
 
-    const { data: tiers, error: tiersError } = await this.supabase.getClient()
+    const { data: tiers, error: tiersError } = await this.getClient()
       .from('billing_rule_tiers')
       .select('*')
       .eq('rule_id', ruleId)
@@ -103,7 +106,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     rule: BillingRuleRow;
     tiers: BillingRuleTierRow[];
   }> {
-    const { data: newRule, error: ruleError } = await this.from()
+    const { data: newRule, error: ruleError } = await this.getClient()
+      .from(this.tableName)
       .insert(rule as any)
       .select()
       .single();
@@ -111,7 +115,7 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     if (ruleError) throw ruleError;
 
     const tiersWithRuleId = tiers.map(t => ({ ...t, rule_id: newRule.id }));
-    const { data: newTiers, error: tiersError } = await this.supabase.getClient()
+    const { data: newTiers, error: tiersError } = await this.getClient()
       .from('billing_rule_tiers')
       .insert(tiersWithRuleId as any)
       .select();
@@ -128,7 +132,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     rule: BillingRuleRow;
     tiers: BillingRuleTierRow[];
   }> {
-    const { data: updatedRule, error: ruleError } = await this.from()
+    const { data: updatedRule, error: ruleError } = await this.getClient()
+      .from(this.tableName)
       .update(rule as any)
       .eq('id', ruleId)
       .select()
@@ -137,14 +142,14 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     if (ruleError) throw ruleError;
 
     // Delete existing tiers
-    await this.supabase.getClient()
+    await this.getClient()
       .from('billing_rule_tiers')
       .delete()
       .eq('rule_id', ruleId);
 
     // Insert new tiers
     const tiersWithRuleId = tiers.map(t => ({ ...t, rule_id: ruleId }));
-    const { data: newTiers, error: tiersError } = await this.supabase.getClient()
+    const { data: newTiers, error: tiersError } = await this.getClient()
       .from('billing_rule_tiers')
       .insert(tiersWithRuleId as any)
       .select();
@@ -160,13 +165,15 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
   async setDefault(ruleId: string, isDefault: boolean): Promise<BillingRuleRow> {
     // If setting as default, unset other defaults for this tenant
     if (isDefault) {
-      const { data: rule } = await this.from()
+      const { data: rule } = await this.getClient()
+        .from(this.tableName)
         .select('tenant_id')
         .eq('id', ruleId)
         .single();
 
       if (rule) {
-        await this.from()
+        await this.getClient()
+          .from(this.tableName)
           .update({ is_default: false })
           .eq('tenant_id', rule.tenant_id)
           .eq('is_default', true);
@@ -181,7 +188,8 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
     tiers: BillingRuleTierRow[];
   } | null> {
     const atISO = at.toISOString();
-    const { data: rule, error: ruleError } = await this.from()
+    const { data: rule, error: ruleError } = await this.getClient()
+      .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
@@ -196,7 +204,7 @@ export class SupabaseBillingRuleRepository extends SupabaseBaseRepository<
       throw ruleError;
     }
 
-    const { data: tiers, error: tiersError } = await this.supabase.getClient()
+    const { data: tiers, error: tiersError } = await this.getClient()
       .from('billing_rule_tiers')
       .select('*')
       .eq('rule_id', rule.id)
