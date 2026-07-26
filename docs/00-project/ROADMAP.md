@@ -1,6 +1,10 @@
 # WMS 项目全局任务树
 
 > 基于已完成的架构设计、数据库 Schema、API 设计、RBAC 系统生成的完整实施路线图。
+> 
+> **当前活跃 Sprint**: Sprint 0 — ADR-015 Auth Identity Bridge（2026-07-27 启动）  
+> **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成）  
+> **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`（2026-07-27，4 个 Sprint 分阶段推进）
 
 ---
 
@@ -128,7 +132,47 @@
 - [x] **二维码配对流程端点**（`POST /admin/devices/:id/pairing-qr`）
   - ✅ 生成新 API Key → 轮换 `secret_hash`/`secret_rotated_at` → 返回 base64url 二维码
 - [x] **测试覆盖**：单元测试 59/59 ✅ | 集成测试 5/5 ✅（sync 端点 HTTP 契约）
-- [ ] **device auth HTTP 集成测试补充**（login/refresh/provision/pairing-qr 端到端，待后续迭代）
+- [ ] **device auth HTTP 集成测试补充**（login/refresh/provision/pairing-qr 端到端，Sprint 3）
+
+---
+
+### 1.7 后端缺口补齐 Sprint 执行追踪（2026-07-27 启动）
+
+> **审计基线**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`  
+> **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`  
+> **总体后端完成度**: ~55%
+
+#### Sprint 0: ADR-015 Auth Identity Bridge（🔨 进行中）
+
+- [ ] 0.1 创建 `auth.users` → `public.users` 触发器（HiWmsSupabase addendum）
+- [ ] 0.2 实现 per-request Supabase client（SupabaseClient/SupabaseBaseRepository）
+- [ ] 0.3 修复 `injectRlsContext` 让 Repository 层消费 per-request JWT
+- [ ] 0.4 跨租户隔离集成测试（tenant-isolation.test.ts）
+
+#### Sprint 1: Repository Phase 2（⏳ 待 Sprint 0 完成）
+
+- [ ] 1.1 `SupabaseTenantRepository`
+- [ ] 1.2 `SupabaseProductRepository` + `SupabaseProductConstraintRepository`
+- [ ] 1.3 `SupabaseInventoryRepository`
+- [ ] 1.4 `SupabaseOrderRepository`
+- [ ] 1.5 `SupabaseWorkOrderRepository`
+- [ ] 1.6 `SupabaseSortingChuteRepository`
+- [ ] 1.7 Admin API 绕过 Repository 层修复
+
+#### Sprint 2: Tenant API + Use Case 层（⏳ 待 Sprint 1 完成）
+
+- [ ] 2.1 Tenant API 骨架（Express + DI + 中间件）
+- [ ] 2.2 订单/库存/商品/波次端点
+- [ ] 2.3 Use Case 补全（CreateOrder/GenerateWave/AllocateInventory）
+- [ ] 2.4 HTTP 契约测试
+
+#### Sprint 3: 测试补全 + 文档收尾（⏳ 待 Sprint 2 完成）
+
+- [ ] 3.1 Phase 8 仓库集成测试补全
+- [ ] 3.2 Device API auth HTTP 集成测试
+- [ ] 3.3 `fn_expire_task_claims` pg_cron 注册
+- [ ] 3.4 permissions 种子数据补全
+- [ ] 3.5 全部文档同步
 
 ---
 

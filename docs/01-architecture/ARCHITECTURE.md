@@ -1,5 +1,7 @@
 # 系统架构设计文档
 
+> **2026-07-27 状态**: 后端审计发现 ADR-015（Auth Identity Bridge）未实施导致 RLS 租户隔离失效。六边形架构端口层完整（45），适配器层缺失 Phase 2 出库 8 仓库。详见 `docs/00-project/BACKEND_GAP_ANALYSIS.md` 和 `docs/00-project/ECC_EXECUTION_PLAN.md`（Sprint 0 进行中）。
+
 ## 1. 架构概览
 
 ### 1.1 架构风格：六边形架构 + 多端拓扑

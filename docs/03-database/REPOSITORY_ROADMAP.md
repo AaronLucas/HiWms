@@ -1,11 +1,13 @@
 # 仓储层实施路线图
 
+> **2026-07-27 审计更新**: 后端全面审计发现 Phase 2（P0 出库作业 8 个仓库）仍为零进度。已纳入 ECC 执行计划 Sprint 1。详见 `docs/00-project/BACKEND_GAP_ANALYSIS.md` 和 `docs/00-project/ECC_EXECUTION_PLAN.md`。
+
 ## 项目概览
 - **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表 + 5 个 Layer 7/8 库区/序列号/存储管理表
 - **聚合根数**：46 个
 - **已完成**：35 个（Phase 1 核心域 11 个 + Phase 3 业务扩展 8 个 + Phase 4 支撑域 6 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
-- **🔨 已实现未验证**：3 个（Phase 8，本 PR 新增，`tsc`/既有测试基线通过，尚无专属集成测试证据）
-- **待完成**：8 个（Phase 2 出库作业 8 个，详见各 Phase 表格）
+- **🔨 已实现未验证**：3 个（Phase 8，`tsc`/既有测试基线通过，集成测试待 Sprint 3 补全）
+- **🔴 待实施（Sprint 1）**：8 个（Phase 2 出库作业，端口已定义，实现为零进度，见 ECC_EXECUTION_PLAN.md Sprint 1）
 - **分 8 个优先级阶段实施**
 
 > **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
