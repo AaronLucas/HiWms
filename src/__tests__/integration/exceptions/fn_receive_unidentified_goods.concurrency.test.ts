@@ -79,7 +79,7 @@ describe.skipIf(!RUN)('SupabaseUnidentifiedGoodsRepository 未识别货物闭环
 
     const { data: user, error: userErr } = await client
       .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p2-3-user-${Date.now()}`, password_hash: 'x' })
+      .insert({ tenant_id: tenantId, username: `ecc-p2-3-user-${Date.now()}`, password_hash: '$2b$12$LJ3m4ys3LkBCVxJGqOjPkuF0mJqVxJGqOjPkuF0mJqVxJGqOjPku' })
       .select()
       .single();
     if (userErr) throw userErr;
