@@ -1,9 +1,9 @@
 # DB_SCHEMA.md
 
-> **版本**: v2.7.0 (2026-07-25)  
-> **同步来源**: `supabase/migrations/`（001-019 编号迁移）+ `supabase/ops-scripts/`（运维脚本）+ `supabase/design-docs/`（DBA 设计文档）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。HiWmsSupabase 仓库同步机制见 `scripts/sync-db-migrations.sh`。  
-> **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2-19 全部 19 层迁移已由 DBA 团队部署到生产环境；✅ ops-scripts（监控视图/cron 任务/PgBouncer 配置）已同步至本地；✅ 设计文档（19 份 `unWMS_*_V1.md`）已同步至 `supabase/design-docs/`；✅ HiWmsSupabase 009-018 交叉核实已完成（见 §0 v2.6.0 记录）  
-> **ECC 分析**: 本次 ops-scripts 同步的多维度 ECC 分析报告见 `docs/03-database/DB_OPS_SCRIPTS_ECC_ANALYSIS.md`（2026-07-25）
+> **版本**: v2.8.0 (2026-07-26)  
+> **同步来源**: `supabase/migrations/`（001-023 编号迁移）+ `supabase/ops-scripts/`（运维脚本）+ `supabase/design-docs/`（DBA 设计文档）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。HiWmsSupabase 仓库同步机制见 `scripts/sync-db-migrations.sh`。  
+> **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2-23 全部 22 层迁移已由 DBA 团队部署到生产环境；✅ ops-scripts（监控视图/cron 任务/PgBouncer 配置）已同步至本地；✅ 设计文档（39 份）已同步至 `.readonly/`；✅ HiWmsSupabase 009-018 交叉核实已完成（见 §0 v2.6.0 记录）；✅ 迁移 023 Ghost Function 修复已同步（见 §0 v2.8.0 记录）  
+> **ECC 分析**: 迁移 023 多维度 ECC 影响分析见 `docs/03-database/MIGRATION_023_IMPACT_ANALYSIS.md`（2026-07-26）
 
 ---
 
@@ -32,6 +32,16 @@ DBA 团队对开发团队提交的同步动作扩展 PR（本地文件 `supabase
 > ✅ **2026-07-18 更新**：DBA 团队已完成 Layer 3/4 部署确认。本地 `supabase/migrations/003_extend_sync_event_actions.sql` 已替换为修正版，`004_tracking_policy_missing_label.sql` 已创建，两者内容均经 `diff` 核对与 `.readonly/` 对应参考文件逐字节一致；且已随生产部署生效（独立验证：`supabase gen types` 拉取结果与 `src/types/database.ts` 逐字节一致）。部署顺序硬约束已遵守：Layer 4 部署在 Layer 3 之后（Layer 4 `CREATE OR REPLACE` 覆盖了 Layer 3 的 `fn_apply_putaway_action`，未出现静默覆盖问题）。应用层（仓储 + Device API 路由）已同步完成，见 §11。
 
 设计原则与业务背景见 `PDA_OFFLINE_SYNC_DESIGN.md` §1、`SYNC_ACTIONS_EXTENSION.md`、`TRACKING_POLICY_MISSING_LABEL.md`；本文档只记录表结构事实，不重复设计动机。
+
+### v2.8.0（2026-07-26）
+DBA 团队交付迁移 023（`023_fix_ghost_function_and_hardening.sql`），修复 ECC 综合分析发现的 3 个安全问题（HiWmsSupabase Issues #50, #51, #52）：
+
+- **CRITICAL (#51)**: DROP 旧单参数 ghost function `fn_purge_old_action_logs(INT)`，消除未授权批量删除风险
+- **HIGH (#50)**: `fn_purge_old_action_logs(INT, INT)` 新增参数校验（p_days >= 1, p_batch_size ∈ [1, 100000]）；幂等注册 pg_cron 定时任务（每 2 小时）；新增 2 个清理性能索引（`idx_wo_action_logs_start_at`, `idx_inventory_history_changed_at`）
+- **HIGH (#52)**: `fn_expire_stalled_sync_events` 补防御性租户过滤，与 REVOKE EXECUTE 形成双重保护
+- **应用层影响**: `src/types/database.ts` 移除旧单参数重载 union member；`IPurgeOldLogsRpc` 接口清理 legacy 类型和 `isBatchedResult()` 类型守卫；应用层代码无运行时变更（已强制 p_batch_size 必填）
+
+> 详细影响分析见 `docs/03-database/MIGRATION_023_IMPACT_ANALYSIS.md`。
 
 ---
 
@@ -549,7 +559,7 @@ status IN ('PLANNING','RELEASED','IN_PROGRESS','COMPLETED','CANCELLED')
 | `fn_update_updated_at()` | 通用 | updated_at 自动维护 |
 | `fn_current_tenant_id()` | 认证 | **获取当前租户 ID**（优先 JWT app_metadata.tenant_id，回退 users 表） |
 | `fn_cross_dock_timeout_sweep()` | 维护 | **直通超时自动降级**（MATCHED/STAGING→FALLBACK，每 5 分钟跑批） |
-| `fn_purge_old_action_logs(p_days INT DEFAULT 180)` / `fn_purge_old_action_logs(p_days INT DEFAULT 180, p_batch_size INT DEFAULT 5000)` | 维护 | **历史日志清理**（wo_action_logs + inventory_history）。迁移 021 新增批量重载：加传 `p_batch_size` 时使用 `ctid IN (SELECT ctid ... LIMIT)` 分批删除，避免长事务锁表。**安全警告**：旧 `fn_purge_old_action_logs(INT)` 单参重载（ghost function）仍存在，必须传 `p_batch_size` 以路由到安全批量重载。 |
+| `fn_purge_old_action_logs(p_days INT DEFAULT 180, p_batch_size INT DEFAULT 10000)` | 维护 | **历史日志清理**（wo_action_logs + inventory_history），迁移 021 新增分批删除（ctid + LIMIT），迁移 023 新增参数校验（p_days >= 1, p_batch_size ∈ [1,100000]）并 DROP 旧单参 ghost function fn_purge_old_action_logs(INT)。挂 pg_cron 每 2 小时执行一次。 |
 | `chk_password_hash_format` | 约束 | **迁移 022 新增**：`users.password_hash` CHECK 约束，要求 bcrypt 格式 `^\$2[aby]\$\d{2}\$.{53}$`（恰好 60 字符）。 |
 | `fn_claim_task(p_work_order_id, p_user_id, p_device_id, p_lease_seconds=300)` | 离线同步 | **竞争性任务租约领用**：插入成功即领用成功；因唯一约束冲突失败时返回明确失败原因（不抛异常） |
 | `fn_release_task_claim(p_claim_id)` | 离线同步 | 任务正常完成后主动释放租约 |
@@ -691,7 +701,7 @@ WITH CHECK (id = fn_current_tenant_id());
 | 任务名 | 调度 | 调用函数 | 说明 |
 |--------|------|----------|------|
 | `cross-dock-timeout-sweep` | `*/5 * * * *` (每 5 分钟) | `fn_cross_dock_timeout_sweep()` | 直通超时自动降级 FALLBACK |
-| `purge-old-action-logs` | `0 3 * * *` (每天凌晨 3 点) | `fn_purge_old_action_logs(180)` | 清理 180 天前日志，释放 Supabase 免费版 500MB 配额（迁移 021 新增批量模式后建议改用 `fn_run_storage_maintenance()` 一站式维护，见 §8 第 532-533 行） |
+| `purge-old-action-logs` | `0 */2 * * *` (每 2 小时整点) | `fn_purge_old_action_logs(180, 10000)` | 清理 180 天前日志，分批删除避免长事务锁表。迁移 023 幂等注册（先 unschedule 再 schedule），兼容 ops-scripts 手动注册。 |
 | `task-claim-expiry-sweep` | 建议 `*/1-5 * * * *` (每 1~5 分钟，v2.2.0 新增) | `fn_expire_task_claims()` | 清扫过期任务租约，未完成工单自动标记异常 |
 
 **pg_cron 启用方式**（主脚本已含异常捕获）：
@@ -744,6 +754,10 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | 017：设备身份防御性加固（`017_fix_resolve_exception_trust_p_resolver_user_id.sql`） | 不新增表；`fn_resolve_exception` 新增 `p_resolver_user_id === fn_current_user_id()` 强制校验 | ✅ ADR-019 前置依赖，已在应用层 `missing-label/confirm`、`unidentified/identify` 路由同步加固（从 `req.context.userId` 派生），详见 `ROADMAP.md` §1.6.1 |
 | 018：设备身份 schema 使能（`018_device_identity_schema.sql`） | `devices.secret_hash`/`secret_rotated_at` 2 新列 + `permissions` 表 `devices` 资源 4 行 | ✅ 应用层 `SupabaseDeviceRepository` 已适配读写、`DeviceAuthMiddleware`/`device-credentials.ts` 已实现三层凭证体系，见 `ROADMAP.md` §1.6 |
 | 019：生产索引 CONCURRENTLY（`019_production_indexes_concurrently.sql`） | `inventory`/`vas_boms`/`vas_bom_items` 4 个缺口索引（CONCURRENTLY IF NOT EXISTS） | ✅ **CI 豁免，手动部署**（CONCURRENTLY 不能在事务块执行，见 `.readonly/unWMS_Production_Index_Deployment_V1.md`） |
+| 020：异常事件 payload_hash 修复（`020_fix_exception_payload_hash.sql`） | 不新增表；`fn_apply_sync_event`/`fn_expire_stalled_sync_events` 函数加固 | ✅ 幽灵异常竞态修复、payload_hash 一致性保证 |
+| 021：批量清理动作日志（`021_batched_purge_action_logs.sql`） | 不新增表；`fn_purge_old_action_logs(INT, INT)` 批量重载 + EXECUTE 权限收口 | ✅ ctid 分批删除避免长事务锁表；本迁移遗留 1 个 ghost function（见 023） |
+| 022：安全加固批次 3（`022_security_hardening_batch3.sql`） | 不新增表；`billing_rule_tiers` RLS、`users.password_hash` bcrypt CHECK、`pgstattuple` REVOKE | ✅ 最后一批 RLS 硬化 + 密码强度约束 |
+| 023：Ghost Function 修复 + 安全加固（`023_fix_ghost_function_and_hardening.sql`） | 不新增表；DROP ghost fn_purge_old_action_logs(INT)、双参数版参数校验、fn_expire_stalled_sync_events 租户过滤、2 个清理索引、pg_cron 幂等注册 | ✅ CRITICAL 安全漏洞修复 + 纵深防御加固，详见 `MIGRATION_023_IMPACT_ANALYSIS.md` |
 
 ---
 
@@ -759,6 +773,8 @@ RAISE NOTICE 'pg_cron 不可用（本地/CI 正常）：%', SQLERRM; END $$;
 | **2.4.0** | **2026-07-18** | **DBA 团队确认 Layer 2/3/4 迁移脚本已部署到生产环境**：003/004 本地文件均已替换/创建为 DBA 修正版，经 `diff` 核对与 `.readonly/` 参考文件逐字节一致；`src/types/database.ts` 已由 `supabase gen types` 独立核实与远程 schema 一致；应用层仓储（Layer 2/3/4 共 9 端口+9 实现）与 Device API 全部路由已实现，`tsc --noEmit` 零错误、`vitest` 59/59 通过。§0/§11 阻塞提示解除 |
 | **2.5.0** | **2026-07-20** | **补充 Layer 5-8**（并发安全加固/跨租户归属修复/库区库位序列号追踪/分层存储管理）：新增 `zones`/`inventory_units`/`storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary` 5 表、`locations` 6 新列、`v_serial_lookup` 视图、9 个新/重写函数、`sync_events.status` 新增 `PROCESSING`。经 `ecc:database-reviewer`/`ecc:architect`/`ecc:planner` 三轮分析（PR #37）核实无误的部分与遗留问题（1 CRITICAL + 2 HIGH + 1 MEDIUM，已提交 `DBA_ADDENDUM_REQUEST_2026-07-20.md`）均已记录。**迁移脚本本身随本次改动迁出本仓库**，权威版本见独立仓库 [HiWmsSupabase](https://github.com/AaronLucas/HiWmsSupabase)（`docs/01-architecture/ADR/017-dba-migration-repo-split.md`） |
 | **2.6.0** | **2026-07-25** | **HiWmsSupabase 009-018 交叉核实结果登记**：① 009-016（DBA addendum 修复链：`fn_resolve_exception` 身份冒用→017 强制校验 `p_resolver_user_id`、EXECUTE 权限收口→015、GRANT 策略、`updated_at` 补齐→009、`sync_events` 超时清扫→016，详见 `ROADMAP.md` §1.5 与 `DBA_ADDENDUM_REQUEST_2026-07-23.md`）；② 017（`fn_resolve_exception` 防御性加固）；③ 018（`devices.secret_hash`/`secret_rotated_at` + `permissions` 表 `devices` 四行资源）；④ 019（生产索引 `CONCURRENTLY`，CI 跳过、手动部署）；⑤ 应用层 ADR-019 设备身份子系统实施完成（PR #47）；⑥ Phase 8 仓储集成测试补齐。本文档的表结构/视图/函数/RLS 层面已在 v2.4.0-v2.5.0 覆盖完毕，本次补充的是 DBA 修复链与设备身份使能的交叉核实记录 |
+| **2.7.0** | **2026-07-25** | **迁移 019-022 类型同步 + ECC 多维度分析**：`src/types/database.ts` 从 HiWmsSupabase 迁移 019-022 同步更新；新增 `docs/ECC_ANALYSIS_ACTION_PLAN_2026-07-26.md`（DBA ops-scripts ECC 分析行动方案） |
+| **2.8.0** | **2026-07-26** | **迁移 023 Ghost Function 修复 + 安全加固**：DROP ghost function、参数校验、租户过滤、性能索引、pg_cron 注册。应用层类型清理（移除 PurgeOldLogsResultLegacy、isBatchedResult）。`tsc` 零错误，`vitest` 13/13 通过。详见 `MIGRATION_023_IMPACT_ANALYSIS.md` |
 
 ---
 

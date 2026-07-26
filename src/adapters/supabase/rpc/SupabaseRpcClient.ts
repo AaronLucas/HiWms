@@ -114,9 +114,10 @@ export class SupabaseRpcClient implements IRpcClient {
           'fn_purge_old_action_logs'
         )
       }
-      // `as ReturnType<...>` 必要：fn_purge_old_action_logs 在 database.ts
-      // 中是联合类型（两个重载），Supabase JS client 无法自动推导返回类型，
-      // 此处手动锁定为端口接口契约类型。若 DB schema 变更需同步更新 IRpcClient。
+      // `as ReturnType<...>` 必要：Supabase JS client 无法从 table-returning
+      // 函数自动推导返回类型（迁移 023 已移除旧单参 ghost function 重载，
+      // database.ts 中只剩双参数签名），此处手动锁定为端口接口契约类型。
+      // 若 DB schema 变更需同步更新 IRpcClient。
       return this.supabase.rpc('fn_purge_old_action_logs', params, options) as ReturnType<IRpcClient['purgeOldLogs']['purge']>
     },
   }

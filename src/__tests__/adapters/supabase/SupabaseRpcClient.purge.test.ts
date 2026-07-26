@@ -1,33 +1,29 @@
 /**
- * 迁移 021 批量清理 RPC 适配器单元测试
+ * 迁移 023 批量清理 RPC 适配器单元测试
  *
  * 覆盖 SupabaseRpcClient.purgeOldLogs.purge() 的委托行为、
- * 返回类型、错误传播、参数校验，以及 IPurgeOldLogsRpc 导出的
- * isBatchedResult() 类型守卫。
+ * 返回类型、错误传播、参数校验。
  *
- * p_batch_size 必填（安全加固 H1）：确保 PostgREST 始终路由到迁移 021
- * 批量重载，绕过旧 ghost function fn_purge_old_action_logs(INT)。
+ * 迁移 023（2026-07-26）：DROP 旧 ghost function fn_purge_old_action_logs(INT)，
+ * 统一为双参数批量重载。legacy 类型和 isBatchedResult() 类型守卫已移除。
  *
  * 测试范围：
- *   1. 批量清理委托（p_days + p_batch_size）→ PurgeOldLogsResultBatched
+ *   1. 批量清理委托（p_days + p_batch_size）→ PurgeOldLogsResult
  *   2. 最小参数委托（仅 p_batch_size）→ 服务端使用默认 p_days
  *   3. p_batch_size 参数校验（范围外/零/负数 → RpcError）
- *   4. isBatchedResult() 类型守卫正确区分两种结果
- *   5. RPC 错误 → RpcError 抛出
- *   6. 空结果数组处理
+ *   4. RPC 错误 → RpcError 抛出
+ *   5. 空结果数组处理
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 import {
-  isBatchedResult,
   PURGE_BATCH_SIZE_MIN,
   PURGE_BATCH_SIZE_MAX,
 } from '../../../core/ports/rpc/IPurgeOldLogsRpc';
 import type {
-  PurgeOldLogsResultLegacy,
-  PurgeOldLogsResultBatched,
+  PurgeOldLogsResult,
 } from '../../../core/ports/rpc/IPurgeOldLogsRpc';
 import { RpcError } from '../../../core/ports/rpc/IRpcClient';
 import { createClient } from '@supabase/supabase-js';
@@ -43,7 +39,7 @@ const mockCreateClient = vi.mocked(createClient);
 // ---------------------------------------------------------------------------
 
 /** 预构建的批量清理 mock 返回值（多 batch 场景的第一条记录） */
-const batchedMockRow: PurgeOldLogsResultBatched[number] = {
+const batchedMockRow: PurgeOldLogsResult[number] = {
   batch_deleted_inventory_history: 5000,
   batch_deleted_wo_logs: 5000,
   more_batches_available: true,
@@ -52,7 +48,7 @@ const batchedMockRow: PurgeOldLogsResultBatched[number] = {
 };
 
 /** 批量清理多批次的第二条记录 */
-const batchedMockRow2: PurgeOldLogsResultBatched[number] = {
+const batchedMockRow2: PurgeOldLogsResult[number] = {
   batch_deleted_inventory_history: 2000,
   batch_deleted_wo_logs: 3000,
   more_batches_available: false,
@@ -70,7 +66,7 @@ const config = {
 // 测试套件
 // ---------------------------------------------------------------------------
 
-describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
+describe('SupabaseRpcClient - purgeOldLogs (迁移 023)', () => {
   let supabase: WmsSupabaseClient;
   let rpcClient: SupabaseRpcClient;
   let mockInnerClient: { rpc: ReturnType<typeof vi.fn> };
@@ -122,7 +118,7 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
     });
 
     it('should return batched result with multiple batch rows', async () => {
-      const multiBatch: PurgeOldLogsResultBatched = [
+      const multiBatch: PurgeOldLogsResult = [
         batchedMockRow,
         batchedMockRow2,
       ];
@@ -359,77 +355,4 @@ describe('SupabaseRpcClient - purgeOldLogs (迁移 021)', () => {
     });
   });
 
-  // =========================================================================
-  // isBatchedResult() — 类型守卫（导入自 IPurgeOldLogsRpc）
-  // =========================================================================
-
-  describe('isBatchedResult() type guard', () => {
-    it('should return false for a legacy result', () => {
-      const legacyResult: PurgeOldLogsResultLegacy = [
-        { purged_inventory_history: 150, purged_wo_logs: 300 },
-      ];
-
-      expect(isBatchedResult(legacyResult)).toBe(false);
-    });
-
-    it('should return true for a batched result', () => {
-      const batchedResult: PurgeOldLogsResultBatched = [batchedMockRow];
-
-      expect(isBatchedResult(batchedResult)).toBe(true);
-    });
-
-    it('should return false for an empty array', () => {
-      expect(isBatchedResult([])).toBe(false);
-    });
-
-    it('should return false for legacy result with multiple rows', () => {
-      const legacyMulti: PurgeOldLogsResultLegacy = [
-        { purged_inventory_history: 100, purged_wo_logs: 200 },
-        { purged_inventory_history: 50, purged_wo_logs: 100 },
-      ];
-
-      expect(isBatchedResult(legacyMulti)).toBe(false);
-    });
-
-    it('should return true for batched result with multiple rows', () => {
-      const batchedMulti: PurgeOldLogsResultBatched = [
-        batchedMockRow,
-        batchedMockRow2,
-      ];
-
-      expect(isBatchedResult(batchedMulti)).toBe(true);
-    });
-
-    it('should discriminate types when used in conditional branches', () => {
-      // 模拟函数通过 isBatchedResult 后能从联合类型中区分出具体类型
-      const unionResult: PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched =
-        [batchedMockRow];
-
-      if (isBatchedResult(unionResult)) {
-        // TypeScript 在这个分支里应该将 unionResult 缩窄为 PurgeOldLogsResultBatched
-        const first = unionResult[0];
-        // 批量特有字段应该可访问（运行时已验证）
-        expect(first.more_batches_available).toBe(true);
-        expect(first.batch_deleted_inventory_history).toBe(5000);
-        expect(first.total_deleted_inventory_history).toBe(5000);
-      } else {
-        // 不应该走到这里
-        expect.unreachable('isBatchedResult should have returned true');
-      }
-    });
-
-    it('should fall through to else branch for legacy result via type discrimination', () => {
-      const unionResult: PurgeOldLogsResultLegacy | PurgeOldLogsResultBatched =
-        [{ purged_inventory_history: 150, purged_wo_logs: 300 }];
-
-      if (isBatchedResult(unionResult)) {
-        expect.unreachable('isBatchedResult should have returned false');
-      } else {
-        // TypeScript 在这个分支里应该将 unionResult 缩窄为 PurgeOldLogsResultLegacy
-        const first = unionResult[0];
-        expect(first.purged_inventory_history).toBe(150);
-        expect(first.purged_wo_logs).toBe(300);
-      }
-    });
-  });
 });
