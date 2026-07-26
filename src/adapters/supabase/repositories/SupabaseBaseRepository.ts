@@ -53,7 +53,7 @@ export abstract class SupabaseBaseRepository<
   async findById(id: TId, authToken?: string): Promise<T | null> {
     const { data, error } = await this.from(authToken)
       .select('*')
-      .eq(this.idColumn, id)
+      .eq(this.idColumn as any, id)
       .single();
 
     if (error) {
@@ -75,13 +75,13 @@ export abstract class SupabaseBaseRepository<
 
     let query = this.from(authToken)
       .select('*')
-      .order(orderBy as string, { ascending })
+      .order(orderBy as any, { ascending })
       .range(offset, offset + limit - 1);
 
     // 应用过滤器
     for (const [key, value] of Object.entries(filters)) {
       if (value !== undefined && value !== null) {
-        query = query.eq(key, value);
+        query = query.eq(key as any, value);
       }
     }
 
@@ -96,7 +96,7 @@ export abstract class SupabaseBaseRepository<
 
     for (const [key, value] of Object.entries(filters)) {
       if (value !== undefined && value !== null) {
-        query = query.eq(key, value);
+        query = query.eq(key as any, value);
       }
     }
 
@@ -127,7 +127,7 @@ export abstract class SupabaseBaseRepository<
   async update(id: TId, data: TUpdate, authToken?: string): Promise<T> {
     const { data: result, error } = await this.from(authToken)
       .update(data as any)
-      .eq(this.idColumn, id)
+      .eq(this.idColumn as any, id)
       .select()
       .single();
 
@@ -138,7 +138,7 @@ export abstract class SupabaseBaseRepository<
   async delete(id: TId, authToken?: string): Promise<void> {
     const { error } = await this.from(authToken)
       .delete()
-      .eq(this.idColumn, id);
+      .eq(this.idColumn as any, id);
 
     if (error) throw error;
   }
@@ -146,7 +146,7 @@ export abstract class SupabaseBaseRepository<
   async exists(id: TId, authToken?: string): Promise<boolean> {
     const { data, error } = await this.from(authToken)
       .select(this.idColumn)
-      .eq(this.idColumn, id)
+      .eq(this.idColumn as any, id)
       .single();
 
     if (error) {
