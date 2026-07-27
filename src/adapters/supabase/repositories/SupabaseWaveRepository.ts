@@ -40,10 +40,10 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; strategyType?: string }
+    options?: { limit?: number; offset?: number; status?: string; strategyType?: string; authToken?: string }
   ): Promise<WaveRow[]> {
-    const { limit = 100, offset = 0, status, strategyType } = options || {};
-    let query = (this.getClient() as any)
+    const { limit = 100, offset = 0, status, strategyType, authToken } = options || {};
+    let query = (this.getClient(false, authToken) as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)

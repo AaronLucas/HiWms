@@ -34,22 +34,22 @@ export class SupabaseOrderRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options: { limit?: number; offset?: number; status?: string } = {}
+    options: { limit?: number; offset?: number; status?: string; authToken?: string } = {}
   ): Promise<Tables<'orders'>[]> {
-    const { limit = 50, offset = 0, status } = options;
+    const { limit = 50, offset = 0, status, authToken } = options;
     const filters: Record<string, unknown> = { tenant_id: tenantId };
     if (status) filters.status = status;
 
-    return this.findAll({ limit, offset, filters, orderBy: 'created_at', ascending: false });
+    return this.findAll({ limit, offset, filters, orderBy: 'created_at', ascending: false, authToken });
   }
 
-  async findWithLines(orderId: string): Promise<{
+  async findWithLines(orderId: string, authToken?: string): Promise<{
     order: Tables<'orders'>;
     lines: Tables<'order_lines'>[];
   } | null> {
     const [order, lines] = await Promise.all([
-      this.findById(orderId),
-      this.getClient()
+      this.findById(orderId, authToken),
+      this.getClient(false, authToken)
         .from('order_lines')
         .select('*')
         .eq('order_id', orderId)

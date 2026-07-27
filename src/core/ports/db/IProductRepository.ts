@@ -17,12 +17,15 @@ export interface IProductRepository extends IRepository<ProductRow, ProductInser
   /**
    * 按租户查找产品
    */
-  findByTenant(tenantId: string): Promise<ProductRow[]>;
+  findByTenant(
+    tenantId: string,
+    options?: { limit?: number; offset?: number; abcClass?: string; authToken?: string }
+  ): Promise<ProductRow[]>;
 
   /**
    * 搜索产品（按名称、SKU 模糊匹配）
    */
-  search(query: string, tenantId: string): Promise<ProductRow[]>;
+  search(query: string, tenantId: string, authToken?: string): Promise<ProductRow[]>;
 
   /**
    * 检查 SKU 是否存在

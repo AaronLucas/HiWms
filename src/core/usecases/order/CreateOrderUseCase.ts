@@ -20,13 +20,13 @@ export interface CreateOrderInput {
 export class CreateOrderUseCase {
   constructor(private supabase: WmsSupabaseClient) {}
 
-  async execute(input: CreateOrderInput): Promise<{
+  async execute(input: CreateOrderInput, authToken?: string): Promise<{
     orderId: string;
     lines: Array<{ id: string; productId: string; qty: number }>;
   }> {
-    // 创建订单
+    // 创建订单（authToken 存在时走 per-request authenticated client，RLS 按真实用户生效，ADR-015）
     const { data: order, error } = await this.supabase
-      .from('orders')
+      .from('orders', false, authToken)
       .insert({
         tenant_id: input.tenantId,
         external_order_id: input.externalOrderId,
@@ -50,7 +50,7 @@ export class CreateOrderUseCase {
     }));
 
     const { error: linesError } = await this.supabase
-      .from('order_lines')
+      .from('order_lines', false, authToken)
       .insert(orderLines);
 
     if (linesError) throw new Error(`创建订单明细失败: ${linesError.message}`);
@@ -74,13 +74,13 @@ export interface AllocateOrderInput {
 export class AllocateOrderUseCase {
   constructor(private supabase: WmsSupabaseClient) {}
 
-  async execute(input: AllocateOrderInput): Promise<{
+  async execute(input: AllocateOrderInput, authToken?: string): Promise<{
     success: boolean;
     allocations: Array<{ allocQty: number; sourceLpn: string }>;
   }> {
-    // 获取订单及明细
+    // 获取订单及明细（authToken 存在时走 per-request authenticated client，RLS 按真实用户生效，ADR-015）
     const { data: orderLines, error } = await this.supabase
-      .from('order_lines')
+      .from('order_lines', false, authToken)
       .select('id, product_id, qty')
       .eq('order_id', input.orderId);
 
@@ -97,13 +97,13 @@ export class AllocateOrderUseCase {
         p_order_id: input.orderId,
         p_sku_id: line.product_id,
         p_needed_qty: line.qty,
-      });
+      }, { authToken });
       allAllocations.push(...(allocations as Array<{ alloc_qty: number; source_lpn: string }>));
     }
 
     // 更新订单状态
     const { error: updateError } = await this.supabase
-      .from('orders')
+      .from('orders', false, authToken)
       .update({ status: ORDER_STATUS.ALLOCATED, updated_at: new Date().toISOString() })
       .eq('id', input.orderId);
 
