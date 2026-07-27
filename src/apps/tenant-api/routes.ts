@@ -80,5 +80,119 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
     }
   });
 
+  // GET /api/inventory — 列出当前租户库存（只读）
+  router.get('/inventory', validateQuery(listInventoryQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+
+      const { limit, offset, productId, locationId } = req.query as unknown as ListInventoryQuery;
+      const filters: Record<string, unknown> = { tenant_id: tenantId };
+      if (productId) filters.product_id = productId;
+      if (locationId) filters.location_id = locationId;
+
+      const result = await inventory.findAll({
+        limit,
+        offset,
+        filters,
+        orderBy: 'product_id',
+        ascending: true,
+        authToken: req.context?.supabaseToken,
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/inventory/:id — 获取单条库存记录
+  router.get('/inventory/:id', validateParams(inventoryIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as InventoryIdParams;
+      const result = await inventory.findById(id, req.context?.supabaseToken);
+
+      if (!result) return res.status(404).json({ success: false, error: 'Inventory record not found' });
+
+      const tenantId = req.context!.tenantId;
+      if (!req.context!.user!.isSystemUser && (result as { tenant_id: string }).tenant_id !== tenantId) {
+        return res.status(404).json({ success: false, error: 'Inventory record not found' });
+      }
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/products — 列出/搜索当前租户商品
+  router.get('/products', validateQuery(listProductsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+
+      const { limit, offset, q } = req.query as unknown as ListProductsQuery;
+      const result = q
+        ? await products.search(q, tenantId, req.context?.supabaseToken)
+        : await products.findByTenant(tenantId, { limit, offset, authToken: req.context?.supabaseToken });
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/products/:id — 获取单个商品
+  router.get('/products/:id', validateParams(productIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as ProductIdParams;
+      const result = await products.findById(id, req.context?.supabaseToken);
+
+      if (!result) return res.status(404).json({ success: false, error: 'Product not found' });
+
+      const tenantId = req.context!.tenantId;
+      if (!req.context!.user!.isSystemUser && (result as { tenant_id: string }).tenant_id !== tenantId) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/waves — 列出当前租户波次
+  router.get('/waves', validateQuery(listWavesQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+
+      const { limit, offset, status, strategyType } = req.query as unknown as ListWavesQuery;
+      const result = await waves.findByTenant(tenantId, {
+        limit,
+        offset,
+        status,
+        strategyType,
+        authToken: req.context?.supabaseToken,
+      });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/waves/generate — 生成波次
+  router.post('/waves/generate', validateBody(generateWaveBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+
+      const useCase = new GenerateWaveUseCase(deps.supabaseAdapters.client);
+      const result = await useCase.execute({ tenantId, ...req.body }, req.context?.supabaseToken);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }
