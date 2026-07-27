@@ -67,7 +67,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .in('status', ['pending_match', 'matched'])
+      .eq('status', 'MATCHED')
       .lt('created_at', before);
 
     if (error) throw error;

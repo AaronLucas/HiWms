@@ -159,8 +159,8 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
     if (error) throw error;
     const tasks = data as { status: string; started_at: string | null; completed_at: string | null; qty: number; sorted_qty: number | null }[];
 
-    const completed = tasks.filter(t => t.status === 'sorted' || t.status === 'completed');
-    const withException = tasks.filter(t => t.status === 'exception').length;
+    const completed = tasks.filter(t => t.status === 'COMPLETED');
+    const withException = tasks.filter(t => t.status === 'EXCEPTION').length;
     const completedWithTimes = completed.filter(t => t.started_at && t.completed_at);
 
     return {
@@ -202,13 +202,13 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
     for (const task of tasks) {
       if (!task.assigned_user_id) continue;
       const existing = bySorter.get(task.assigned_user_id) || { taskCount: 0, qty: 0, durations: [], exceptionCount: 0 };
-      if (task.status === 'sorted' || task.status === 'completed') {
+      if (task.status === 'COMPLETED') {
         existing.taskCount++;
         existing.qty += task.sorted_qty || 0;
         if (task.started_at && task.completed_at) {
           existing.durations.push((new Date(task.completed_at).getTime() - new Date(task.started_at).getTime()) / 60000);
         }
-      } else if (task.status === 'exception') {
+      } else if (task.status === 'EXCEPTION') {
         existing.exceptionCount++;
       }
       bySorter.set(task.assigned_user_id, existing);
