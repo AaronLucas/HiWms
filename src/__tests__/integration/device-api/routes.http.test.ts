@@ -139,6 +139,32 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     if (userErr) throw userErr;
     userId = user.id;
 
+    // Sprint 3 #30：给 userId 授予 devices:CREATE 权限，配合 POST /device/provision
+    // 新接上的 RBAC 校验（check_user_permission RPC）。
+    const { data: role, error: roleErr } = await client
+      .from('roles')
+      .insert({ tenant_id: tenantId, name: `ecc-p3-device-admin-${Date.now()}` })
+      .select()
+      .single();
+    if (roleErr) throw roleErr;
+
+    const { data: permission, error: permErr } = await client
+      .from('permissions')
+      .upsert({ resource: 'devices', action: 'CREATE' }, { onConflict: 'resource,action' })
+      .select()
+      .single();
+    if (permErr) throw permErr;
+
+    const { error: rolePermErr } = await client
+      .from('role_permissions')
+      .insert({ role_id: role.id, permission_id: permission.id });
+    if (rolePermErr) throw rolePermErr;
+
+    const { error: userRoleErr } = await client
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: role.id, scope: 'tenant' });
+    if (userRoleErr) throw userRoleErr;
+
     // 只挂载 routes.ts 本身，不经过 DeviceAuthMiddleware——本文件测的是路由层的
     // 序列化/校验/响应形状契约，不是 JWT 解析（那部分已有独立的
     // src/__tests__/device-api/DeviceAuthMiddleware.test.ts 覆盖）。
@@ -265,5 +291,79 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeTruthy();
+  });
+
+  test('POST /device/provision：合法请求应注册新设备并返回 API Key + 配对二维码（Sprint 3 #28）', async () => {
+    const newDeviceId = randomUUID();
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: newDeviceId, device_name: 'Provision Test Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.device_id).toBe(newDeviceId);
+    expect(res.body.data.api_key).toContain(newDeviceId);
+    expect(res.body.data.pairing_qr).toBeTruthy();
+
+    const { data: row } = await client.from('devices').select('tenant_id, is_active').eq('id', newDeviceId).single();
+    expect(row!.tenant_id).toBe(tenantId);
+    expect(row!.is_active).toBe(true);
+
+    await client.from('devices').delete().eq('id', newDeviceId);
+  });
+
+  test('POST /device/provision：没有 devices:CREATE 权限的用户应返回 403（Sprint 3 #30 新接的 RBAC 校验）', async () => {
+    const noPermUserId = randomUUID();
+    const noPermApp = express();
+    noPermApp.use(express.json());
+    noPermApp.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as unknown as { context: Record<string, string> }).context = {
+        tenantId,
+        deviceId,
+        userId: noPermUserId,
+      };
+      next();
+    });
+    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters } as unknown as DeviceApiDependencies));
+
+    const res = await request(noPermApp)
+      .post('/device/provision')
+      .send({ device_id: randomUUID(), device_name: 'No Permission Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /device/provision：非 UUID 的 device_id 应返回 422（此前是 500，因为 devices.id 是 uuid 主键）', async () => {
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: 'not-a-uuid', device_name: 'Bad Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(422);
+  });
+
+  test('POST /device/provision：重复的 device_id 应返回 409', async () => {
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: deviceId, device_name: 'Duplicate Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(409);
+  });
+
+  test('POST /admin/devices/:id/pairing-qr：应为已有设备重新生成配对二维码并轮换 secret_hash（Sprint 3 #28）', async () => {
+    const { data: before } = await client.from('devices').select('secret_hash').eq('id', deviceId).single();
+
+    const res = await request(app).post(`/admin/devices/${deviceId}/pairing-qr`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.device_id).toBe(deviceId);
+    expect(res.body.data.pairing_qr).toBeTruthy();
+
+    const { data: after } = await client.from('devices').select('secret_hash').eq('id', deviceId).single();
+    expect(after!.secret_hash).not.toBe(before!.secret_hash);
+  });
+
+  test('POST /admin/devices/:id/pairing-qr：不存在的设备应返回 404', async () => {
+    const res = await request(app).post(`/admin/devices/${randomUUID()}/pairing-qr`).send({});
+    expect(res.status).toBe(404);
   });
 });

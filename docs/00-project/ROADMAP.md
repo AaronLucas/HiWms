@@ -166,20 +166,28 @@
 - [ ] 1.6 `SupabaseSortingChuteRepository`
 - [ ] 1.7 Admin API 绕过 Repository 层修复
 
-#### Sprint 2: Tenant API + Use Case 层（⏳ 待 Sprint 1 完成）
+#### Sprint 2: Tenant API + Use Case 层（✅ 已完成，2026-07-27，draft PR #58）
 
-- [ ] 2.1 Tenant API 骨架（Express + DI + 中间件）
-- [ ] 2.2 订单/库存/商品/波次端点
-- [ ] 2.3 Use Case 补全（CreateOrder/GenerateWave/AllocateInventory）
-- [ ] 2.4 HTTP 契约测试
+- [x] 2.1 Tenant API 骨架（Express + DI + 中间件，复用 `ExpressMiddlewareFactory` 而非自建认证）
+- [x] 2.2 订单/库存/商品/波次端点（7 个，见 `API_SPEC.md` §3.16）
+- [x] 2.3 Use Case 补全——`CreateOrderUseCase`/`GenerateWaveUseCase` 已有，`AllocateOrderUseCase`
+      接了新端点 `POST /api/orders/:id/allocate`；"AllocateInventoryUseCase" 是计划文档的命名
+      误导，实际是工作流引擎专用的单 SKU 分配原语，与本 Sprint 无关
+- [x] 2.4 HTTP 契约测试（33 个用例，happy+error path，本地 supabase 沙盒验证）
 
-#### Sprint 3: 测试补全 + 文档收尾（⏳ 待 Sprint 2 完成）
+#### Sprint 3: 测试补全 + 文档收尾（✅ 已完成，2026-07-28，draft PR #59）
 
-- [ ] 3.1 Phase 8 仓库集成测试补全
-- [ ] 3.2 Device API auth HTTP 集成测试
-- [ ] 3.3 `fn_expire_task_claims` pg_cron 注册
-- [ ] 3.4 permissions 种子数据补全
-- [ ] 3.5 全部文档同步
+- [x] 3.1 Phase 8 仓库集成测试补全——核实发现已在更早的 PR #49 完成，非本轮工作
+- [x] 3.2 Device API auth HTTP 集成测试——发现并修复 4 处 CRITICAL 生产 bug（login/refresh
+      不可达、JWT 验证恒失败、签发/验证密钥存储不共享、provision 插入不存在的列），见
+      `.claude/reviews/sprint3-device-auth-review.md`
+- [x] 3.3 `fn_expire_task_claims` pg_cron 注册——DBA addendum 已提交，见
+      `DBA_ADDENDUM_REQUEST_TASK_CLAIM_EXPIRY_CRON_2026-07-28.md`
+- [x] 3.4 permissions 种子数据补全——核实 `requirePermission()` 此前从未被调用，已接上
+      `POST /device/provision` 的 `devices:CREATE` 首个真实校验点，DBA addendum 已提交，见
+      `DBA_ADDENDUM_REQUEST_PERMISSIONS_SEED_2026-07-28.md`
+- [x] 3.5 全部文档同步（本次更新：ROADMAP/REPOSITORY_ROADMAP/ARCHITECTURE/API_SPEC；
+      DB_SCHEMA 无实际 schema 变更，不需要改动）
 
 ---
 

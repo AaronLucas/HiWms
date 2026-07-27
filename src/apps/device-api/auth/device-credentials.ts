@@ -12,7 +12,7 @@
  * - routes.ts (device-api): POST /device/auth/login, POST /device/auth/refresh
  * - routes.ts (admin-api): POST /admin/devices/{id}/pairing-qr, POST /device/provision
  */
-import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
+import { SignJWT, jwtVerify, type JWTPayload, type FlattenedJWSInput } from 'jose';
 import { hash, verify } from 'argon2';
 
 /** 设备 Token 载荷 */
@@ -106,6 +106,19 @@ export const DEFAULT_DEVICE_CREDENTIALS_CONFIG: Omit<DeviceCredentialsConfig, 't
   accessTokenTtlSec: 15 * 60,      // 15 分钟
   refreshTokenTtlSec: 7 * 24 * 60 * 60, // 7 天
 };
+
+/**
+ * 进程内共享的租户签名密钥存储。
+ *
+ * 之前 publicAuthRoutes.ts（签发 login/refresh token）和 DeviceAuthMiddleware.ts
+ * （验证 Bearer access token）各自 `new Map()` 了一份 tenantSigningKeys，两份互不
+ * 可见——登录时生成并缓存的密钥，验证请求时在另一个空 Map 里永远查不到，导致
+ * Bearer JWT 认证恒为 401（2026-07-27 经真实 HTTP 请求验证确认，是修复 tenant_id
+ * 提取 bug 后暴露出的第二层问题）。这里改为进程级单例，所有 DeviceCredentialsConfig
+ * 构造处统一引用同一个 Map。仅内存缓存，进程重启即丢失（同 ensureTenantSigningKey
+ * 注释所述，未来应迁移到数据库持久化，多实例部署前必须先做这件事）。
+ */
+export const sharedTenantSigningKeys: Map<string, TenantSigningKey> = new Map();
 
 /** 生成 API Key
  * 格式: hiwms_dk_<device_id>_<random_base64url>
@@ -249,6 +262,28 @@ export async function issueRefreshToken(
     .sign(signingKey.secret);
 }
 
+/**
+ * 从 jose 动态密钥解析回调收到的原始（未验证）JWS 输入里取出 tenant_id claim，
+ * 用于按租户选密钥。回调收到的第二个参数是 { protected, payload, signature }
+ * 的 base64url 编码原文（jose 文档："No token components have been verified at
+ * the time of this function call"），不是解码后的 payload 对象——之前代码直接
+ * 对它做 `(jwtPayload as unknown as DeviceTokenPayload).tenant_id` 永远读到
+ * undefined，导致 getActiveTenantSigningKey 永远查不到密钥、验签恒失败
+ * （2026-07-27 经真实 HTTP 请求 + jose 类型定义交叉验证确认）。
+ * 这里读出的 tenant_id 只用来"挑一把候选密钥"，实际信任仍然来自后续用该密钥
+ * 对签名的密码学校验（与标准 JWKS kid 选密钥模型一致，被篡改的 claim 无法通过
+ * 签名校验）。
+ */
+function extractUnverifiedTenantId(token: FlattenedJWSInput): string | undefined {
+  try {
+    const payloadB64 = typeof token.payload === 'string' ? token.payload : Buffer.from(token.payload).toString('base64url');
+    const claims = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    return typeof claims?.tenant_id === 'string' ? claims.tenant_id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 验证 Device Access Token */
 export async function verifyDeviceToken(
   token: string,
@@ -261,7 +296,7 @@ export async function verifyDeviceToken(
         throw new Error('Unsupported algorithm');
       }
 
-      const tenantId = (jwtPayload as unknown as DeviceTokenPayload).tenant_id;
+      const tenantId = extractUnverifiedTenantId(jwtPayload);
       if (!tenantId) throw new Error('Missing tenant_id');
 
       const signingKey = getActiveTenantSigningKey(tenantId, config);
@@ -302,7 +337,7 @@ export async function verifyRefreshToken(
         throw new Error('Unsupported algorithm');
       }
 
-      const tenantId = (jwtPayload as unknown as RefreshTokenPayload).tenant_id;
+      const tenantId = extractUnverifiedTenantId(jwtPayload);
       if (!tenantId) throw new Error('Missing tenant_id');
 
       const signingKey = getActiveTenantSigningKey(tenantId, config);

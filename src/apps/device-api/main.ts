@@ -12,6 +12,7 @@
 import express, { Request, Response, NextFunction, Express } from 'express';
 import { createDeviceApiDependencies } from './di';
 import { createDeviceApiRouter } from './routes';
+import { createDevicePublicAuthRouter } from './publicAuthRoutes';
 import { loadDeviceApiConfig, type DeviceApiConfig } from './config';
 import { createDeviceAuthMiddleware } from './DeviceAuthMiddleware';
 
@@ -44,8 +45,14 @@ export async function createDeviceApiApp(config: DeviceApiConfig): Promise<Expre
     res.json({ status: 'ok', service: 'device-api', timestamp: new Date().toISOString() });
   });
 
-  // 受保护路由：设备认证（JWT 或 API Key）+ 租户上下文注入
   const deviceRouter = express.Router();
+
+  // 公开认证路由（无需先持有设备凭证）：必须挂载在 deviceAuthMiddleware 之前，
+  // 否则 login/refresh 本身会被"需要先持有凭证"的检查挡住，永远无法完成首次登录
+  // （2026-07-27 经真实 HTTP 请求验证发现并修复的生产 bug）
+  deviceRouter.use('/api/device', createDevicePublicAuthRouter(deps));
+
+  // 受保护路由：设备认证（JWT 或 API Key）+ 租户上下文注入
   deviceRouter.use(deviceAuthMiddleware.authenticate);
 
   // 挂载业务路由

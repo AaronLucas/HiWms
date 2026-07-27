@@ -310,6 +310,15 @@ PDA 拉取结果 → 展示"已同步"或"异常 #X，请联系主管"
 | **部署** | Express + PM2/K8s Deployment，按租户水平扩展 |
 | **数据库** | Supabase (RLS 自动过滤 tenant_id) |
 
+> ✅ **实现状态（2026-07-27 已核实）**：`src/apps/tenant-api`（`config.ts`/`di.ts`/
+> `routes.ts`/`validation.ts`/`main.ts`/`index.ts`）已实现，Sprint 2 交付了 7 个
+> 端点（订单 CRUD+分配、库存/商品只读、波次查询+生成，详见 `API_SPEC.md` §3.16）。
+> 实际认证机制与本表"Tenant JWT (HS256/RS256)"的描述有出入：直接复用
+> `ExpressMiddlewareFactory` 的 `authenticate()`（验证标准 Supabase 用户 session
+> JWT，走 `supabase.auth.getUser()`），不是独立签发的租户专用 JWT——ADR-015 的
+> per-request 认证客户端已经把"单租户 RLS 自动隔离"这一条做实了，不需要再造一套
+> JWT 体系。`tsc --noEmit` 零错误，295 个用例通过（含本轮新增的 HTTP 契约测试）。
+
 ### 4.3 Device API (PDA/手持终端端)
 | 特性 | 设计 |
 |------|------|

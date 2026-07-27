@@ -25,6 +25,7 @@ import {
   type DeviceTokenPayload,
   type DeviceCredentialsConfig,
   DEFAULT_DEVICE_CREDENTIALS_CONFIG,
+  sharedTenantSigningKeys,
 } from './auth/device-credentials';
 
 export interface DeviceAuthConfig extends Omit<DeviceCredentialsConfig, 'tenantSigningKeys'> {
@@ -74,7 +75,7 @@ export function createDeviceAuthMiddleware(
     apiKeyPrefix,
     jwtIssuer: config.jwtIssuer,
     jwtAudience: config.jwtAudience,
-    tenantSigningKeys: new Map(), // 运行时从数据库加载或缓存
+    tenantSigningKeys: sharedTenantSigningKeys, // 进程内单例，需与签发 token 的一侧共享同一份，见 device-credentials.ts 注释
   };
 
   /**
