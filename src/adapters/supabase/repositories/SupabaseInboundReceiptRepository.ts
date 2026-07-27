@@ -163,6 +163,10 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
+    // NOTE: inspection_items 表既没有 `status` 列，也没有 `receipt_id` 列（真实 FK 只有 inspection_id -> quality_inspections）。
+    // quality_inspections 本身也没有 receipt_id，只有 wave_id/order_id/sku_id，因此当前 schema 下没有
+    // 从 inbound_receipts 直接查到 inspection_items 的路径。这不是简单的大小写/字面量问题，是结构性缺口
+    // （缺少 receipt_id 外键或需要经 wave_id 间接关联），保留原实现未修复，需产品/DBA 决策后再动。
     const { data, error } = await (this.getClient() as any)
       .from('inspection_items')
       .select('status')

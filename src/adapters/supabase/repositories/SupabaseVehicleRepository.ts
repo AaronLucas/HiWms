@@ -95,9 +95,11 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
 
     for (const v of vehicles) {
       total++;
-      if (v.status === 'available') available++;
-      else if (v.status === 'in_use') inUse++;
-      else if (v.status === 'maintenance') maintenance++;
+      // NOTE: vehicles.status 约束为 AVAILABLE/LOADING/IN_TRANSIT/UNLOADING/MAINTENANCE/RETIRED，无 'IN_USE'。
+      // "使用中"归并 LOADING/IN_TRANSIT/UNLOADING 三个真实作业态；RETIRED 不计入以下三类（与原逻辑一致，仅计入 total）。
+      if (v.status === 'AVAILABLE') available++;
+      else if (v.status === 'LOADING' || v.status === 'IN_TRANSIT' || v.status === 'UNLOADING') inUse++;
+      else if (v.status === 'MAINTENANCE') maintenance++;
       byType[v.vehicle_type] = (byType[v.vehicle_type] || 0) + 1;
     }
 

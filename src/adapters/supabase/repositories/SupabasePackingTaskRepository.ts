@@ -90,7 +90,9 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'packed')
+      // NOTE: packing_tasks.status 约束为 PENDING/PACKING/LABEL_PRINTING/SEALING/COMPLETED/EXCEPTION/CANCELLED，无 'packed'。
+      // 按接口注释"查找待打印面单任务"及工作流顺序，打包完成后进入 LABEL_PRINTING 阶段，映射为该值。
+      .eq('status', 'LABEL_PRINTING')
       .lt('labels_printed', this.from().select('total_boxes'))
       .order('packed_at', { ascending: true });
 
@@ -103,7 +105,8 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'labeled')
+      // NOTE: 同上，无 'labeled' 值。按接口注释"查找待封箱任务"，映射为 SEALING（面单打印完成后进入封箱阶段）。
+      .eq('status', 'SEALING')
       .order('labels_printed_at', { ascending: true });
 
     if (error) throw error;
@@ -127,7 +130,8 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
     data: { boxesPacked: number; totalWeight: number; totalVolume: number; trackingNumbers: string[] }
   ): Promise<PackingTaskRow> {
     return this.update(taskId, {
-      status: 'packed',
+      // NOTE: 打包完成后进入下一阶段 LABEL_PRINTING（与 findPendingLabelPrint 的查询保持一致，见上）。
+      status: 'LABEL_PRINTING',
       boxes_packed: data.boxesPacked,
       total_weight: data.totalWeight,
       total_volume: data.totalVolume,
@@ -177,7 +181,7 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
     if (error) throw error;
     const tasks = data as { status: string; started_at: string | null; completed_at: string | null; boxes_packed: number | null; labels_printed: number | null; total_weight: number | null }[];
 
-    const completed = tasks.filter(t => t.status === 'completed');
+    const completed = tasks.filter(t => t.status === 'COMPLETED');
     const completedWithTimes = completed.filter(t => t.started_at && t.completed_at);
 
     return {
@@ -220,7 +224,7 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
     for (const task of tasks) {
       if (!task.packer_id) continue;
       const existing = byPacker.get(task.packer_id) || { taskCount: 0, boxCount: 0, labelCount: 0, durations: [] };
-      if (task.status === 'completed') {
+      if (task.status === 'COMPLETED') {
         existing.taskCount++;
         existing.boxCount += task.boxes_packed || 0;
         existing.labelCount += task.labels_printed || 0;

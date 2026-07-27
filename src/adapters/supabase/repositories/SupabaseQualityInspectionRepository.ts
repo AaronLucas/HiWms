@@ -93,7 +93,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -105,6 +105,8 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
+      // NOTE: 'reinspect' 不在 chk_quality_inspections_status 约束内（PENDING/IN_PROGRESS/PASSED/FAILED/QUARANTINE/REWORK/CANCELLED），
+      // 且没有语义完全对应的值（REWORK/QUARANTINE 都不精确等价于"待复检"）。保留原值，未修复，需产品/DBA 决策。
       .eq('status', 'reinspect')
       .order('created_at', { ascending: true });
 
@@ -117,7 +119,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -129,6 +131,8 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
+      // NOTE: 'discrepancy' 不在 chk_quality_inspections_result 约束内（PASS/REJECT/QUARANTINE/REWORK），
+      // 没有明确对应"异常/差异"的值。保留原值，未修复，需产品/DBA 决策。
       .eq('result', 'discrepancy')
       .order('created_at', { ascending: false });
 
@@ -147,7 +151,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   async updateStatus(inspectionId: string, status: string, completedAt?: string): Promise<QualityInspectionRow> {
     const updateData: Partial<QualityInspectionUpdate> = { status };
     if (completedAt) updateData.completed_at = completedAt;
-    else if (status === 'completed' || status === 'failed') updateData.completed_at = new Date().toISOString();
+    else if (status === 'PASSED' || status === 'FAILED') updateData.completed_at = new Date().toISOString();
     return this.update(inspectionId, updateData as QualityInspectionUpdate);
   }
 
@@ -179,18 +183,20 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
+    // NOTE: inspection_items 表没有 result/status 列，只有 boolean `passed`（可为 null 表示未检）。
+    // 原代码 .select('result') 引用了不存在的列，会在真实 Postgrest 请求中报错。改为查询真实列 `passed`。
     const { data, error } = await (this.getClient() as any)
       .from('inspection_items')
-      .select('result')
+      .select('passed')
       .eq('inspection_id', inspectionId);
 
     if (error) throw error;
-    const items = data as { result: string }[];
+    const items = data as { passed: boolean | null }[];
     return {
       totalItems: items.length,
-      passedItems: items.filter(i => i.result === 'passed').length,
-      failedItems: items.filter(i => i.result === 'failed').length,
-      pendingItems: items.filter(i => i.result === 'pending').length,
+      passedItems: items.filter(i => i.passed === true).length,
+      failedItems: items.filter(i => i.passed === false).length,
+      pendingItems: items.filter(i => i.passed === null || i.passed === undefined).length,
     };
   }
 
@@ -223,8 +229,8 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       if (!i.inspector_id) continue;
       const existing = byInspector.get(i.inspector_id) || { count: 0, passed: 0, failed: 0, durations: [] };
       existing.count++;
-      if (i.result === 'passed') existing.passed++;
-      else if (i.result === 'failed') existing.failed++;
+      if (i.result === 'PASS') existing.passed++;
+      else if (i.result === 'REJECT') existing.failed++;
       if (i.started_at && i.completed_at) {
         existing.durations.push((new Date(i.completed_at).getTime() - new Date(i.started_at).getTime()) / 60000);
       }
@@ -264,15 +270,17 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
 
     for (const i of inspections) {
       total++;
-      if (i.result === 'passed') passed++;
-      else if (i.result === 'failed') failed++;
+      if (i.result === 'PASS') passed++;
+      else if (i.result === 'REJECT') failed++;
+      // NOTE: 'discrepancy' 在 chk_quality_inspections_result 约束（PASS/REJECT/QUARANTINE/REWORK）中无明确对应值，
+      // 保留原比较（'discrepancy' 永远不匹配，discrepancy 计数将恒为 0），未修复，需产品/DBA 决策。
       else if (i.result === 'discrepancy') discrepancy++;
 
       if (i.inspector_id) {
         if (!byInspector[i.inspector_id]) byInspector[i.inspector_id] = { total: 0, passed: 0, failed: 0 };
         byInspector[i.inspector_id].total++;
-        if (i.result === 'passed') byInspector[i.inspector_id].passed++;
-        else if (i.result === 'failed') byInspector[i.inspector_id].failed++;
+        if (i.result === 'PASS') byInspector[i.inspector_id].passed++;
+        else if (i.result === 'REJECT') byInspector[i.inspector_id].failed++;
       }
     }
 
