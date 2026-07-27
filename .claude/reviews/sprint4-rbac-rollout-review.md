@@ -28,16 +28,11 @@ None.
 
 ### MEDIUM
 
-1. **`POST /device/auth/operator-checkin` 存在基于响应时长的用户名枚举侧信道**
-   （`src/apps/device-api/routes.ts`，operator-checkin handler）：当 `username` 不存在、
-   用户被禁用、或 `password_hash` 为空时，代码在调用 `verifyOperatorPassword`（bcrypt
-   compare，cost 10，有意慢）之前就直接返回 401；只有真实存在且激活的用户才会走到
-   bcrypt 比对这一步。攻击者持有合法设备凭证时，可以通过响应时间差异区分"用户名不存在"
-   和"用户名存在但密码错误"，从而枚举某个租户下的真实 `username`。
-   **建议修复**：查询未命中/用户未激活/无密码哈希时，仍执行一次针对固定 dummy hash 的
-   `verifyOperatorPassword` 调用（结果丢弃），使两条路径的耗时基本一致。
-   **不阻塞合并的理由**：利用门槛较高（需要先合法拿到该租户下某台设备的凭证），且
-   `username` 本身不是高度敏感信息（不像密码/token），风险等级不足以 BLOCK。
+1. ~~**`POST /device/auth/operator-checkin` 存在基于响应时长的用户名枚举侧信道**~~
+   **已修复**：查询未命中/用户未激活/无密码哈希时，现在会先对固定 dummy bcrypt hash
+   跑一次 `verifyOperatorPassword`（结果丢弃）再返回 401，使"用户名不存在"与"用户名
+   存在但密码错误"两条路径耗时基本一致。原发现：`username` 不存在时代码直接跳过
+   bcrypt compare 直接 401，响应时长差异会暴露某个用户名在该租户下是否存在。
 
 2. **`POST /device/auth/operator-checkin` 没有速率限制**（`src/apps/device-api/routes.ts`）：
    `ExpressMiddlewareFactory` 已有现成的 `rateLimit()` 中间件，但 device-api 的
