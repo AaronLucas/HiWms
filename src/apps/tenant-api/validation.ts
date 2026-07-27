@@ -71,7 +71,12 @@ export type InventoryIdParams = z.infer<typeof inventoryIdParamsSchema>;
 export const listProductsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
-  q: z.string().min(1).optional(),
+  /**
+   * SupabaseProductRepository.search() 把 q 原样拼进 PostgREST 的 .or() 过滤字符串
+   * （`name.ilike.%${q}%,sku.ilike.%${q}%`），逗号/括号是该语法的分隔符，不能放行，
+   * 否则可以在 or() 过滤条件里注入额外的逻辑分支。限制为常见搜索字符集。
+   */
+  q: z.string().min(1).max(100).regex(/^[\p{L}\p{N} _-]+$/u, 'Search query contains unsupported characters').optional(),
 });
 
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
@@ -85,11 +90,14 @@ export type ProductIdParams = z.infer<typeof productIdParamsSchema>;
 
 const waveStatusValues = Object.values(WAVE_STATUS) as [string, ...string[]];
 
+/** waves.strategy_type 存的是大写值（GenerateWaveUseCase 写入前会 toUpperCase()），过滤条件需要匹配同样的大小写 */
+const waveStrategyTypeValues = ['BATCH', 'ZONE', 'CLUSTER', 'WAVE'] as const;
+
 export const listWavesQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
   status: z.enum(waveStatusValues).optional(),
-  strategyType: z.string().optional(),
+  strategyType: z.enum(waveStrategyTypeValues).optional(),
 });
 
 export type ListWavesQuery = z.infer<typeof listWavesQuerySchema>;

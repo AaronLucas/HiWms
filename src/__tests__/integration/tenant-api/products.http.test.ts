@@ -97,6 +97,11 @@ describe.skipIf(!RUN)('tenant-api /api/products HTTP 契约', () => {
     expect(res.status).toBe(422);
   });
 
+  test('GET /api/products?q=：含 PostgREST 过滤语法保留字符（逗号/括号）的搜索词应返回 422（ECC review 发现的 or() 过滤注入面，收窄为安全字符集）', async () => {
+    const res = await request(app).get('/api/products').query({ q: 'a),or(tenant_id.neq.x' });
+    expect(res.status).toBe(422);
+  });
+
   test('GET /api/products/:id：应返回单个商品', async () => {
     const res = await request(app).get(`/api/products/${productId}`);
     expect(res.status).toBe(200);

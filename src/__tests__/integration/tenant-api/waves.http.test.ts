@@ -120,4 +120,17 @@ describe.skipIf(!RUN)('tenant-api /api/waves HTTP 契约', () => {
     const res = await request(app).get('/api/waves').query({ status: 'NOT_A_REAL_STATUS' });
     expect(res.status).toBe(422);
   });
+
+  test('GET /api/waves：小写 strategyType 应返回 422（ECC review 发现：waves.strategy_type 存的是大写值，过滤条件大小写必须一致）', async () => {
+    const res = await request(app).get('/api/waves').query({ strategyType: 'batch' });
+    expect(res.status).toBe(422);
+  });
+
+  test('GET /api/waves?strategyType=BATCH：应按策略类型过滤（与生成波次时写入的大写值一致）', async () => {
+    const res = await request(app).get('/api/waves').query({ strategyType: 'BATCH' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.every((w: { strategy_type: string }) => w.strategy_type === 'BATCH')).toBe(true);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
 });
