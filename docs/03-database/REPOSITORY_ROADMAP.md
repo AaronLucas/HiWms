@@ -597,3 +597,29 @@
 `'sku_id'`，真实列是 `'product_id'`；以及 `SupabaseInventoryRepository.findReplenishmentNeeded()`
 原来把未 `await` 的 RPC 查询构建器直接传入 `.lt()`，已改为复用 `getReplenishmentNeeds()` 已验证
 的 `v_replenishment_needs` 视图逻辑。
+
+## Sprint 2/3 附带发现：ADR-015 token 透传缺口 + 4 处 Device API 生产 bug（2026-07-27/28）
+
+**Sprint 2（`src/apps/tenant-api/`）**：ADR-015 的 per-request 认证 token 此前只接到了
+`SupabaseBaseRepository` 的 8 个通用 CRUD 方法，业务专用方法（`findByTenant`/`search`/
+`findWithLines` 等）、Use Case（`CreateOrderUseCase`/`AllocateOrderUseCase`/
+`GenerateWaveUseCase`）和 RPC 层（`WmsSupabaseClient.rpc()`）完全没走这条链路，一直在用
+单例 anon client。本轮把 token 透传延伸到了这三层，`fn_logic_stock_allocation`
+（`SECURITY INVOKER`，经 `psql` 确认）现在才是真的按调用者身份执行 RLS 校验。
+
+**Sprint 3（`src/apps/device-api/`）**：给 login/refresh/provision/pairing-qr 补 HTTP
+集成测试时，用真实请求（不是读代码推断）发现并修复 4 处 CRITICAL 生产 bug：
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| login/refresh 端点恒 401 | `main.ts` 把 `deviceAuthMiddleware.authenticate` 注册为覆盖全部 `/api/device/*` 的中间件，包括这两个"获取凭证"入口本身 | 抽到 `publicAuthRoutes.ts`，挂载在认证中间件之前 |
+| 设备 JWT（access+refresh）验证恒失败 | `verifyDeviceToken`/`verifyRefreshToken` 的选密钥回调从 jose 读的是未验证的原始 JWS 输入，`tenant_id` 恒为 `undefined` | 新增 `extractUnverifiedTenantId()`，先 base64url 解码 payload 再取 claim；真正的信任仍来自后续签名校验，不引入新风险 |
+| 签发/验证用两份互不可见的密钥存储 | `publicAuthRoutes.ts` 和 `DeviceAuthMiddleware.ts` 各自 `new Map()` 了一份 `tenantSigningKeys` | 改为 `device-credentials.ts` 导出的进程级共享单例 `sharedTenantSigningKeys` |
+| `POST /device/provision` 恒失败 | 插入语句写了不存在的 `device_name` 列（`devices` 表实际只有 `device_code`），错误处理把所有失败误判成 409 | 不再持久化 `device_name`（DBA/产品决策，未解决）；`device_id` 收紧为 `uuidSchema`；只有 `23505` 唯一键冲突才返回 409 |
+
+详见 `.claude/reviews/sprint3-device-auth-review.md`。另外核实发现
+`ExpressMiddlewareFactory.requirePermission()` 此前全代码库从未被任何路由调用过，
+`roles`/`role_permissions` 表完全为空——已接上第一个真实校验点
+（`POST /device/provision` 的 `devices:CREATE`），配套的 DBA 种子数据请求见
+`DBA_ADDENDUM_REQUEST_PERMISSIONS_SEED_2026-07-28.md`。
+的 `v_replenishment_needs` 视图逻辑。
