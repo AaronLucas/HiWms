@@ -41,7 +41,7 @@ const SUPABASE_SERVICE_ROLE_KEY =
 
 // createDeviceApiRouter 内部构造 credentialsConfig（操作员签到用）需要 deps.config.device.*；
 // 本文件用 injectContext 绕开 DeviceAuthMiddleware/真实登录流程，具体值不影响任何断言。
-const TEST_DEVICE_CONFIG = { device: { jwtSecret: 'test-secret', jwtIssuer: 'hiwms-test', jwtAudience: 'hiwms-devices-test' } };
+const TEST_DEVICE_CONFIG = { config: { device: { jwtSecret: 'test-secret', jwtIssuer: 'hiwms-test', jwtAudience: 'hiwms-devices-test' } } };
 
 describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清单 HIGH 第 4 项）', () => {
   let client: ReturnType<WmsSupabaseClient['getClient']>;
@@ -334,7 +334,16 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
 
     const res = await request(noPermApp)
       .post('/sync/events')
-      .send({ events: [] });
+      .send({
+        events: [{
+          id: randomUUID(),
+          device_id: deviceId,
+          device_seq: 999999,
+          action_type: 'PICK',
+          payload: { sku: 'P2-HTTP-SKU', qty: 1 },
+          captured_at: new Date().toISOString(),
+        }],
+      });
 
     expect(res.status).toBe(403);
   });
