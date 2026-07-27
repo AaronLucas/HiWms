@@ -56,6 +56,8 @@ export class SupabaseLoadingTaskRepository extends SupabaseBaseRepository<
   }
 
   async findPendingDispatch(tenantId: string): Promise<LoadingTaskRow[]> {
+    // NOTE: loading_tasks.status 约束无 PENDING 值，流程最早阶段即为 PLANNING，
+    // "待派车"语义上等同于这里的 PLANNING。
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')

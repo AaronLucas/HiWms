@@ -7,11 +7,9 @@
  * 直接实例化仓储类，验证"已实现未验证"的仓储代码路径本身。
  *
  * 已知技术债（不在本测试文件修复，如实反映）：
- * 1. `calculate_replenishment_threshold` RPC 在本地库中不存在（PGRST202），且
- *    SupabaseInventoryRepository.findReplenishmentNeeded() 内部把
- *    `this.getClient().rpc(...)` 返回的未 await 的 PostgrestFilterBuilder 直接
- *    传给 `.lt('quantity', ...)`，即便 RPC 存在该写法也无法产出正确的 SQL 过滤值。
- *    该方法的测试用 test.skip 明确标注，不伪造断言。
+ * 1. `findReplenishmentNeeded()` 原实现调用不存在的 RPC `calculate_replenishment_threshold`
+ *    且把未 await 的查询构建器直接传给 `.lt()`；已改为复用 `getReplenishmentNeeds()` 已验证
+ *    的 `v_replenishment_needs` 视图逻辑，本文件已补上对应测试（见下方），不再是已知技术债。
  * 2. `containers` 表的 RLS 策略（tenant_isolation）在本地环境下会触发
  *    `fn_current_tenant_id()` 反复抛出 "stack depth limit exceeded"
  *    (SQLSTATE 54001)，最终导致 PostgREST 对 `containers` 表的任何查询
@@ -426,14 +424,49 @@ describe.skipIf(!RUN)('SupabaseInventoryRepository 库存 CRUD 正确性（Sprin
     await client.from('products').delete().eq('id', replProduct.id);
   });
 
-  // 已知技术债，不在本测试文件修复：
-  // 1) calculate_replenishment_threshold RPC 在本地库中不存在（PGRST202）；
-  // 2) 即便 RPC 存在，SupabaseInventoryRepository.findReplenishmentNeeded() 把
-  //    `this.getClient().rpc(...)` 返回的、未 await 的 PostgrestFilterBuilder
-  //    对象直接传给 `.lt('quantity', ...)`，无法产出正确的过滤值。
-  // 因此该方法当前无法正确工作，如实用 test.skip 标注，不伪造断言。
-  test.skip('findReplenishmentNeeded：RPC calculate_replenishment_threshold 缺失 + 实现内部误用未 await 的查询构建器，已知技术债，跳过', async () => {
-    await repo.findReplenishmentNeeded(tenantId);
+  test('findReplenishmentNeeded：复用 getReplenishmentNeeds 的 (loc_id, sku_id) 精确对，拿回真实 inventory 行', async () => {
+    const { data: replProduct, error: replProductError } = await client
+      .from('products')
+      .insert({
+        tenant_id: tenantId,
+        sku: `TEST_SKU_FRN_${randomUUID().slice(0, 8)}`,
+        name: '补货测试商品(findReplenishmentNeeded)',
+      })
+      .select()
+      .single();
+    if (replProductError || !replProduct) throw new Error(`创建补货测试商品失败: ${replProductError?.message}`);
+
+    const { data: replLocation, error: replLocationError } = await client
+      .from('locations')
+      .insert({
+        tenant_id: tenantId,
+        code: `TEST_LOC_FRN_${randomUUID().slice(0, 8)}`,
+        zone_type: 'PICK',
+        picking_max_qty: 100,
+        is_active: true,
+      })
+      .select()
+      .single();
+    if (replLocationError || !replLocation) throw new Error(`创建补货测试库位失败: ${replLocationError?.message}`);
+
+    // picking_max_qty = 100，放 10（10% < 20%）触发补货判定命中。
+    const lowFill = await repo.create({
+      tenant_id: tenantId,
+      product_id: replProduct.id,
+      location_id: replLocation.id,
+      quantity: 10,
+    });
+
+    const needed = await repo.findReplenishmentNeeded(tenantId);
+    const match = needed.find((row) => row.id === lowFill.id);
+    expect(match).toBeDefined();
+    expect(match!.location_id).toBe(replLocation.id);
+    expect(match!.product_id).toBe(replProduct.id);
+    expect(Number(match!.quantity)).toBe(10);
+
+    await client.from('inventory').delete().eq('id', lowFill.id);
+    await client.from('locations').delete().eq('id', replLocation.id);
+    await client.from('products').delete().eq('id', replProduct.id);
   });
 
   test('并发创建：不同库存记录并发创建不冲突', async () => {

@@ -16,7 +16,7 @@
 | Repository 端口 | 100% | ✅ 45 接口已定义 |
 | Repository Phase 1/3/4/5/6/7 | 100% | ✅ 含并发测试证据 |
 | Repository Phase 8 | 60% | 🔶 已实现，集成测试不足 |
-| **Repository Phase 2** | **~85%** | 🟡 8 个 P0 仓库均已实现且已接线 DI，2026-07-27 逐一核对方法签名与端口接口完全吻合；真正缺口是零测试覆盖（无单测/并发测试/集成测试），见 §2.2 更正 |
+| **Repository Phase 2** | **~95%** | ✅ 8 个 P0 仓库均已实现且已接线 DI；2026-07-27 已为 7 个仓库补齐并发集成测试（`RUN_DB_CONCURRENCY_TESTS=true` 下 98 passed/1 skipped），过程中额外发现并修复约 40 处状态字面量系统性 bug（见 REPOSITORY_ROADMAP.md「Sprint 1 附带发现」），剩余 3 处结构性/语义未决项见同节 |
 | Device API | 95% | ✅ 17 端点 |
 | Admin API | 30% | 🔶 基础 CRUD |
 | **Tenant API** | **0%** | 🔴 目录不存在 |
