@@ -1,9 +1,39 @@
 # Local Review: Sprint 3 — Device API Auth Fixes (fix/sprint3-device-auth)
 
-**Reviewed**: 2026-07-27
+**Reviewed**: 2026-07-27 (initial), 2026-07-28 (addendum round)
 **Mode**: Local Review (branch vs `origin/main`, pre-PR)
 **Branch**: `fix/sprint3-device-auth` → `main`
 **Decision**: APPROVE
+
+## Addendum (2026-07-28): tasks #29/#30 — pg_cron DBA request + first RBAC wiring
+
+Two additions after the initial review: (1) a DBA addendum doc requesting
+`pg_cron` registration for `fn_expire_task_claims` (doc-only, no app code) and
+(2) wiring `ExpressMiddlewareFactory`'s underlying permission-check RPC
+(`check_user_permission` via `SupabasePermissionChecker.check()`) into
+`POST /device/provision` for the first time anywhere in the codebase
+(`devices:CREATE`), resolving the standing `TODO: 验证 RBAC devices:CREATE
+权限` comment.
+
+Reviewed the diff directly: the check runs after context validation but
+before any side effect (API key generation, insert), so it fails closed with
+no partial state; `SupabasePermissionChecker.check()` swallows internal
+errors and returns `false` (fail-closed default, not fail-open); the RPC
+itself (`check_user_permission`) was already reviewed as safe in the Sprint 1
+pass (SECURITY DEFINER + explicit cross-tenant-query denial). No new
+attack surface — this only *narrows* who can call provision (previously any
+caller with a valid `actorUserId`/`actorTenantId` could provision; now they
+additionally need the permission row). One note, non-blocking: unlike
+`ExpressMiddlewareFactory.requirePermission()`, device-api's flat context has
+no `isSystemUser` bypass, so this check applies uniformly with no
+system-user exception — consistent with fail-closed, not a gap.
+
+Tests: seeded `devices:CREATE` for the existing provision test's real user
+(role/permission/role_permission/user_role, 4-table insert in `beforeAll`),
+added a new 403 case for a user with no role. Full suite: 277 passed / 22
+skipped, `tsc` clean.
+
+**Decision unchanged: APPROVE.**
 
 ## Summary
 
