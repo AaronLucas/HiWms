@@ -58,22 +58,22 @@
 
 **文档同步**: ARCHITECTURE.md §11、DB_SCHEMA.md、ROADMAP.md §1.4（均已于 2026-07-27 同步）
 
-### Sprint 1: Repository Phase 2（预估 3-4 天）
+### Sprint 1: Repository Phase 2（原预估 3-4 天，2026-07-27 复核后更正范围）
 
-**目标**: 补全 8 个 P0 仓库实现
+**目标更正**：原「补全 8 个 P0 仓库实现」的前提不成立——2026-07-27 复核确认 7 个仓库均已完整实现且已接线 DI（方法签名与端口接口逐一比对完全吻合），本次审计（PR #55）"零进度"的结论是误判。**真实目标改为：补齐测试覆盖**（单测/并发测试/集成测试），参照 Phase 5/6/7 标准。
 
-| 任务 | 仓库 | 依赖 |
-|------|------|------|
-| 1.1 | `SupabaseTenantRepository` | 无 |
-| 1.2 | `SupabaseProductRepository` + `SupabaseProductConstraintRepository` | 无 |
-| 1.3 | `SupabaseInventoryRepository` | Product |
-| 1.4 | `SupabaseOrderRepository` | Tenant、Product |
-| 1.5 | `SupabaseWorkOrderRepository` | Order、Inventory |
-| 1.6 | `SupabaseSortingChuteRepository` | 无 |
+| 任务 | 仓库 | 依赖 | 实现状态 | 测试状态 |
+|------|------|------|---------|---------|
+| 1.1 | `SupabaseTenantRepository` | 无 | ✅ 已实现 | 🔨 补测试中 |
+| 1.2 | `SupabaseProductRepository` + `SupabaseProductConstraintRepository` | 无 | ✅ 已实现 | 🔨 补测试中 |
+| 1.3 | `SupabaseInventoryRepository` | Product | ✅ 已实现（含已知技术债，见 REPOSITORY_ROADMAP.md） | 🔨 补测试中 |
+| 1.4 | `SupabaseOrderRepository` | Tenant、Product | ✅ 已实现 | 🔨 补测试中 |
+| 1.5 | `SupabaseWorkOrderRepository` | Order、Inventory | ✅ 已实现 | 🔨 补测试中 |
+| 1.6 | `SupabaseSortingChuteRepository` | 无 | ✅ 已实现 | 🔨 补测试中 |
 
-每个仓库参照 Phase 5/6/7 标准：端口 → 实现 → 单元测试 → 并发测试 → 集成测试。
+每个仓库参照 Phase 5/6/7 标准补齐：并发测试（覆盖端口全部方法 + 至少一个并发场景）。
 
-**同步修复**: Admin API 中直接调用 `supabase.from()` 的地方改为走 Repository 层。
+**同步修复**: Admin API 中直接调用 `supabase.from()` 的地方改为走 Repository 层——这一项仍待处理，不受本次范围更正影响。
 
 ### Sprint 2: Tenant API + Use Case 层（预估 3-4 天）
 
@@ -131,6 +131,6 @@ Sprint 0 (ADR-015)
 | Sprint | 标准 | 当前状态（2026-07-27） |
 |--------|------|------|
 | Sprint 0 | `fn_current_tenant_id()` 在 authenticated 请求中返回正确 tenant_id；跨租户测试通过 | **应用层达成**：`tsc --noEmit` 零错误、`vitest` 84 passed/125 skipped，两轮独立评审无 CRITICAL/HIGH。**未完全达成**：数据库侧触发器待 DBA 落地，`fn_current_tenant_id()` 在真实自助注册用户上尚未验证返回非 NULL；`authToken` 未接线到业务层/路由层；跨租户隔离测试因触发器缺失暂不能作为验证证据。不宜理解为"RLS 已在生产验证生效"或"可直接开始 Sprint 1 且无遗留风险"——具体限制见 ADR-015「实施记录」 |
-| Sprint 1 | 8 个仓库全部实现 + 单元测试 + 并发测试；tsc 零错误；vitest 全绿 | 未开始 |
+| Sprint 1 | ~~8 个仓库全部实现~~ + 并发测试；tsc 零错误；vitest 全绿 | **实现已达成**（7 个仓库均已实现并接线 DI，2026-07-27 复核确认，更正原"零进度"误判）；**测试补齐进行中** |
 | Sprint 2 | Tenant API 全部端点可调用；HTTP 契约测试通过；前端可开始对接 | 未开始 |
 | Sprint 3 | 缺口清单清零；全部文档同步；CI 可加入 DB 并发测试 | 未开始 |

@@ -16,7 +16,7 @@
 | Repository 端口 | 100% | ✅ 45 接口已定义 |
 | Repository Phase 1/3/4/5/6/7 | 100% | ✅ 含并发测试证据 |
 | Repository Phase 8 | 60% | 🔶 已实现，集成测试不足 |
-| **Repository Phase 2** | **0%** | 🔴 8 个 P0 仓库未开始 |
+| **Repository Phase 2** | **~85%** | 🟡 8 个 P0 仓库均已实现且已接线 DI，2026-07-27 逐一核对方法签名与端口接口完全吻合；真正缺口是零测试覆盖（无单测/并发测试/集成测试），见 §2.2 更正 |
 | Device API | 95% | ✅ 17 端点 |
 | Admin API | 30% | 🔶 基础 CRUD |
 | **Tenant API** | **0%** | 🔴 目录不存在 |
@@ -27,7 +27,7 @@
 | Edge Worker | 0% | 🔴 不存在 |
 | 外部适配器 | 0% | 🔴 只有端口 |
 
-**后端总体: ~55%**
+**后端总体: ~55%**（2026-07-27 更正 Repository Phase 2 评估后，实际完成度略高于本次审计原估算，具体见 §2.2）
 
 ---
 
@@ -37,9 +37,11 @@
 
 `public.users` 和 Supabase Auth `auth.users` 无触发器同步。`fn_current_tenant_id()` 在所有业务查询中返回 NULL。`ExpressMiddlewareFactory.injectRlsContext()` 设值但 `SupabaseBaseRepository.getClient()` 返回单例 anon client，不是 per-request。所有 authenticated 角色的 RLS 策略从未被触发。
 
-### 2.2 Repository Phase 2 零进度
+### 2.2 Repository Phase 2 测试覆盖零进度（原「零进度」结论已更正，2026-07-27）
 
-8 个 P0 仓库端口无实现：IOrderRepository、IWorkOrderRepository、IInventoryRepository、IProductRepository、IProductConstraintRepository、ISortingChuteRepository、ITenantRepository。Admin API 通过 service_role 绕过 Repository 层直接查表，是技术债。
+**更正说明**：本节原描述"8 个 P0 仓库端口无实现"经 2026-07-27 复核**不成立**——`SupabaseTenantRepository`、`SupabaseProductRepository`、`SupabaseProductConstraintRepository`、`SupabaseInventoryRepository`、`SupabaseOrderRepository`、`SupabaseWorkOrderRepository`、`SupabaseSortingChuteRepository` 均已完整实现（37-165 行不等），方法签名与对应端口接口逐一比对完全吻合（`SupabaseProductRepository` 甚至多实现了 `findWithConstraints`/`updateAbcClass` 两个方法），且均已在 `src/adapters/supabase/index.ts`/`repositories/index.ts` 正确导出并接入 DI 容器。本次审计（PR #55）未做实际代码核查就下了"0%/未开始"结论，属于误判，特此更正。
+
+**真实缺口**：这 7 个仓库**完全没有测试**（`src/__tests__/` 下零匹配），不符合 Phase 5/6/7 仓库"含并发测试证据"的既有标准。Admin API 通过 service_role 绕过 Repository 层直接查表的技术债描述不变。
 
 ### 2.3 Tenant API 不存在
 

@@ -9,7 +9,7 @@
 - **聚合根数**：46 个
 - **已完成**：35 个（Phase 1 核心域 11 个 + Phase 3 业务扩展 8 个 + Phase 4 支撑域 6 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
 - **🔨 已实现未验证**：3 个（Phase 8，`tsc`/既有测试基线通过，集成测试待 Sprint 3 补全）
-- **🔴 待实施（Sprint 1）**：8 个（Phase 2 出库作业，端口已定义，实现为零进度，见 ECC_EXECUTION_PLAN.md Sprint 1）
+- **🔨 已实现未验证（Sprint 1 补测试中）**：7 个（Phase 2 出库作业，端口+实现均已完成，2026-07-27 复核确认——原"零进度"是误判；缺口是零测试覆盖，见 ECC_EXECUTION_PLAN.md Sprint 1）
 - **分 8 个优先级阶段实施**
 
 > **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
