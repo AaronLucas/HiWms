@@ -15,7 +15,7 @@ export class SupabaseUserRepository extends SupabaseBaseRepository<
   UserUpdate,
   string
 > implements IUserRepository {
-  protected tableName = 'users';
+  protected tableName = 'users' as const;
   protected idColumn = 'id';
 
   async findByUsername(username: string): Promise<UserRow | null> {

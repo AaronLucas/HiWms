@@ -15,7 +15,7 @@ export class SupabaseBillingTransactionRepository extends SupabaseBaseRepository
   BillingTransactionUpdate,
   string
 > implements IBillingTransactionRepository {
-  protected tableName = 'billing_transactions';
+  protected tableName = 'billing_transactions' as const;
   protected idColumn = 'trans_id';
 
   async findByOrder(orderId: string): Promise<BillingTransactionRow[]> {

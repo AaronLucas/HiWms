@@ -15,11 +15,11 @@ export class SupabaseInventoryLockRepository extends SupabaseBaseRepository<
   InventoryLockUpdate,
   string
 > implements IInventoryLockRepository {
-  protected tableName = 'inventory_locks';
+  protected tableName = 'inventory_locks' as const;
   protected idColumn = 'id';
 
   async findByInventory(inventoryId: string): Promise<InventoryLockRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('inventory_id', inventoryId)
@@ -30,7 +30,7 @@ export class SupabaseInventoryLockRepository extends SupabaseBaseRepository<
   }
 
   async findActiveByTenant(tenantId: string): Promise<InventoryLockRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -56,7 +56,7 @@ export class SupabaseInventoryLockRepository extends SupabaseBaseRepository<
     expiredLocks: number;
     byType: Record<string, number>;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('lock_type, is_active, expires_at')
       .eq('tenant_id', tenantId);

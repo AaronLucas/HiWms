@@ -1,3 +1,5 @@
 packages:
   - '.'
   - 'workflow-engine'
+allowBuilds:
+  argon2: set this to true or false

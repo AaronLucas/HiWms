@@ -18,7 +18,7 @@ export class SupabaseDeviceSyncStateRepository extends SupabaseBaseRepository<
   DeviceSyncStateUpdate,
   string
 > implements IDeviceSyncStateRepository {
-  protected tableName = 'device_sync_state';
+  protected tableName = 'device_sync_state' as const;
   protected idColumn = 'device_id';
 
   constructor(protected supabase: WmsSupabaseClient) {

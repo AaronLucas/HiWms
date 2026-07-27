@@ -19,7 +19,7 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
   PackingTaskUpdate,
   string
 > implements IPackingTaskRepository {
-  protected tableName = 'packing_tasks';
+  protected tableName = 'packing_tasks' as const;
   protected idColumn = 'id';
 
   async findByTenant(
@@ -91,7 +91,7 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('status', 'packed')
-      .lt('labels_printed', this.getClient().from(this.tableName).select('total_boxes'))
+      .lt('labels_printed', this.from().select('total_boxes'))
       .order('packed_at', { ascending: true });
 
     if (error) throw error;

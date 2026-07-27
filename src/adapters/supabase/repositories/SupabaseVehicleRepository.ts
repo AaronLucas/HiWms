@@ -15,11 +15,11 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
   VehicleUpdate,
   string
 > implements IVehicleRepository {
-  protected tableName = 'vehicles';
+  protected tableName = 'vehicles' as const;
   protected idColumn = 'id';
 
   async findByPlate(plate: string, tenantId: string): Promise<VehicleRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('plate', plate)
@@ -38,7 +38,7 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; vehicleType?: string }
   ): Promise<VehicleRow[]> {
     const { limit = 100, offset = 0, status, vehicleType } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -54,7 +54,7 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
   }
 
   async findAvailable(tenantId: string, vehicleType?: string): Promise<VehicleRow[]> {
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -82,7 +82,7 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
     maintenance: number;
     byType: Record<string, number>;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('status, vehicle_type')
       .eq('tenant_id', tenantId);

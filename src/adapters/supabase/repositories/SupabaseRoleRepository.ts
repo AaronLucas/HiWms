@@ -11,7 +11,7 @@ export class SupabaseRoleRepository extends SupabaseBaseRepository<
   RoleUpdate,
   string
 > implements IRoleRepository {
-  protected tableName = 'roles';
+  protected tableName = 'roles' as const;
   protected idColumn = 'id';
 
   async findByName(name: string): Promise<RoleRow | null> {

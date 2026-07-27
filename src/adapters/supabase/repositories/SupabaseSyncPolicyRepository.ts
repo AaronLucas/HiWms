@@ -14,7 +14,7 @@ export class SupabaseSyncPolicyRepository extends SupabaseBaseRepository<
   SyncPolicyUpdate,
   string
 > implements ISyncPolicyRepository {
-  protected tableName = 'sync_policies';
+  protected tableName = 'sync_policies' as const;
   protected idColumn = 'id';
 
   constructor(

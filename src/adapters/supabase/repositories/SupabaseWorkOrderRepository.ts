@@ -10,7 +10,7 @@ export class SupabaseWorkOrderRepository extends SupabaseBaseRepository<
   TablesInsert<'work_orders'>,
   TablesUpdate<'work_orders'>
 > implements IWorkOrderRepository {
-  protected tableName = 'work_orders';
+  protected tableName = 'work_orders' as const;
   protected idColumn = 'id';
 
   async findByWave(waveId: string): Promise<WorkOrderRow[]> {

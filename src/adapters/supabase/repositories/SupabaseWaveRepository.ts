@@ -19,11 +19,11 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
   WaveUpdate,
   string
 > implements IWaveRepository {
-  protected tableName = 'waves';
+  protected tableName = 'waves' as const;
   protected idColumn = 'id';
 
   async findByWaveNo(waveNo: string, tenantId: string): Promise<WaveRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('wave_no', waveNo)
@@ -42,7 +42,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; strategyType?: string }
   ): Promise<WaveRow[]> {
     const { limit = 100, offset = 0, status, strategyType } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -61,7 +61,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     wave: WaveRow;
     orders: WaveOrderMappingRow[];
   } | null> {
-    const { data: wave, error: waveError } = await this.getClient()
+    const { data: wave, error: waveError } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('id', waveId)
@@ -72,7 +72,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       throw waveError;
     }
 
-    const { data: orders, error: ordersError } = await this.getClient()
+    const { data: orders, error: ordersError } = await (this.getClient() as any)
       .from('wave_order_mapping')
       .select('*')
       .eq('wave_id', waveId)
@@ -87,7 +87,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
   }
 
   async findInProgress(tenantId: string): Promise<WaveRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -99,7 +99,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
   }
 
   async findPendingRelease(tenantId: string): Promise<WaveRow[]> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -122,7 +122,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       sequence: index + 1,
     }));
 
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from('wave_order_mapping')
       .insert(mappings as any)
       .select();
@@ -132,7 +132,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
   }
 
   async removeOrdersFromWave(waveId: string, orderIds: string[]): Promise<void> {
-    const { error } = await this.getClient()
+    const { error } = await (this.getClient() as any)
       .from('wave_order_mapping')
       .delete()
       .eq('wave_id', waveId)
@@ -148,7 +148,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     packedOrders: number;
     shippedOrders: number;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from('wave_order_mapping')
       .select('order_id, status')
       .eq('wave_id', waveId);
@@ -170,7 +170,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     waveCount: number;
     totalOrders: number;
   }>> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('strategy_type, id')
       .eq('tenant_id', tenantId);

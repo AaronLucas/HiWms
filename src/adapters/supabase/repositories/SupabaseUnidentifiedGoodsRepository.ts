@@ -22,7 +22,7 @@ export class SupabaseUnidentifiedGoodsRepository extends SupabaseBaseRepository<
   ContainerUpdate,
   string
 > implements IUnidentifiedGoodsRepository {
-  protected tableName = 'containers';
+  protected tableName = 'containers' as const;
   protected idColumn = 'id';
 
   constructor(

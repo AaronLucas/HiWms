@@ -15,7 +15,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
   CrossDockJobUpdate,
   string
 > implements ICrossDockJobRepository {
-  protected tableName = 'cross_dock_jobs';
+  protected tableName = 'cross_dock_jobs' as const;
   protected idColumn = 'id';
 
   async findByTenant(

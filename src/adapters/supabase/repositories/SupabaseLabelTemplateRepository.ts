@@ -15,11 +15,11 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
   LabelTemplateUpdate,
   string
 > implements ILabelTemplateRepository {
-  protected tableName = 'label_templates';
+  protected tableName = 'label_templates' as const;
   protected idColumn = 'id';
 
   async findByCode(code: string, tenantId: string): Promise<LabelTemplateRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('template_code', code)
@@ -38,7 +38,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; labelType?: string; isDefault?: boolean }
   ): Promise<LabelTemplateRow[]> {
     const { limit = 100, offset = 0, labelType, isDefault } = options || {};
-    let query = this.getClient()
+    let query = (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -54,7 +54,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
   }
 
   async findDefault(tenantId: string, labelType: string): Promise<LabelTemplateRow | null> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -72,7 +72,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
 
   async setDefault(templateId: string, tenantId: string): Promise<void> {
     // Get the label_type of the template being set as default
-    const { data: template } = await this.getClient()
+    const { data: template } = await (this.getClient() as any)
       .from(this.tableName)
       .select('label_type')
       .eq('id', templateId)
@@ -82,7 +82,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
     if (!template) return;
 
     // Unset current default for this label_type
-    await this.getClient()
+    await (this.getClient() as any)
       .from(this.tableName)
       .update({ is_default: false })
       .eq('tenant_id', tenantId)
@@ -98,7 +98,7 @@ export class SupabaseLabelTemplateRepository extends SupabaseBaseRepository<
     byType: Record<string, number>;
     defaultCount: number;
   }> {
-    const { data, error } = await this.getClient()
+    const { data, error } = await (this.getClient() as any)
       .from(this.tableName)
       .select('label_type, is_default')
       .eq('tenant_id', tenantId);

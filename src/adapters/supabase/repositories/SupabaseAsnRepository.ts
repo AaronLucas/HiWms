@@ -13,14 +13,14 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
   AsnRow,
   AsnInsert,
   AsnUpdate,
-  string
+  string,
+  'inbound_receipts'
 > implements IAsnRepository {
-  protected tableName = 'inbound_receipts';
+  protected tableName = 'inbound_receipts' as const;
   protected idColumn = 'id';
 
   async findByAsnNo(asnNo: string, tenantId: string): Promise<AsnRow | null> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
+    const { data, error } = await this.from()
       .select('*')
       .eq('receipt_no', asnNo)
       .eq('tenant_id', tenantId)
@@ -38,8 +38,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     options?: { limit?: number; offset?: number; status?: string; supplierName?: string }
   ): Promise<AsnRow[]> {
     const { limit = 100, offset = 0, status, supplierName } = options || {};
-    let query = this.getClient()
-      .from(this.tableName)
+    let query = this.from()
       .select('*')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
@@ -54,8 +53,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
   }
 
   async findPendingReceipt(tenantId: string): Promise<AsnRow[]> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
+    const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('status', 'pending')
@@ -67,8 +65,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
 
   async findCompleted(tenantId: string, options?: { limit?: number; offset?: number }): Promise<AsnRow[]> {
     const { limit = 100, offset = 0 } = options || {};
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
+    const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('status', 'completed')
@@ -95,8 +92,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     asnCount: number;
     totalQty: number;
   }>> {
-    const { data, error } = await this.getClient()
-      .from(this.tableName)
+    const { data, error } = await this.from()
       .select('supplier_name, id')
       .eq('tenant_id', tenantId)
       .gte('created_at', startDate)

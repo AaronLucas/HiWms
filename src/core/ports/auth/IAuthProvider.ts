@@ -1,6 +1,6 @@
 /**
  * 认证提供者端口接口
- * 负责 JWT 验证、刷新令牌
+ * 负责 JWT 验证、刷新令牌、登录、注册
  */
 export interface IAuthProvider {
   /**
@@ -43,4 +43,29 @@ export interface IAuthProvider {
    * 撤销令牌（登出时调用）
    */
   revokeToken(token: string): Promise<void>;
+
+  /**
+   * 使用邮箱密码登录
+   * @param email 邮箱
+   * @param password 密码
+   * @returns 访问令牌、刷新令牌、用户信息
+   */
+  signIn(email: string, password: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    user: { id: string; tenantId: string | null };
+  } | null>;
+
+  /**
+   * 注册新用户（自助注册，创建租户 + 写入 app_metadata.tenant_id）
+   * @param email 邮箱
+   * @param password 密码
+   * @param metadata 额外元数据（如租户名、角色等）
+   * @returns 用户ID、租户ID
+   */
+  signUp(email: string, password: string, metadata: Record<string, unknown>): Promise<{
+    userId: string;
+    tenantId: string | null;
+  } | null>;
 }

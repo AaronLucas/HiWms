@@ -10,7 +10,7 @@ export class SupabaseOrderRepository extends SupabaseBaseRepository<
   TablesInsert<'orders'>,
   TablesUpdate<'orders'>
 > implements IOrderRepository {
-  protected tableName = 'orders';
+  protected tableName = 'orders' as const;
   protected idColumn = 'id';
 
   async findByExternalId(externalOrderId: string): Promise<Tables<'orders'> | null> {

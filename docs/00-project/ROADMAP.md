@@ -2,7 +2,7 @@
 
 > 基于已完成的架构设计、数据库 Schema、API 设计、RBAC 系统生成的完整实施路线图。
 > 
-> **当前活跃 Sprint**: Sprint 0 — ADR-015 Auth Identity Bridge（2026-07-27 启动）  
+> **当前活跃 Sprint**: Sprint 0 — ADR-015 Auth Identity Bridge 应用层已完成（2026-07-27），等待 DBA Addendum 落地后可推进 Sprint 1  
 > **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成）  
 > **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`（2026-07-27，4 个 Sprint 分阶段推进）
 
@@ -88,7 +88,7 @@
 - [x] **DBA Addendum 请求已提出**：`docs/03-database/DBA_ADDENDUM_REQUEST_2026-07-20.md`——① CRITICAL：`fn_apply_pick/putaway/count/pack_action` 四函数缺少 `EXECUTE` 权限收口，可绕过 `fn_apply_sync_event` dispatcher 直接调用复现重复处理；② HIGH：`fn_trg_sync_location_zone_type`（Layer 7）只覆盖 location→zone 方向，`zones.zone_type` 反向变更不会级联刷新已挂接库位，影响冷链/危险品合规校验时效性；③ HIGH：Layer 8 新增的 `wo_action_logs_daily_summary`/`inventory_history_daily_summary` 两表会被维护任务反复 `ON CONFLICT DO UPDATE`，缺少 `updated_at`；④ MEDIUM：`sync_events` 卡在 `PROCESSING` 状态缺少超时清扫。四项均未修改任何 `.sql`，等待 DBA 团队评估处理
 - [x] **TypeScript 仓储层集成**（✅ 已完成，2026-07-25 核实）：`src/types/database.ts` 已覆盖 Layer 7/8 新表（`zones`/`inventory_units`/`storage_management_policies`/`inventory_history_daily_summary`/`wo_action_logs_daily_summary`）、`v_serial_lookup` 视图、`locations` 新列、`PROCESSING` 状态值；新增 `IInventoryUnitRepository`（只读，序列号生命周期查询）、`IStorageManagementPolicyRepository`（平台管理员写、租户只读）、`IZoneRepository`（库区 CRUD）端口+适配器；`ILocationRepository` 已补 `findByZone`；`device-api/validation.ts` 已补 `serial_number` 字段；`ITenantResolver` 端口已声明 `isPlatformAdmin`。Layer 5/6 对现有 TS 调用方透明——`SupabaseSyncEventRepository.applyEvent()` 只经过 dispatcher，`PROCESSING` 已在类型联合里
 - [x] **休眠 bug 一并修复**（✅ 已完成，2026-07-25 核实）：`SupabaseInventoryReservationRepository.createReservation()` 已补租户/所有权校验（inventory_id/order_id 写入前 join 验证）；`findActiveByTenant()`/`getReservationStats()` 已改用 `inventory!inner(tenant_id)` join 推导租户归属，字段改为真实存在的 `status`/`reserved_qty`；`releaseReservation()`/`releaseExpiredReservations()` 同步修复（`is_active`→`status`，`released_at` 列不存在→`updated_at`）
-- [ ] Track B（登录/注册身份模型桥接，ADR-015）：设计已完成待评审，5 个开放问题需产品/DBA/项目负责人拍板，不在本轮范围内，独立跟踪
+- [x] Track B（登录/注册身份模型桥接，ADR-015）：**应用层已实施（2026-07-27，Sprint 0）**——`IAuthProvider.signIn/signUp` 契约修正、`SupabaseBaseRepository` per-request authenticated client、`ExpressMiddlewareFactory.injectRlsContext()` 改造均已完成并通过评审。数据库侧 `handle_new_user` 触发器仍待 5 个开放问题（产品/DBA/项目负责人拍板）确认后实施，见 `DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md`。**尚未达成**：`authToken` 机制未贯通到具体仓库业务方法与路由层；`tenant-isolation.test.ts` 因触发器缺失暂不能作为隔离验证证据（详见 ADR-015「实施记录」）
 
 ### 1.5 DBA Addendum 跨仓库协同追踪（`HiWmsSupabase` 只读复核，不含任何 SQL 改动）
 
@@ -142,12 +142,19 @@
 > **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`  
 > **总体后端完成度**: ~55%
 
-#### Sprint 0: ADR-015 Auth Identity Bridge（🔨 进行中）
+#### Sprint 0: ADR-015 Auth Identity Bridge（🟡 应用层已完成，2026-07-27，等待 DBA Addendum）
 
-- [ ] 0.1 创建 `auth.users` → `public.users` 触发器（HiWmsSupabase addendum）
-- [ ] 0.2 实现 per-request Supabase client（SupabaseClient/SupabaseBaseRepository）
-- [ ] 0.3 修复 `injectRlsContext` 让 Repository 层消费 per-request JWT
-- [ ] 0.4 跨租户隔离集成测试（tenant-isolation.test.ts）
+- [ ] 0.1 创建 `auth.users` → `public.users` 触发器（HiWmsSupabase addendum，已提交 `DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md`，等待 DBA/产品对 5 个开放问题拍板）
+- [x] 0.2 实现 per-request Supabase client（`SupabaseClient`/`SupabaseBaseRepository`，`authToken` 参数 + `TTableName` 泛型），2026-07-27 完成，`tsc` 零错误
+- [x] 0.3 修复 `injectRlsContext` 让 Repository 层消费 per-request JWT，2026-07-27 完成
+- [x] 0.4 跨租户隔离集成测试（`tenant-isolation.test.ts`），2026-07-27 已编写并纳入 vitest 套件
+
+**完成日期**：2026-07-27（应用层）。**备注（两个尚未达成的限制）**：
+① `authToken` 目前只打通了 `SupabaseBaseRepository` 8 个通用 CRUD 方法，绝大多数具体仓库业务
+查询方法与目前唯一接线的 `device-api` 路由尚未使用该机制，RLS 尚未在真实业务查询里端到端验证；
+② `tenant-isolation.test.ts` 本地实测因触发器不存在导致 `profileA.tenant_id` 为 `null`，CI 因
+未设置 `RUN_DB_INTEGRATION_TESTS` 恒被 `skipIf` 跳过，该测试暂不能作为隔离已验证生效的证据，
+需等 0.1 触发器落地后补充真实验证。
 
 #### Sprint 1: Repository Phase 2（⏳ 待 Sprint 0 完成）
 

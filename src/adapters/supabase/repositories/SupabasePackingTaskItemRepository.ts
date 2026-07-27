@@ -18,7 +18,7 @@ export class SupabasePackingTaskItemRepository extends SupabaseBaseRepository<
   PackingTaskItemUpdate,
   string
 > implements IPackingTaskItemRepository {
-  protected tableName = 'packing_task_items';
+  protected tableName = 'packing_task_items' as const;
   protected idColumn = 'id';
 
   constructor(protected supabase: WmsSupabaseClient) {

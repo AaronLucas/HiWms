@@ -19,7 +19,7 @@ export class SupabaseTaskClaimRepository extends SupabaseBaseRepository<
   TaskClaimUpdate,
   string
 > implements ITaskClaimRepository {
-  protected tableName = 'task_claims';
+  protected tableName = 'task_claims' as const;
   protected idColumn = 'id';
 
   constructor(
