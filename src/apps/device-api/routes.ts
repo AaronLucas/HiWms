@@ -16,7 +16,7 @@
  * - POST /unidentified/receive   - 接收未识别货物 (Layer 4)
  * - POST /unidentified/identify  - 确认未识别货物身份 (Layer 4)
  *
- * 设备认证端点 (ADR-019):
+ * 设备认证端点 (ADR-019，无需设备凭证，见 ./publicAuthRoutes.ts):
  * - POST /device/auth/login       - API Key 换 Access/Refresh Token
  * - POST /device/auth/refresh     - Refresh Token 换新 Access Token
  *
@@ -47,33 +47,19 @@ import {
   missingLabelConfirmSchema,
   unidentifiedReceiveSchema,
   unidentifiedIdentifySchema,
-  // Device Auth (ADR-019)
-  deviceAuthLoginSchema,
-  deviceAuthRefreshSchema,
+  // Device Provision (ADR-019)
   deviceProvisionSchema,
   devicePairingQrSchema,
   uuidSchema,
 } from './validation';
 import {
-  issueTokenPair,
-  verifyAndRotateRefreshToken,
-  verifyApiKeySecret,
-  parseApiKey,
   generateApiKey,
   encodePairingQr,
-  DEFAULT_DEVICE_CREDENTIALS_CONFIG,
-  type DeviceCredentialsConfig,
 } from './auth/device-credentials';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   const router = Router();
   const { supabaseAdapters } = deps;
-
-  // 设备凭证配置
-  const credentialsConfig: DeviceCredentialsConfig = {
-    ...DEFAULT_DEVICE_CREDENTIALS_CONFIG,
-    tenantSigningKeys: new Map(),
-  };
 
   // 获取仓储实例
   const taskClaimRepo = supabaseAdapters.repositories.taskClaims;
@@ -589,108 +575,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     });
 
   // ========== Device Auth Endpoints (ADR-019) ==========
-
-  /**
-   * POST /device/auth/login
-   * API Key 换 Access Token + Refresh Token
-   */
-  router.post('/device/auth/login',
-    validateRequest({ body: deviceAuthLoginSchema }),
-    async (req: Request, res: Response) => {
-      try {
-        const { device_id, api_key, fcm_token, app_version, os_version, device_model } = req.body;
-
-        // 解析 API Key
-        const parsed = parseApiKey(api_key, credentialsConfig.apiKeyPrefix);
-        if (!parsed || parsed.deviceId !== device_id) {
-          return res.status(401).json({ error: 'Authentication failed' });
-        }
-
-        // 查询设备并验证 secret_hash
-        const { data: device, error } = await supabaseAdapters.client.getAdminClient()
-          .from('devices')
-          .select('id, tenant_id, is_active, secret_hash, device_type, device_code')
-          .eq('id', device_id)
-          .single();
-
-        // 统一错误响应，防止设备 ID 枚举和状态泄露
-        if (error || !device || !device.is_active || !device.secret_hash) {
-          return res.status(401).json({ error: 'Authentication failed' });
-        }
-
-        // 验证 API Key secret
-        const isValid = await verifyApiKeySecret(parsed.secret, device.secret_hash);
-        if (!isValid) {
-          return res.status(401).json({ error: 'Authentication failed' });
-        }
-
-        // 签发 Token 对
-        const tokenPair = await issueTokenPair(device.id, device.tenant_id!, credentialsConfig);
-
-        // 更新 FCM token（如果提供）
-        if (fcm_token) {
-          // TODO: 存储 FCM token 用于推送通知
-        }
-
-        res.json({
-          success: true,
-          data: {
-            access_token: tokenPair.accessToken,
-            refresh_token: tokenPair.refreshToken,
-            expires_in: tokenPair.accessTokenExpiresIn,
-            refresh_expires_in: tokenPair.refreshTokenExpiresIn,
-            token_type: tokenPair.tokenType,
-            server_time: new Date().toISOString(),
-            tenant_id: device.tenant_id,
-            device_config: {
-              sync_interval_sec: 30,
-              auto_sync_on_wifi: true,
-              max_offline_days: 7,
-              features: ['picking', 'packing', 'receiving', 'inventory', 'shipping'],
-            },
-            permissions: ['inventory:read', 'work_order:execute', 'task:complete'],
-          },
-          meta: { request_id: `req_${Date.now()}`, timestamp: new Date().toISOString() },
-        });
-      } catch (error) {
-        console.error('POST /device/auth/login error:', error);
-        res.status(500).json({ error: 'Login failed' });
-      }
-    });
-
-  /**
-   * POST /device/auth/refresh
-   * Refresh Token 换新 Access Token
-   */
-  router.post('/device/auth/refresh',
-    validateRequest({ body: deviceAuthRefreshSchema }),
-    async (req: Request, res: Response) => {
-      try {
-        const { refresh_token } = req.body;
-
-        // 验证 Refresh Token 并轮换
-        const tokenPair = await verifyAndRotateRefreshToken(refresh_token, credentialsConfig);
-        if (!tokenPair) {
-          return res.status(401).json({ error: 'Authentication failed' });
-        }
-
-        res.json({
-          success: true,
-          data: {
-            access_token: tokenPair.accessToken,
-            refresh_token: tokenPair.refreshToken,
-            expires_in: tokenPair.accessTokenExpiresIn,
-            refresh_expires_in: tokenPair.refreshTokenExpiresIn,
-            token_type: tokenPair.tokenType,
-            server_time: new Date().toISOString(),
-          },
-          meta: { request_id: `req_${Date.now()}`, timestamp: new Date().toISOString() },
-        });
-      } catch (error) {
-        console.error('POST /device/auth/refresh error:', error);
-        res.status(500).json({ error: 'Token refresh failed' });
-      }
-    });
+  // login/refresh 已抽到 ./publicAuthRoutes.ts（挂载在 DeviceAuthMiddleware 之前，
+  // 因为这两个端点本身就是"获取凭证"的入口，不能反过来要求先持有凭证才能访问）
 
   // ========== 设备配发端点 (Admin API) ==========
 
@@ -702,7 +588,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: deviceProvisionSchema }),
     async (req: Request, res: Response) => {
       try {
-        const { device_id, device_name, device_type } = req.body;
+        // device_name 已校验但暂不持久化，见下方 insert 处注释
+        const { device_id, device_type } = req.body;
 
         // 从已验证的认证上下文派生 actor 身份和租户（禁止客户端自报 tenant_id）
         const actorUserId = (req as any).context?.userId;
@@ -720,13 +607,16 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         const { apiKey, secretHash, rotatedAt } = await generateApiKey(device_id, { apiKeyPrefix: 'hiwms_dk' });
 
         // 创建设备记录（租户由认证上下文派生，不信任请求体）
+        // 注：devices 表目前没有 device_name 列（2026-07-27 经真实插入验证确认，
+        // 此前每次调用都会因未知列报错，被下面的错误处理统一误判成"设备已存在"）。
+        // 暂不持久化 device_name，是否需要 DBA 加列留待产品决策，见
+        // REPOSITORY_ROADMAP.md 相关记录。
         const { data: device, error } = await supabaseAdapters.client.getAdminClient()
           .from('devices')
           .insert({
             id: device_id,
             tenant_id: actorTenantId,
             device_code: device_id,
-            device_name,
             device_type,
             secret_hash: secretHash,
             secret_rotated_at: rotatedAt.toISOString(),
@@ -737,7 +627,10 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
 
         if (error) {
           console.error('Device provision error:', error);
-          return res.status(409).json({ error: 'DEVICE_ALREADY_EXISTS', message: 'Device ID already registered' });
+          if (error.code === '23505') {
+            return res.status(409).json({ error: 'DEVICE_ALREADY_EXISTS', message: 'Device ID already registered' });
+          }
+          return res.status(500).json({ error: 'PROVISION_FAILED', message: 'Failed to provision device' });
         }
 
         // 生成配对二维码数据

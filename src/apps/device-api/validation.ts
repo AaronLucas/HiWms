@@ -293,7 +293,8 @@ export const deviceAuthRefreshSchema = z.object({
  *  tenant_id 由认证上下文派生，不接受客户端传入
  */
 export const deviceProvisionSchema = z.object({
-  device_id: z.string().min(1).max(100),
+  /** devices.id 是 uuid 主键，2026-07-27 经真实插入验证确认非 UUID 输入会报 500，收紧为 uuidSchema */
+  device_id: uuidSchema,
   device_name: z.string().min(1).max(200),
   device_type: z.enum(['HANDHELD', 'SCALE', 'CONVEYOR', 'AGV', 'GATEWAY']),
 });

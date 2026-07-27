@@ -266,4 +266,57 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     expect(res.status).toBe(400);
     expect(res.body.error).toBeTruthy();
   });
+
+  test('POST /device/provision：合法请求应注册新设备并返回 API Key + 配对二维码（Sprint 3 #28）', async () => {
+    const newDeviceId = randomUUID();
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: newDeviceId, device_name: 'Provision Test Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.device_id).toBe(newDeviceId);
+    expect(res.body.data.api_key).toContain(newDeviceId);
+    expect(res.body.data.pairing_qr).toBeTruthy();
+
+    const { data: row } = await client.from('devices').select('tenant_id, is_active').eq('id', newDeviceId).single();
+    expect(row!.tenant_id).toBe(tenantId);
+    expect(row!.is_active).toBe(true);
+
+    await client.from('devices').delete().eq('id', newDeviceId);
+  });
+
+  test('POST /device/provision：非 UUID 的 device_id 应返回 422（此前是 500，因为 devices.id 是 uuid 主键）', async () => {
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: 'not-a-uuid', device_name: 'Bad Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(422);
+  });
+
+  test('POST /device/provision：重复的 device_id 应返回 409', async () => {
+    const res = await request(app)
+      .post('/device/provision')
+      .send({ device_id: deviceId, device_name: 'Duplicate Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(409);
+  });
+
+  test('POST /admin/devices/:id/pairing-qr：应为已有设备重新生成配对二维码并轮换 secret_hash（Sprint 3 #28）', async () => {
+    const { data: before } = await client.from('devices').select('secret_hash').eq('id', deviceId).single();
+
+    const res = await request(app).post(`/admin/devices/${deviceId}/pairing-qr`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.device_id).toBe(deviceId);
+    expect(res.body.data.pairing_qr).toBeTruthy();
+
+    const { data: after } = await client.from('devices').select('secret_hash').eq('id', deviceId).single();
+    expect(after!.secret_hash).not.toBe(before!.secret_hash);
+  });
+
+  test('POST /admin/devices/:id/pairing-qr：不存在的设备应返回 404', async () => {
+    const res = await request(app).post(`/admin/devices/${randomUUID()}/pairing-qr`).send({});
+    expect(res.status).toBe(404);
+  });
 });
