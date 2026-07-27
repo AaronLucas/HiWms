@@ -16,6 +16,7 @@ import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
+import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -36,7 +37,9 @@ describe.skipIf(!RUN)('tenant-api /api/inventory HTTP 契约', () => {
 
   const injectContext = (tid: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.context = {
-      user: { id: randomUUID(), tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
+      // isSystemUser: true 绕过 Sprint 4 新接入的 requirePermission() RBAC 校验——本文件测的是
+      // 路由层校验/序列化/租户隔离契约，RBAC 403 场景由 orders.http.test.ts 代表性验证。
+      user: { id: randomUUID(), tenantId: tid, isSystemUser: true, roles: [], permissions: [] },
       tenantId: tid,
       correlationId: `test-${Date.now()}`,
     };
@@ -77,7 +80,14 @@ describe.skipIf(!RUN)('tenant-api /api/inventory HTTP 契约', () => {
     if (invErr) throw invErr;
     inventoryId = inv.id;
 
-    const deps = { supabaseAdapters: adapters } as unknown as TenantApiDependencies;
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    const deps = { supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies;
     app = express();
     app.use(express.json());
     app.use(injectContext(tenantId));

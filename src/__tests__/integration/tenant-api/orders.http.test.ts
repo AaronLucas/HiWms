@@ -20,6 +20,7 @@ import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
+import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -36,9 +37,11 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
   let otherTenantId: string;
   let productId: string;
 
+  // isSystemUser: true 绕过 Sprint 4 新接入的 requirePermission() RBAC 校验——本文件
+  // 测的是路由层校验/序列化/租户隔离契约，不是 RBAC 本身（RBAC 403 场景见下方专门测试）。
   const injectContext = (tid: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.context = {
-      user: { id: randomUUID(), tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
+      user: { id: randomUUID(), tenantId: tid, isSystemUser: true, roles: [], permissions: [] },
       tenantId: tid,
       correlationId: `test-${Date.now()}`,
     };
@@ -78,7 +81,14 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
     if (productErr) throw productErr;
     productId = product.id;
 
-    const deps = { supabaseAdapters: adapters } as unknown as TenantApiDependencies;
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    const deps = { supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies;
     app = express();
     app.use(express.json());
     app.use(injectContext(tenantId));
@@ -160,5 +170,29 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
 
     const res = await request(app).get(`/api/orders/${otherOrder.id}`);
     expect(res.status).toBe(404);
+  });
+
+  test('GET /api/orders：没有 orders:READ 权限的普通用户应返回 403（Sprint 4 #4.5 新接的 RBAC 校验）', async () => {
+    const noPermApp = express();
+    noPermApp.use(express.json());
+    noPermApp.use((req: Request, _res: Response, next: NextFunction) => {
+      req.context = {
+        user: { id: randomUUID(), tenantId, isSystemUser: false, roles: [], permissions: [] },
+        tenantId,
+        correlationId: `test-${Date.now()}`,
+      };
+      next();
+    });
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    noPermApp.use('/api', createTenantApiRouter({ supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies));
+
+    const res = await request(noPermApp).get('/api/orders');
+    expect(res.status).toBe(403);
   });
 });

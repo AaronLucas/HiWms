@@ -39,6 +39,10 @@ const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ??
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
+// createDeviceApiRouter 内部构造 credentialsConfig（操作员签到用）需要 deps.config.device.*；
+// 本文件用 injectContext 绕开 DeviceAuthMiddleware/真实登录流程，具体值不影响任何断言。
+const TEST_DEVICE_CONFIG = { device: { jwtSecret: 'test-secret', jwtIssuer: 'hiwms-test', jwtAudience: 'hiwms-devices-test' } };
+
 describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清单 HIGH 第 4 项）', () => {
   let client: ReturnType<WmsSupabaseClient['getClient']>;
   let adapters: SupabaseAdapters;
@@ -189,7 +193,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     // 只挂载 routes.ts 本身，不经过 DeviceAuthMiddleware——本文件测的是路由层的
     // 序列化/校验/响应形状契约，不是 JWT 解析（那部分已有独立的
     // src/__tests__/device-api/DeviceAuthMiddleware.test.ts 覆盖）。
-    const deps = { supabaseAdapters: adapters } as unknown as DeviceApiDependencies;
+    const deps = { supabaseAdapters: adapters, ...TEST_DEVICE_CONFIG } as unknown as DeviceApiDependencies;
     app = express();
     app.use(express.json());
     app.use(injectContext);
@@ -326,7 +330,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
       };
       next();
     });
-    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters } as unknown as DeviceApiDependencies));
+    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters, ...TEST_DEVICE_CONFIG } as unknown as DeviceApiDependencies));
 
     const res = await request(noPermApp)
       .post('/sync/events')
@@ -366,7 +370,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
       };
       next();
     });
-    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters } as unknown as DeviceApiDependencies));
+    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters, ...TEST_DEVICE_CONFIG } as unknown as DeviceApiDependencies));
 
     const res = await request(noPermApp)
       .post('/device/provision')
