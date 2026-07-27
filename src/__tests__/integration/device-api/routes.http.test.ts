@@ -139,6 +139,32 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     if (userErr) throw userErr;
     userId = user.id;
 
+    // Sprint 3 #30：给 userId 授予 devices:CREATE 权限，配合 POST /device/provision
+    // 新接上的 RBAC 校验（check_user_permission RPC）。
+    const { data: role, error: roleErr } = await client
+      .from('roles')
+      .insert({ tenant_id: tenantId, name: `ecc-p3-device-admin-${Date.now()}` })
+      .select()
+      .single();
+    if (roleErr) throw roleErr;
+
+    const { data: permission, error: permErr } = await client
+      .from('permissions')
+      .upsert({ resource: 'devices', action: 'CREATE' }, { onConflict: 'resource,action' })
+      .select()
+      .single();
+    if (permErr) throw permErr;
+
+    const { error: rolePermErr } = await client
+      .from('role_permissions')
+      .insert({ role_id: role.id, permission_id: permission.id });
+    if (rolePermErr) throw rolePermErr;
+
+    const { error: userRoleErr } = await client
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: role.id, scope: 'tenant' });
+    if (userRoleErr) throw userRoleErr;
+
     // 只挂载 routes.ts 本身，不经过 DeviceAuthMiddleware——本文件测的是路由层的
     // 序列化/校验/响应形状契约，不是 JWT 解析（那部分已有独立的
     // src/__tests__/device-api/DeviceAuthMiddleware.test.ts 覆盖）。
@@ -284,6 +310,27 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     expect(row!.is_active).toBe(true);
 
     await client.from('devices').delete().eq('id', newDeviceId);
+  });
+
+  test('POST /device/provision：没有 devices:CREATE 权限的用户应返回 403（Sprint 3 #30 新接的 RBAC 校验）', async () => {
+    const noPermUserId = randomUUID();
+    const noPermApp = express();
+    noPermApp.use(express.json());
+    noPermApp.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as unknown as { context: Record<string, string> }).context = {
+        tenantId,
+        deviceId,
+        userId: noPermUserId,
+      };
+      next();
+    });
+    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters } as unknown as DeviceApiDependencies));
+
+    const res = await request(noPermApp)
+      .post('/device/provision')
+      .send({ device_id: randomUUID(), device_name: 'No Permission Device', device_type: 'HANDHELD' });
+
+    expect(res.status).toBe(403);
   });
 
   test('POST /device/provision：非 UUID 的 device_id 应返回 422（此前是 500，因为 devices.id 是 uuid 主键）', async () => {

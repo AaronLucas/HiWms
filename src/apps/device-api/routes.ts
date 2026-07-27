@@ -601,7 +601,19 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
           return res.status(400).json({ error: 'tenant_id not available in context' });
         }
 
-        // TODO: 验证 RBAC devices:CREATE 权限（跟踪 ADR-019 §4.2）
+        // RBAC devices:CREATE 权限校验（ADR-019 §4.2）。走 check_user_permission RPC，
+        // 与 ExpressMiddlewareFactory.requirePermission() 底层同一个权限检查器，但这里不能
+        // 直接复用那个中间件——它读的是 req.context.user.id/isSystemUser（ExpressMiddlewareFactory
+        // 自己的 authenticate() 中间件填充的嵌套结构），device-api 的 DeviceAuthMiddleware
+        // 填充的是扁平的 req.context.userId/tenantId，两套中间件的 context 形状不兼容。
+        const hasProvisionPermission = await supabaseAdapters.auth.permissionChecker.check({
+          userId: actorUserId,
+          resource: 'devices',
+          action: 'CREATE',
+        });
+        if (!hasProvisionPermission) {
+          return res.status(403).json({ error: 'FORBIDDEN', message: 'Missing devices:CREATE permission' });
+        }
 
         // 生成 API Key
         const { apiKey, secretHash, rotatedAt } = await generateApiKey(device_id, { apiKeyPrefix: 'hiwms_dk' });
