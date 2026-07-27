@@ -585,13 +585,22 @@
 所有涉及文件已改为引用该常量文件，不再手写字符串，从根源上消除这类大小写/拼写风险（后续任何
 误用会在 import/类型检查阶段报错，不会再静默生产）。
 
-**仍未解决、有意保留待人工决策的 3 处**（均已在代码中原样保留并加注释说明，不属于本轮遗漏）：
+**仍未解决、有意保留待人工决策的 3 处**（均已在代码中原样保留并加注释说明，不属于本轮遗漏）。
+下面每一项先给出**业务场景**（非技术人员也能看懂"这在仓库实际运营中对应什么情况"），再给出对应的技术细节，方便产品/DBA 真正做出决策，而不是只看到表名/列名/约束值：
 
-| 文件 | 方法 | 问题 |
-|---|---|---|
-| `SupabaseCrossDockJobRepository.ts` | `findPendingMatch` | `'pending_match'` 在 `cross_dock_jobs.status` 真实约束里没有对应值（该表 `status` 列默认值即 `MATCHED`，schema 设计上没有"待匹配"前置状态），该方法目前恒返回空数组，是死代码，需要产品/DBA 决策是否要新增前置状态 |
-| `SupabaseQualityInspectionRepository.ts` | `findPendingReinspection`/`findDiscrepancy`/`getStats` | `'reinspect'`/`'discrepancy'` 在 `quality_inspections.status`（PENDING/IN_PROGRESS/PASSED/FAILED/QUARANTINE/REWORK/CANCELLED）里无对应值，语义映射不明确 |
-| `SupabaseInboundReceiptRepository.ts` | `getInspectionSummary` | `inspection_items` 表既无 `status` 列也无 `receipt_id` 外键（真实 FK 只有 `inspection_id`），当前 schema 下没有从 `inbound_receipts` 直达 `inspection_items` 的路径，是结构性缺口而非字面量问题 |
+1. **越库调拨（cross-dock）：货物到仓时，是否可能还没确定要发给哪个出库订单？**
+   业务场景：越库调拨是指供应商送来的货物不入库上架，直接转发给某个已知的出库订单（比如客户 A 的补货单）。现在的问题是：这批货到达仓库的那一刻，是否可能出库订单还没定下来（需要一个"待匹配"的等待状态）？还是说在实际业务流程里，越库调拨的货物永远是先谈好了要给哪个订单、订好了车次，才会真的送到仓库来（也就是"到货 = 已匹配"，不存在等待期）？
+   → 如果**会**出现"先到货、后匹配"的情况，需要在 `cross_dock_jobs.status` 里新增一个"待匹配"状态；如果**不会**，那么 `SupabaseCrossDockJobRepository.findPendingMatch` 这个方法就是永远查不到数据的死代码，可以直接删除。
+   *(技术细节：`'pending_match'` 在 `cross_dock_jobs.status` 真实 CHECK 约束里没有对应值，该表 `status` 列的 DEFAULT 就是 `MATCHED`，schema 设计上目前没有"待匹配"前置状态。)*
+
+2. **质检结果有争议、或收到的货和送货单对不上，该怎么流转？**
+   业务场景两问：(a) 质检员判定某批货"不合格"，但仓库/供应商对这个判定有异议，要求复核——这种"有争议、待复核"的情况，应该退回普通的"待质检"队列重新排队，还是需要一个只有主管才能处理的专门"争议"状态，避免和普通质检混在一起？(b) 实际收到的货物数量或状态，跟供应商发货单（ASN）对不上（比如少了 5 件，或者包装破损但发货单没写）——这种"货单不符"的情况，应该自动转入返工/隔离区处理，还是仅仅作为一个统计指标记录下来，不需要触发任何仓库操作？
+   → 这两个问题的答案，决定 `quality_inspections.status` 需不需要新增专门的状态值，还是现有的 PASSED/FAILED/QUARANTINE/REWORK 已经够用，只是代码里当前没有正确调用它们。
+   *(技术细节：`'reinspect'`/`'discrepancy'` 在 `quality_inspections.status`（PENDING/IN_PROGRESS/PASSED/FAILED/QUARANTINE/REWORK/CANCELLED）里无对应值，涉及方法 `findPendingReinspection`/`findDiscrepancy`/`getStats`，语义映射不明确。)*
+
+3. **是否需要"某批到货的质检总体情况"这种报表？**
+   业务场景：比如想回答"供应商 X 上个月送来的这批货，质检合格率怎么样、有没有异常"——这种"按每一次到货（inbound receipt）汇总质检结果"的报表，是仓库运营真实需要的功能吗？如果需要，这在数据库层面目前是做不到的：质检记录（`inspection_items`）只知道自己属于哪一次"质检单"，但不知道这次质检对应的是哪一批到货，需要 DBA 补一条外键把两者关联起来，这不是代码 bug，是数据结构上的缺口。如果这种报表不是刚需，这一项可以直接搁置。
+   *(技术细节：`inspection_items` 表既无 `status` 列也无 `receipt_id` 外键（真实 FK 只有 `inspection_id`），当前 schema 下没有从 `inbound_receipts` 直达 `inspection_items` 的路径，方法 `SupabaseInboundReceiptRepository.getInspectionSummary` 因此无法实现，是结构性缺口而非字面量问题。)*
 
 同时修复了一处独立发现的真实回归：`SupabaseProductConstraintRepository.ts` 的 `idColumn` 曾写成
 `'sku_id'`，真实列是 `'product_id'`；以及 `SupabaseInventoryRepository.findReplenishmentNeeded()`
