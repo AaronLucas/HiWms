@@ -85,7 +85,7 @@ describe.skipIf(!RUN)('SupabaseWorkOrderRepository 工单 CRUD 正确性（Phase
       .insert({
         tenant_id: tenantId,
         username: `phase8-wo-user-${randomUUID().slice(0, 8)}`,
-        password_hash: 'test-hash-not-real',
+        password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
       })
       .select()
       .single();
