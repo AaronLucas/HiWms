@@ -3,6 +3,7 @@
  * 使用 WmsSupabaseClient 直接操作数据库 + 调用 RPC
  */
 import { WmsSupabaseClient } from '@adapters/supabase/SupabaseClient';
+import { ORDER_STATUS, WAVE_STATUS } from '../../constants/status';
 
 export interface CreateOrderInput {
   tenantId: string;
@@ -30,7 +31,7 @@ export class CreateOrderUseCase {
         tenant_id: input.tenantId,
         external_order_id: input.externalOrderId,
         order_type: input.orderType,
-        status: 'pending',
+        status: ORDER_STATUS.PENDING,
         cutoff_time: input.cutoffTime ?? null,
         platform_priority: input.platformPriority ?? 0,
       })
@@ -103,7 +104,7 @@ export class AllocateOrderUseCase {
     // 更新订单状态
     const { error: updateError } = await this.supabase
       .from('orders')
-      .update({ status: 'allocated', updated_at: new Date().toISOString() })
+      .update({ status: ORDER_STATUS.ALLOCATED, updated_at: new Date().toISOString() })
       .eq('id', input.orderId);
 
     if (updateError) throw new Error(`更新订单状态失败: ${updateError.message}`);
@@ -146,7 +147,7 @@ export class ReleaseWaveUseCase {
       .insert({
         tenant_id: input.tenantId,
         wave_no: waveNo,
-        status: 'planning',
+        status: WAVE_STATUS.PLANNING,
         strategy_type: input.strategyType.toUpperCase(),
         strategy_config: input.config ?? null,
       })
@@ -171,7 +172,7 @@ export class ReleaseWaveUseCase {
     // 3. 更新订单状态
     const { error: orderUpdateError } = await this.supabase
       .from('orders')
-      .update({ status: 'allocated', updated_at: new Date().toISOString() })
+      .update({ status: ORDER_STATUS.ALLOCATED, updated_at: new Date().toISOString() })
       .in('id', input.orderIds);
 
     if (orderUpdateError) throw new Error(`更新订单状态失败: ${orderUpdateError.message}`);

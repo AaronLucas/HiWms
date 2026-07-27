@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ISortingChuteRepository } from '@core/ports/db/ISortingChuteRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { SORTING_CHUTE_STATUS } from '../../../core/constants/status';
 
 type SortingChuteRow = Tables<'sorting_chutes'>;
 type SortingChuteInsert = TablesInsert<'sorting_chutes'>;
@@ -50,7 +51,7 @@ export class SupabaseSortingChuteRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'active')
+      .eq('status', SORTING_CHUTE_STATUS.ACTIVE)
       .gt('capacity', 0);
 
     if (waveId) query = query.eq('wave_id', waveId);

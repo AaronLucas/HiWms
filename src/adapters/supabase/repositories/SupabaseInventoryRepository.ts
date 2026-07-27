@@ -83,12 +83,20 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }
 
   async findReplenishmentNeeded(tenantId: string): Promise<Tables<'inventory'>[]> {
-    // 查找库存低于补货阈值的记录
+    // 复用 v_replenishment_needs 视图的补货判定逻辑（getReplenishmentNeeds），
+    // 再按视图给出的 (loc_id, sku_id) 精确对拿回真实 inventory 行。
+    const needs = await this.getReplenishmentNeeds(tenantId);
+    if (needs.length === 0) return [];
+
+    const pairFilter = needs
+      .map((n) => `and(location_id.eq.${n.loc_id},product_id.eq.${n.sku_id})`)
+      .join(',');
+
     const { data, error } = await this.getClient()
       .from(this.tableName)
-      .select('*, locations(picking_threshold_pct, picking_max_qty)')
+      .select('*')
       .eq('tenant_id', tenantId)
-      .lt('quantity', (this.getClient() as any).rpc('calculate_replenishment_threshold')); // 简化，实际需更复杂的查询
+      .or(pairFilter);
 
     if (error) throw error;
     return (data as Tables<'inventory'>[]) || [];

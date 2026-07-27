@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ILoadingTaskRepository } from '@core/ports/db/ILoadingTaskRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { LOADING_TASK_STATUS } from '../../../core/constants/status';
 
 type LoadingTaskRow = Tables<'loading_tasks'>;
 type LoadingTaskInsert = TablesInsert<'loading_tasks'>;
@@ -55,11 +56,13 @@ export class SupabaseLoadingTaskRepository extends SupabaseBaseRepository<
   }
 
   async findPendingDispatch(tenantId: string): Promise<LoadingTaskRow[]> {
+    // NOTE: loading_tasks.status 约束无 PENDING 值，流程最早阶段即为 PLANNING，
+    // "待派车"语义上等同于这里的 PLANNING。
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', LOADING_TASK_STATUS.PLANNING)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 

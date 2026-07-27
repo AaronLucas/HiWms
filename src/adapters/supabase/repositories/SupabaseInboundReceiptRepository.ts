@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IInboundReceiptRepository } from '@core/ports/db/IInboundReceiptRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { INBOUND_RECEIPT_STATUS } from '../../../core/constants/status';
 
 type InboundReceiptRow = Tables<'inbound_receipts'>;
 type InboundReceiptInsert = TablesInsert<'inbound_receipts'>;
@@ -91,7 +92,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', INBOUND_RECEIPT_STATUS.PENDING)
       .order('expected_at', { ascending: true });
 
     if (error) throw error;
@@ -103,7 +104,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'received')
+      .eq('status', INBOUND_RECEIPT_STATUS.RECEIVED)
       .order('received_at', { ascending: true });
 
     if (error) throw error;
@@ -116,8 +117,8 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false })
+      .eq('status', INBOUND_RECEIPT_STATUS.CLOSED)
+      .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
@@ -127,7 +128,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   async updateStatus(receiptId: string, status: string, receivedAt?: string): Promise<InboundReceiptRow> {
     const updateData: Partial<InboundReceiptUpdate> = { status };
     if (receivedAt) updateData.received_at = receivedAt;
-    if (status === 'completed') updateData.received_at = new Date().toISOString();
+    if (status === INBOUND_RECEIPT_STATUS.CLOSED) updateData.received_at = new Date().toISOString();
     return this.update(receiptId, updateData as InboundReceiptUpdate);
   }
 
@@ -163,6 +164,10 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
+    // NOTE: inspection_items 表既没有 `status` 列，也没有 `receipt_id` 列（真实 FK 只有 inspection_id -> quality_inspections）。
+    // quality_inspections 本身也没有 receipt_id，只有 wave_id/order_id/sku_id，因此当前 schema 下没有
+    // 从 inbound_receipts 直接查到 inspection_items 的路径。这不是简单的大小写/字面量问题，是结构性缺口
+    // （缺少 receipt_id 外键或需要经 wave_id 间接关联），保留原实现未修复，需产品/DBA 决策后再动。
     const { data, error } = await (this.getClient() as any)
       .from('inspection_items')
       .select('status')

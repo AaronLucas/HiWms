@@ -9,7 +9,7 @@
 - **聚合根数**：46 个
 - **已完成**：35 个（Phase 1 核心域 11 个 + Phase 3 业务扩展 8 个 + Phase 4 支撑域 6 个 + Phase 5/6/7 同步/异常/追踪策略 10 个，已在 `origin/main` 落地并附测试证据）
 - **🔨 已实现未验证**：3 个（Phase 8，`tsc`/既有测试基线通过，集成测试待 Sprint 3 补全）
-- **🔴 待实施（Sprint 1）**：8 个（Phase 2 出库作业，端口已定义，实现为零进度，见 ECC_EXECUTION_PLAN.md Sprint 1）
+- **🔨 已实现未验证（Sprint 1 补测试中）**：7 个（Phase 2 出库作业，端口+实现均已完成，2026-07-27 复核确认——原"零进度"是误判；缺口是零测试覆盖，见 ECC_EXECUTION_PLAN.md Sprint 1）
 - **分 8 个优先级阶段实施**
 
 > **2026-07-20 状态校准说明**：经 ECC 多视角规划复核（`ecc:planner`/`ecc:database-reviewer`/`ecc:tdd-guide`/`ecc:pr-test-analyzer` 并行分析），Phase 5/6/7 的 10 个仓储（20 个文件）已于 2026-07-19 补齐集成测试证据，详细表格见 §5/§6/§7。但存在**行为覆盖缺口**与**CI 未启用本地 Postgres 并发测试**问题，详见 §9「测试补齐完成记录与剩余缺口」。
@@ -564,3 +564,36 @@
 **下一步**：作为独立技术债排期，逐个文件与 DBA/产品确认真实字段口径后移除 `as any`、改用正确
 的强类型 `Tables<'table'>` 签名，不建议并入 Sprint 1 顺带处理（避免把业务字段确认这种决策类
 工作和 Sprint 1 的仓库补全工程工作混在一起）。
+
+> **说明（2026-07-27 Sprint 1）**：本节列出的 11 个文件里，`Container`/`InboundReceipt`/
+> `Inventory`/`QualityInspection`/`Vehicle`/`Wave` 6 个文件在 Sprint 1 期间被修复过，但修的是
+> **另一类独立缺陷**（见下方「状态字面量系统性 bug」一节），不是本节这里说的字段命名/schema
+> 不一致问题——本节列出的 `as any` 绕过依然保留，尚未解除，仍需按原计划走 DBA/产品确认流程。
+
+## Sprint 1 附带发现：状态字面量系统性 bug 与统一常量方案（2026-07-27）
+
+**背景**：Sprint 1 为 7 个仓库补齐集成测试时，测试子会话陆续发现大量代码把数据库状态列的字面量
+硬编码成错误大小写或根本不存在的值（如 `'pending'` 而真实 CHECK 约束要求 `'PENDING'`），导致
+对应查询/统计方法在生产环境静默返回空结果/0。根因：这些状态列是 `CHECK` 约束的 `varchar` 列而非
+原生 Postgres `ENUM`，Supabase 类型生成器无法把它们转成 TS 字面量联合类型，所以类型系统从未能
+在编译期拦截过这类错误。
+
+**处理结果**：全仓库排查后确认并修复约 40 处，涉及 `orders`/`waves`/`work_orders`/`containers`/
+`vehicles`/`inbound_receipts`/`loading_tasks`/`cross_dock_jobs`/`sorting_tasks`/`packing_tasks`/
+`sorting_chutes`/`quality_inspections`/`shipping_documents` 共 13 张表。新建
+`src/core/constants/status.ts` 作为每张表状态取值的统一权威来源（`as const` 常量 + 派生类型），
+所有涉及文件已改为引用该常量文件，不再手写字符串，从根源上消除这类大小写/拼写风险（后续任何
+误用会在 import/类型检查阶段报错，不会再静默生产）。
+
+**仍未解决、有意保留待人工决策的 3 处**（均已在代码中原样保留并加注释说明，不属于本轮遗漏）：
+
+| 文件 | 方法 | 问题 |
+|---|---|---|
+| `SupabaseCrossDockJobRepository.ts` | `findPendingMatch` | `'pending_match'` 在 `cross_dock_jobs.status` 真实约束里没有对应值（该表 `status` 列默认值即 `MATCHED`，schema 设计上没有"待匹配"前置状态），该方法目前恒返回空数组，是死代码，需要产品/DBA 决策是否要新增前置状态 |
+| `SupabaseQualityInspectionRepository.ts` | `findPendingReinspection`/`findDiscrepancy`/`getStats` | `'reinspect'`/`'discrepancy'` 在 `quality_inspections.status`（PENDING/IN_PROGRESS/PASSED/FAILED/QUARANTINE/REWORK/CANCELLED）里无对应值，语义映射不明确 |
+| `SupabaseInboundReceiptRepository.ts` | `getInspectionSummary` | `inspection_items` 表既无 `status` 列也无 `receipt_id` 外键（真实 FK 只有 `inspection_id`），当前 schema 下没有从 `inbound_receipts` 直达 `inspection_items` 的路径，是结构性缺口而非字面量问题 |
+
+同时修复了一处独立发现的真实回归：`SupabaseProductConstraintRepository.ts` 的 `idColumn` 曾写成
+`'sku_id'`，真实列是 `'product_id'`；以及 `SupabaseInventoryRepository.findReplenishmentNeeded()`
+原来把未 `await` 的 RPC 查询构建器直接传入 `.lt()`，已改为复用 `getReplenishmentNeeds()` 已验证
+的 `v_replenishment_needs` 视图逻辑。

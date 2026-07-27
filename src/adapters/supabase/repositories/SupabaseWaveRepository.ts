@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IWaveRepository } from '@core/ports/db/IWaveRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { ORDER_STATUS, WAVE_STATUS } from '../../../core/constants/status';
 
 type WaveRow = Tables<'waves'>;
 type WaveInsert = TablesInsert<'waves'>;
@@ -91,7 +92,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .in('status', ['created', 'allocated', 'picking', 'packing', 'loading'])
+      .eq('status', WAVE_STATUS.IN_PROGRESS)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -103,7 +104,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending_release')
+      .eq('status', WAVE_STATUS.PLANNING)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
@@ -148,20 +149,25 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     packedOrders: number;
     shippedOrders: number;
   }> {
+    // NOTE: wave_order_mapping 表本身没有 status 列（只有 id/wave_id/order_id），原代码 .select('order_id, status')
+    // 会因为引用不存在的列在真实 Postgrest 请求中报错。status 实际来自关联的 orders 表，改为通过
+    // FK (order_id -> orders.id) 内联查询 orders.status。
     const { data, error } = await (this.getClient() as any)
       .from('wave_order_mapping')
-      .select('order_id, status')
+      .select('order_id, orders!inner(status)')
       .eq('wave_id', waveId);
 
     if (error) throw error;
-    const mappings = data as { status: string }[];
+    const mappings = data as { order_id: string; orders: { status: string } | null }[];
 
+    // orders.status 约束为 PENDING/CONFIRMED/ALLOCATED/PICKING/PACKED/SHIPPED/CANCELLED/EXCEPTION（无 'PICKED'）。
+    // "pickedOrders" 映射为 PICKING（分拣进行中，schema 中没有单独的"已完成分拣"态）。
     return {
       totalOrders: mappings.length,
-      allocatedOrders: mappings.filter(m => m.status === 'allocated').length,
-      pickedOrders: mappings.filter(m => m.status === 'picked').length,
-      packedOrders: mappings.filter(m => m.status === 'packed').length,
-      shippedOrders: mappings.filter(m => m.status === 'shipped').length,
+      allocatedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.ALLOCATED).length,
+      pickedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.PICKING).length,
+      packedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.PACKED).length,
+      shippedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.SHIPPED).length,
     };
   }
 

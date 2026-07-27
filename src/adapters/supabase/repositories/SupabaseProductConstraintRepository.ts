@@ -12,7 +12,7 @@ export class SupabaseProductConstraintRepository extends SupabaseBaseRepository<
   string
 > implements IProductConstraintRepository {
   protected tableName = 'product_constraints' as const;
-  protected idColumn = 'sku_id';
+  protected idColumn = 'product_id';
 
   async findBySku(skuId: string): Promise<ProductConstraintRow | null> {
     return this.findById(skuId);
@@ -33,7 +33,7 @@ export class SupabaseProductConstraintRepository extends SupabaseBaseRepository<
     const { data, error } = await this.getClient()
       .from(this.tableName)
       .select('*')
-      .in('sku_id', uniqueIds);
+      .in('product_id', uniqueIds);
 
     if (error) throw error;
     return (data || []) as ProductConstraintRow[];

@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IShippingDocumentRepository } from '@core/ports/db/IShippingDocumentRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { SHIPPING_DOCUMENT_STATUS } from '../../../core/constants/status';
 
 type ShippingDocumentRow = Tables<'shipping_documents'>;
 type ShippingDocumentInsert = TablesInsert<'shipping_documents'>;
@@ -65,9 +66,11 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
   }
 
   async updateStatus(docId: string, status: string, issuedAt?: string): Promise<ShippingDocumentRow> {
+    // NOTE: shipping_documents.status 约束为 DRAFT/ISSUED/SIGNED/ARCHIVED，没有 'shipped'/'pending'。
+    // 业务语义上"单据已签发/生成"对应 ISSUED，映射为该值。
     const updateData: Partial<ShippingDocumentUpdate> = { status };
     if (issuedAt) updateData.issued_at = issuedAt;
-    else if (status === 'shipped') updateData.issued_at = new Date().toISOString();
+    else if (status === SHIPPING_DOCUMENT_STATUS.ISSUED) updateData.issued_at = new Date().toISOString();
     return this.update(docId, updateData as ShippingDocumentUpdate);
   }
 
@@ -92,8 +95,9 @@ export class SupabaseShippingDocumentRepository extends SupabaseBaseRepository<
 
     for (const d of docs) {
       totalDocs++;
-      if (d.status === 'shipped') shipped++;
-      else if (d.status === 'pending') pending++;
+      // NOTE: 映射同上：ISSUED≈已签发("shipped" 字段名沿用原接口), DRAFT≈待处理("pending")。
+      if (d.status === SHIPPING_DOCUMENT_STATUS.ISSUED) shipped++;
+      else if (d.status === SHIPPING_DOCUMENT_STATUS.DRAFT) pending++;
       byCarrier[d.doc_type] = (byCarrier[d.doc_type] || 0) + 1;
     }
 
