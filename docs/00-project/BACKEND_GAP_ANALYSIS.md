@@ -5,6 +5,13 @@
 > **审计方法**: ECC multi-agent 全仓库扫描  
 > **基线**: ROADMAP.md v2.8.0、REPOSITORY_ROADMAP.md Phase 1-8
 
+> **2026-07-28 复核说明**：本文档以下内容为 2026-07-27 审计时的快照，Sprint 0-3（PR #56/#57/#58/#59）
+> 已全部合并入 main，下表多数结论已过时。**已解决**：Tenant API（0%→已上线 10 端点）、Repository
+> Phase 2（7 个仓库已补齐并发测试）、Device API auth（4 处 CRITICAL bug 已修复）。**仍未解决/新发现**：
+> ADR-015 数据库侧触发器仍未落地（阻塞 RLS 端到端验证）；直接代码核查发现 25 个已上线业务端点中
+> 仅 1 个接了权限校验（RBAC 覆盖率 4%）。详细的第二阶段分析与 Sprint 4-6 任务见
+> `docs/00-project/ECC_EXECUTION_PLAN.md`「第二阶段 ECC 多维度复核」。
+
 ---
 
 ## 1. 总体完成度

@@ -2,9 +2,9 @@
 
 > 基于已完成的架构设计、数据库 Schema、API 设计、RBAC 系统生成的完整实施路线图。
 > 
-> **当前活跃 Sprint**: Sprint 0 — ADR-015 Auth Identity Bridge 应用层已完成（2026-07-27），等待 DBA Addendum 落地后可推进 Sprint 1  
-> **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成）  
-> **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`（2026-07-27，4 个 Sprint 分阶段推进）
+> **当前活跃 Sprint**: Sprint 0-3 均已完成并合并入 main（PR #56/#57/#58/#59，2026-07-28）。Sprint 4 — 安全闭环（RBAC 覆盖 + ADR-015 数据库侧收尾）为当前活跃 Sprint，部分任务等待 DBA 三个 addendum 落地  
+> **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成，Sprint 0-3 完成后需重新评估）  
+> **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`（2026-07-28，已扩展至 Sprint 0-6）
 
 ---
 
@@ -188,6 +188,31 @@
       `DBA_ADDENDUM_REQUEST_PERMISSIONS_SEED_2026-07-28.md`
 - [x] 3.5 全部文档同步（本次更新：ROADMAP/REPOSITORY_ROADMAP/ARCHITECTURE/API_SPEC；
       DB_SCHEMA 无实际 schema 变更，不需要改动）
+
+#### Sprint 4: 安全闭环——ADR-015 数据库侧收尾 + RBAC 覆盖（🔵 当前活跃，2026-07-28 规划）
+
+> 详细任务表与依赖关系见 `docs/00-project/ECC_EXECUTION_PLAN.md`「第二阶段 ECC 多维度复核」
+
+- [ ] 4.1 推进 AUTH_IDENTITY_BRIDGE 5 个开放问题拍板（可立即启动，不依赖 DBA）
+- [ ] 4.2 触发器落地后解除 `tenant-isolation.test.ts` 的 skip，真实验证跨租户隔离（阻塞中，待 4.1）
+- [ ] 4.3 修复 `SupabaseAuthProvider.signUp/signIn/generateTokens` 3 处已知遗留问题（阻塞中，待 4.1）
+- [ ] 4.4 RBAC 覆盖矩阵设计（可立即启动）——直接代码核查确认：tenant-api 10 端点 + device-api
+      15 个业务端点共 25 个受保护端点，仅 1 个（`POST /device/provision`）接了权限校验
+- [ ] 4.5 推广 RBAC 到 tenant-api 写端点（`POST /orders`、`/orders/:id/allocate`、`/waves/generate`）
+- [ ] 4.6 推广 RBAC 到 device-api 剩余业务端点
+- [ ] 4.7 `fn_expire_task_claims` cron + permissions 种子数据落地验证（待 DBA 反馈两个已提交 addendum）
+
+#### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划）
+
+- [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁
+- [ ] 5.2 Admin API 绕过 Repository 层技术债清理
+- [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
+
+#### Sprint 6: 前端启动准备（⏳ 依赖 Sprint 4 安全闭环，2026-07-28 规划）
+
+- [ ] 6.1 确认前端仓库/技术栈落地方式（`ROADMAP.md` 阶段 2 提到 Uniapp Vue3，待确认是否独立仓库）
+- [ ] 6.2 API 对接文档定稿（认证方式：标准 Supabase 用户 JWT，基于 `API_SPEC.md` §3.16）
+- [ ] 6.3 CORS / 环境变量对接清单
 
 ---
 
