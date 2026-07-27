@@ -139,8 +139,9 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     if (userErr) throw userErr;
     userId = user.id;
 
-    // Sprint 3 #30：给 userId 授予 devices:CREATE 权限，配合 POST /device/provision
-    // 新接上的 RBAC 校验（check_user_permission RPC）。
+    // Sprint 3 #30 + Sprint 4 #4.5/4.6：给 userId 授予本文件全部测试用例会用到的
+    // resource:action（RBAC 校验走 check_user_permission RPC）。见
+    // docs/02-api/API_SPEC.md §7.2.1 端点级 RBAC 接入清单。
     const { data: role, error: roleErr } = await client
       .from('roles')
       .insert({ tenant_id: tenantId, name: `ecc-p3-device-admin-${Date.now()}` })
@@ -148,17 +149,37 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
       .single();
     if (roleErr) throw roleErr;
 
-    const { data: permission, error: permErr } = await client
-      .from('permissions')
-      .upsert({ resource: 'devices', action: 'CREATE' }, { onConflict: 'resource,action' })
-      .select()
-      .single();
-    if (permErr) throw permErr;
+    const REQUIRED_PERMISSIONS: Array<{ resource: string; action: string }> = [
+      { resource: 'devices', action: 'CREATE' },
+      { resource: 'devices', action: 'UPDATE' },
+      { resource: 'sync_events', action: 'CREATE' },
+      { resource: 'sync_events', action: 'READ' },
+      { resource: 'sync_policy', action: 'READ' },
+      { resource: 'task_claims', action: 'CREATE' },
+      { resource: 'task_claims', action: 'UPDATE' },
+      { resource: 'exceptions', action: 'READ' },
+      { resource: 'putaway', action: 'CREATE' },
+      { resource: 'inventory_count', action: 'CREATE' },
+      { resource: 'packing', action: 'CREATE' },
+      { resource: 'missing_label', action: 'CREATE' },
+      { resource: 'missing_label', action: 'UPDATE' },
+      { resource: 'unidentified_goods', action: 'CREATE' },
+      { resource: 'unidentified_goods', action: 'UPDATE' },
+    ];
 
-    const { error: rolePermErr } = await client
-      .from('role_permissions')
-      .insert({ role_id: role.id, permission_id: permission.id });
-    if (rolePermErr) throw rolePermErr;
+    for (const { resource, action } of REQUIRED_PERMISSIONS) {
+      const { data: permission, error: permErr } = await client
+        .from('permissions')
+        .upsert({ resource, action }, { onConflict: 'resource,action' })
+        .select()
+        .single();
+      if (permErr) throw permErr;
+
+      const { error: rolePermErr } = await client
+        .from('role_permissions')
+        .insert({ role_id: role.id, permission_id: permission.id });
+      if (rolePermErr) throw rolePermErr;
+    }
 
     const { error: userRoleErr } = await client
       .from('user_roles')
@@ -286,11 +307,32 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     expect(pullRes.body.events.map((e: { id: string }) => e.id)).toContain(eventId);
   });
 
-  test('缺少 context（未经过设备认证中间件注入 tenant_id）时应返回 400，而不是把未定义的租户 ID 传给数据库', async () => {
+  test('缺少 context（未经过设备认证中间件注入 tenant_id/userId）时应返回 401，而不是把未定义的租户 ID 传给数据库（Sprint 4 RBAC 接入后，userId 缺失会在到达 tenantId 检查前先被 requireDevicePermission 拦截）', async () => {
     const res = await request(appWithoutContext).get('/sync/policy');
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBeTruthy();
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('OPERATOR_CHECKIN_REQUIRED');
+  });
+
+  test('POST /sync/events：没有 sync_events:CREATE 权限的操作员应返回 403（Sprint 4 #4.6 新接的 RBAC 校验）', async () => {
+    const noPermUserId = randomUUID();
+    const noPermApp = express();
+    noPermApp.use(express.json());
+    noPermApp.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as unknown as { context: Record<string, string> }).context = {
+        tenantId,
+        deviceId,
+        userId: noPermUserId,
+      };
+      next();
+    });
+    noPermApp.use(createDeviceApiRouter({ supabaseAdapters: adapters } as unknown as DeviceApiDependencies));
+
+    const res = await request(noPermApp)
+      .post('/sync/events')
+      .send({ events: [] });
+
+    expect(res.status).toBe(403);
   });
 
   test('POST /device/provision：合法请求应注册新设备并返回 API Key + 配对二维码（Sprint 3 #28）', async () => {

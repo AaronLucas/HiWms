@@ -51,10 +51,17 @@ import {
   deviceProvisionSchema,
   devicePairingQrSchema,
   uuidSchema,
+  // 操作员签到
+  operatorCheckinSchema,
 } from './validation';
 import {
   generateApiKey,
   encodePairingQr,
+  issueAccessToken,
+  verifyOperatorPassword,
+  DEFAULT_DEVICE_CREDENTIALS_CONFIG,
+  sharedTenantSigningKeys,
+  type DeviceCredentialsConfig,
 } from './auth/device-credentials';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
@@ -68,6 +75,91 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   const syncEventRepo = supabaseAdapters.repositories.syncEvents;
   const exceptionRepo = supabaseAdapters.repositories.exceptions;
 
+  // jwtIssuer/jwtAudience 必须与 DeviceAuthMiddleware（main.ts 里用 deps.config.device.* 构造）
+  // 保持一致，理由同 publicAuthRoutes.ts 的注释——否则签发的 token 会因 iss/aud 不匹配验证恒失败。
+  const credentialsConfig: DeviceCredentialsConfig = {
+    ...DEFAULT_DEVICE_CREDENTIALS_CONFIG,
+    jwtIssuer: deps.config.device.jwtIssuer,
+    jwtAudience: deps.config.device.jwtAudience,
+    tenantSigningKeys: sharedTenantSigningKeys,
+  };
+
+  /**
+   * 帮助函数：RBAC 权限校验（device-api 扁平 context，不能直接复用
+   * ExpressMiddlewareFactory.requirePermission()，理由见 /device/provision 处注释）。
+   * 要求 req.context.userId 存在——纯 API Key/无操作员签到的设备调用会在这里被拒绝，
+   * 这是有意为之：业务端点的角色权限校验必须挂在具体操作员身份上，见
+   * docs/02-api/API_SPEC.md §7.2.1。
+   */
+  async function requireDevicePermission(req: Request, res: Response, resource: string, action: string): Promise<boolean> {
+    const userId = (req as any).context?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'OPERATOR_CHECKIN_REQUIRED', message: 'Operator check-in required before this action' });
+      return false;
+    }
+    const hasPermission = await supabaseAdapters.auth.permissionChecker.check({ userId, resource, action });
+    if (!hasPermission) {
+      res.status(403).json({ error: 'FORBIDDEN', message: `Missing ${resource}:${action} permission` });
+      return false;
+    }
+    return true;
+  }
+
+  // ========== 操作员签到 ==========
+
+  /**
+   * POST /device/auth/operator-checkin
+   * 设备已持有 device token 的前提下，操作员用 username+password 换一个
+   * 携带 user_id 的新 access token，后续业务端点的 RBAC 校验依赖这个 user_id。
+   * 复用 users.username/password_hash（bcrypt），不新增 schema。
+   */
+  router.post('/auth/operator-checkin',
+    validateRequest({ body: operatorCheckinSchema }),
+    async (req: Request, res: Response) => {
+      try {
+        const tenantId = (req as any).context?.tenantId;
+        const deviceId = (req as any).context?.deviceId;
+        if (!tenantId || !deviceId) {
+          return res.status(400).json({ error: 'Device context not available' });
+        }
+
+        const { username, password } = req.body;
+
+        const { data: user, error } = await supabaseAdapters.client.getAdminClient()
+          .from('users')
+          .select('id, password_hash, is_active')
+          .eq('tenant_id', tenantId)
+          .eq('username', username)
+          .single();
+
+        // 统一响应，防止用户名枚举/密码哈希缺失状态泄露
+        if (error || !user || !user.is_active || !user.password_hash) {
+          return res.status(401).json({ error: 'Authentication failed' });
+        }
+
+        const isValid = await verifyOperatorPassword(password, user.password_hash);
+        if (!isValid) {
+          return res.status(401).json({ error: 'Authentication failed' });
+        }
+
+        const accessToken = await issueAccessToken(deviceId, tenantId, credentialsConfig, user.id);
+
+        res.json({
+          success: true,
+          data: {
+            access_token: accessToken,
+            expires_in: credentialsConfig.accessTokenTtlSec,
+            token_type: 'Bearer',
+            user_id: user.id,
+          },
+          meta: { request_id: `req_${Date.now()}`, timestamp: new Date().toISOString() },
+        });
+      } catch (error) {
+        console.error('POST /device/auth/operator-checkin error:', error);
+        res.status(500).json({ error: 'Operator checkin failed' });
+      }
+    });
+
   // ========== 同步事件端点 ==========
 
   /**
@@ -79,6 +171,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: syncEventsRequestSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'sync_events', 'CREATE'))) return;
+
         const { events } = req.body;
 
         // 从请求上下文获取 tenant_id（由中间件注入）
@@ -139,6 +233,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ query: syncPullQuerySchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'sync_events', 'READ'))) return;
+
         const sinceSeq = Number(req.query.since_seq) || 0;
         const limit = Number(req.query.limit) || 100;
 
@@ -182,6 +278,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ query: syncPolicyQuerySchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'sync_policy', 'READ'))) return;
+
         const taskType = req.query.task_type as string | undefined;
         const zoneType = req.query.zone_type as string | undefined;
 
@@ -219,6 +317,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ params: taskClaimParamsSchema, body: taskClaimRequestSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'task_claims', 'CREATE'))) return;
+
         const { id } = req.params;
         const { user_id, device_id, lease_seconds = 300 } = req.body;
         const leaseSeconds = Number(lease_seconds) || 300;
@@ -263,6 +363,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ params: taskClaimReleaseParamsSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'task_claims', 'UPDATE'))) return;
+
         const { id } = req.params;
 
         // 调用仓储层释放租约
@@ -290,6 +392,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ query: exceptionsQuerySchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'exceptions', 'READ'))) return;
+
         const status = req.query.status as string | undefined;
         const domain = req.query.domain as string | undefined;
         const severity = req.query.severity as string | undefined;
@@ -326,6 +430,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ params: exceptionParamsSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'exceptions', 'READ'))) return;
+
         const { id } = req.params;
 
         const tenantId = (req as any).context?.tenantId;
@@ -357,6 +463,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: putawayRequestSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'putaway', 'CREATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
@@ -397,6 +505,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: countRequestSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'inventory_count', 'CREATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
@@ -434,6 +544,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: packRequestSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'packing', 'CREATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
@@ -473,6 +585,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: missingLabelGenerateSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'missing_label', 'CREATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         const actorUserId = (req as any).context?.userId;
         if (!tenantId) {
@@ -499,6 +613,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: missingLabelConfirmSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'missing_label', 'UPDATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         const resolverUserId = (req as any).context?.userId;
         if (!tenantId) {
@@ -525,6 +641,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: unidentifiedReceiveSchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'unidentified_goods', 'CREATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         if (!tenantId) {
           return res.status(400).json({ error: 'tenant_id not available in context' });
@@ -556,6 +674,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
     validateRequest({ body: unidentifiedIdentifySchema }),
     async (req: Request, res: Response) => {
       try {
+        if (!(await requireDevicePermission(req, res, 'unidentified_goods', 'UPDATE'))) return;
+
         const tenantId = (req as any).context?.tenantId;
         const resolverUserId = (req as any).context?.userId;
         if (!tenantId) {
@@ -692,6 +812,8 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
         if (!actorTenantId) {
           return res.status(401).json({ error: 'Authentication required' });
         }
+
+        if (!(await requireDevicePermission(req, res, 'devices', 'UPDATE'))) return;
 
         // 查询设备
         const { data: device, error } = await supabaseAdapters.client.getAdminClient()
