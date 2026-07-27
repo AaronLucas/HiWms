@@ -5,20 +5,32 @@
 import express, { Request, Response, NextFunction, Router } from 'express';
 import { TenantApiDependencies } from './di';
 import { CreateOrderUseCase } from '../../core/usecases/order/CreateOrderUseCase';
+import { GenerateWaveUseCase } from '../../core/usecases/wave/GenerateWaveUseCase';
 import {
   createOrderBodySchema,
   listOrdersQuerySchema,
   orderIdParamsSchema,
+  listInventoryQuerySchema,
+  inventoryIdParamsSchema,
+  listProductsQuerySchema,
+  productIdParamsSchema,
+  listWavesQuerySchema,
+  generateWaveBodySchema,
   validateBody,
   validateQuery,
   validateParams,
   type ListOrdersQuery,
   type OrderIdParams,
+  type ListInventoryQuery,
+  type InventoryIdParams,
+  type ListProductsQuery,
+  type ProductIdParams,
+  type ListWavesQuery,
 } from './validation';
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   const router = express.Router();
-  const { orders } = deps.supabaseAdapters.repositories;
+  const { orders, inventory, products, waves } = deps.supabaseAdapters.repositories;
 
   // GET /api/orders — 列出当前租户订单
   router.get('/orders', validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {

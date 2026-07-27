@@ -29,7 +29,7 @@ export interface IWaveRepository extends IRepository<WaveRow, WaveInsert, WaveUp
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string; strategyType?: string }
+    options?: { limit?: number; offset?: number; status?: string; strategyType?: string; authToken?: string }
   ): Promise<WaveRow[]>;
 
   /**

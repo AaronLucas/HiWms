@@ -3,7 +3,7 @@
  */
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
-import { ORDER_STATUS } from '../../core/constants/status';
+import { ORDER_STATUS, WAVE_STATUS } from '../../core/constants/status';
 
 // ========== 通用类型 ==========
 
@@ -49,6 +49,65 @@ export const orderIdParamsSchema = z.object({
 });
 
 export type OrderIdParams = z.infer<typeof orderIdParamsSchema>;
+
+// ========== GET /api/inventory ==========
+
+export const listInventoryQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  productId: uuidSchema.optional(),
+  locationId: uuidSchema.optional(),
+});
+
+export type ListInventoryQuery = z.infer<typeof listInventoryQuerySchema>;
+
+// ========== GET /api/inventory/:id ==========
+
+export const inventoryIdParamsSchema = z.object({ id: uuidSchema });
+export type InventoryIdParams = z.infer<typeof inventoryIdParamsSchema>;
+
+// ========== GET /api/products ==========
+
+export const listProductsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  q: z.string().min(1).optional(),
+});
+
+export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
+
+// ========== GET /api/products/:id ==========
+
+export const productIdParamsSchema = z.object({ id: uuidSchema });
+export type ProductIdParams = z.infer<typeof productIdParamsSchema>;
+
+// ========== GET /api/waves ==========
+
+const waveStatusValues = Object.values(WAVE_STATUS) as [string, ...string[]];
+
+export const listWavesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(waveStatusValues).optional(),
+  strategyType: z.string().optional(),
+});
+
+export type ListWavesQuery = z.infer<typeof listWavesQuerySchema>;
+
+// ========== POST /api/waves/generate ==========
+
+export const generateWaveBodySchema = z.object({
+  strategyType: z.enum(['batch', 'zone', 'cluster', 'wave']),
+  orderIds: z.array(uuidSchema).min(1, 'At least one order id required'),
+  config: z.object({
+    maxOrders: positiveIntSchema.optional(),
+    maxLines: positiveIntSchema.optional(),
+    maxQty: positiveIntSchema.optional(),
+    zoneSequence: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+export type GenerateWaveBody = z.infer<typeof generateWaveBodySchema>;
 
 // ========== 验证中间件 ==========
 
