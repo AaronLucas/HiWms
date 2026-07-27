@@ -166,17 +166,13 @@ describe.skipIf(!RUN)('SupabaseOrderRepository 订单 CRUD 正确性（Sprint 0�
     expect(limited.length).toBeLessThanOrEqual(1);
   });
 
-  // 生产代码 bug（不在本测试范围内修复，如实记录）：
-  // SupabaseOrderRepository.findPendingAllocation() 硬编码调用
+  // 修复记录：SupabaseOrderRepository.findPendingAllocation() 曾硬编码调用
   // this.findByStatus('pending_allocation', tenantId)（小写 snake_case），
   // 但 orders 表的 chk_orders_status CHECK 约束（001_enterprise_core_schema.sql
   // §18）只允许大写枚举值 'PENDING'|'CONFIRMED'|'ALLOCATED'|'PICKING'|'PACKED'|
-  // 'SHIPPED'|'CANCELLED'|'EXCEPTION'，且全仓库其余写入点（CreateOrderUseCase.ts、
-  // CreateWorkOrderUseCase.ts 等）一律使用 'PENDING'。因此 findPendingAllocation
-  // 传入的过滤值永远不会匹配任何真实订单，该方法在生产环境下会静默返回空数组。
-  // 修复建议：将 SupabaseOrderRepository.ts 第 67 行的 'pending_allocation'
-  // 改为 'PENDING'。因涉及生产代码变更，留待人工决策，此处仅跳过断言。
-  test.skip('findPendingAllocation：只返回待分配订单（跳过：生产代码硬编码了错误的状态值，见上方注释）', async () => {
+  // 'SHIPPED'|'CANCELLED'|'EXCEPTION'。已修复为 'PENDING'，与全仓库其余写入点
+  // （CreateOrderUseCase.ts 等）保持一致，此处恢复断言。
+  test('findPendingAllocation：只返回待分配订单', async () => {
     const results = await repo.findPendingAllocation(tenantId);
     expect(results.length).toBeGreaterThan(0);
     for (const o of results) {

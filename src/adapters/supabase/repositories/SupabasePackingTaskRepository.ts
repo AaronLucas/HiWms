@@ -77,7 +77,7 @@ export class SupabasePackingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 

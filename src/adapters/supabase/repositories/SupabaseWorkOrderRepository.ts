@@ -33,7 +33,7 @@ export class SupabaseWorkOrderRepository extends SupabaseBaseRepository<
 
   async findPendingDispatch(tenantId: string): Promise<WorkOrderRow[]> {
     return this.findAll({
-      filters: { tenant_id: tenantId, status: 'pending' },
+      filters: { tenant_id: tenantId, status: 'OPEN' },
       orderBy: 'created_at',
       ascending: true,
     });

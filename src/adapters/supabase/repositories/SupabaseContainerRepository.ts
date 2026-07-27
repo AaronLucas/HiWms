@@ -73,7 +73,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_sealed', false)
-      .eq('status', 'active');
+      .eq('status', 'IDLE');
 
     const { data, error } = await query;
     if (error) throw error;

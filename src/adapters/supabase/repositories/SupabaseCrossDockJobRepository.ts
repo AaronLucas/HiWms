@@ -55,7 +55,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'matched')
+      .eq('status', 'MATCHED')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -130,7 +130,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       inbound_receipt_id: inboundReceiptId,
       outbound_order_id: outboundOrderId,
       matched_qty: matchedQty,
-      status: 'matched',
+      status: 'MATCHED',
       matched_at: new Date().toISOString(),
     } as CrossDockJobUpdate);
   }

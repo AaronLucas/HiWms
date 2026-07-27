@@ -213,14 +213,10 @@ describe.skipIf(!RUN)('SupabaseSortingChuteRepository 滑道 CRUD 正确性（Sp
     expect(notFound).toHaveLength(0);
   });
 
-  // 已跳过（生产代码 bug，非测试代码问题，需人工确认后修复）：
-  // SupabaseSortingChuteRepository.findAvailable() 硬编码 .eq('status', 'active')（小写），
-  // 见 src/adapters/supabase/repositories/SupabaseSortingChuteRepository.ts:53。
-  // 但数据库 chk_sorting_chutes_status 约束（HiWmsSupabase migrations/001_enterprise_core_schema.sql:1694-1696）
-  // 只允许大写值 'ACTIVE'/'FULL'/'CLOSED'/'MAINTENANCE'，列默认值也是 'ACTIVE'。
-  // 也就是说生产环境中该方法永远匹配不到任何真实行（status 恒为大写），findAvailable 恒返回空数组。
-  // 修复建议：把该行改为 .eq('status', 'ACTIVE')。
-  test.skip('findAvailable：只返回 active 且 capacity > 0 的滑道，支持 waveId/targetType/minCapacity 过滤', async () => {
+  // 已修复：SupabaseSortingChuteRepository.findAvailable() 曾硬编码 .eq('status', 'active')（小写），
+  // 数据库 chk_sorting_chutes_status 约束只允许大写值 'ACTIVE'/'FULL'/'CLOSED'/'MAINTENANCE'，
+  // 已改为 .eq('status', 'ACTIVE')（见 SupabaseSortingChuteRepository.ts:53）。
+  test('findAvailable：只返回 active 且 capacity > 0 的滑道，支持 waveId/targetType/minCapacity 过滤', async () => {
     const fullChuteCode = `TEST_FULL_${randomUUID().slice(0, 8)}`;
     const fullChute = await repo.create({
       tenant_id: tenantId,

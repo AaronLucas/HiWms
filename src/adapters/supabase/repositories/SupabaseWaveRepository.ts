@@ -91,7 +91,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .in('status', ['created', 'allocated', 'picking', 'packing', 'loading'])
+      .eq('status', 'IN_PROGRESS')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -103,7 +103,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending_release')
+      .eq('status', 'PLANNING')
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 

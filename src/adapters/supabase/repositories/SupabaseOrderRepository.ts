@@ -64,6 +64,6 @@ export class SupabaseOrderRepository extends SupabaseBaseRepository<
   }
 
   async findPendingAllocation(tenantId: string): Promise<Tables<'orders'>[]> {
-    return this.findByStatus('pending_allocation', tenantId);
+    return this.findByStatus('PENDING', tenantId);
   }
 }

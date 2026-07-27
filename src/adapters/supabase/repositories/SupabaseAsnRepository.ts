@@ -56,7 +56,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('expected_at', { ascending: true });
 
     if (error) throw error;
@@ -68,8 +68,8 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false })
+      .eq('status', 'CLOSED')
+      .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
@@ -79,7 +79,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
   async updateStatus(asnId: string, status: string, receivedAt?: string): Promise<AsnRow> {
     const updateData: Partial<AsnUpdate> = { status };
     if (receivedAt) updateData.received_at = receivedAt;
-    if (status === 'completed') updateData.received_at = new Date().toISOString();
+    if (status === 'CLOSED') updateData.received_at = new Date().toISOString();
     return this.update(asnId, updateData as AsnUpdate);
   }
 

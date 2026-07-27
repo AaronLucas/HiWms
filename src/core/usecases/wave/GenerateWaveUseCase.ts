@@ -36,7 +36,7 @@ export class GenerateWaveUseCase {
       .insert({
         tenant_id: input.tenantId,
         wave_no: waveNo,
-        status: 'planning',
+        status: 'PLANNING',
         strategy_type: input.strategyType.toUpperCase(),
         strategy_config: input.config,
       })
@@ -60,7 +60,7 @@ export class GenerateWaveUseCase {
     // 更新订单状态
     await this.supabase
       .from('orders')
-      .update({ status: 'allocated', updated_at: new Date().toISOString() })
+      .update({ status: 'ALLOCATED', updated_at: new Date().toISOString() })
       .in('id', input.orderIds);
 
     return {

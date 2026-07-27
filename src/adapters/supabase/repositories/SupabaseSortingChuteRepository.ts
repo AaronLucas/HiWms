@@ -50,7 +50,7 @@ export class SupabaseSortingChuteRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'active')
+      .eq('status', 'ACTIVE')
       .gt('capacity', 0);
 
     if (waveId) query = query.eq('wave_id', waveId);

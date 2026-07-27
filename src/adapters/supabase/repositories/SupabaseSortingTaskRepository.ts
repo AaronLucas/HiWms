@@ -81,7 +81,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
@@ -105,7 +105,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'sorted')
+      .eq('status', 'COMPLETED')
       .order('completed_at', { ascending: true });
 
     if (error) throw error;
@@ -130,7 +130,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
 
   async recordSortingComplete(taskId: string, sortedQty: number): Promise<SortingTaskRow> {
     return this.update(taskId, {
-      status: 'sorted',
+      status: 'COMPLETED',
       sorted_qty: sortedQty,
       completed_at: new Date().toISOString(),
     } as SortingTaskUpdate);
@@ -138,7 +138,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
 
   async recordException(taskId: string, reason: string): Promise<SortingTaskRow> {
     return this.update(taskId, {
-      status: 'exception',
+      status: 'EXCEPTION',
       exception_reason: reason,
     } as SortingTaskUpdate);
   }

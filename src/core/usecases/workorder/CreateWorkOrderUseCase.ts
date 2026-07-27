@@ -26,7 +26,7 @@ export class CreateWorkOrderUseCase {
         related_order_id: input.relatedOrderId ?? null,
         assigned_user_id: input.assignedUserId ?? null,
         expected_duration_seconds: input.expectedDurationSeconds ?? null,
-        status: 'PENDING',
+        status: 'OPEN',
         pda_summary: null,
         metadata: input.metadata ?? null,
       })
@@ -89,7 +89,7 @@ export class ExecuteWorkOrderActionUseCase {
  */
 export interface UpdateWorkOrderStatusInput {
   workOrderId: string;
-  status: 'pending' | 'dispatched' | 'in_progress' | 'completed' | 'cancelled' | 'exception';
+  status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'EXCEPTION' | 'CANCELLED';
   completedAt?: string;
 }
 
@@ -98,13 +98,13 @@ export class UpdateWorkOrderStatusUseCase {
 
   async execute(input: UpdateWorkOrderStatusInput): Promise<void> {
     const updateData: any = {
-      status: input.status.toUpperCase(),
+      status: input.status,
       updated_at: new Date().toISOString(),
     };
     if (input.completedAt) {
       updateData.completed_at = input.completedAt;
     }
-    if (input.status === 'completed' && !input.completedAt) {
+    if (input.status === 'COMPLETED' && !input.completedAt) {
       updateData.completed_at = new Date().toISOString();
     }
 

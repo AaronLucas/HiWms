@@ -212,14 +212,13 @@ describe.skipIf(!RUN)('SupabaseWorkOrderRepository 工单 CRUD 正确性（Phase
     expect(nonMatching.some((wo) => wo.id === created.id)).toBe(false);
   });
 
-  // 生产代码 bug（不在本任务范围内擅自修复，如实记录）：
-  // SupabaseWorkOrderRepository.findPendingDispatch() 硬编码 .eq('status', 'pending')，
-  // 但 work_orders 表的 chk_work_orders_status check constraint 只允许
-  // OPEN/ASSIGNED/IN_PROGRESS/COMPLETED/EXCEPTION/CANCELLED（无 'pending'/'PENDING'）。
-  // 因此任何 work_orders 行都不可能匹配该过滤条件——该方法对任何租户永远返回空数组。
+  // 修复记录：SupabaseWorkOrderRepository.findPendingDispatch() 原硬编码
+  // .eq('status', 'pending')，但 work_orders 表的 chk_work_orders_status
+  // check constraint 只允许 OPEN/ASSIGNED/IN_PROGRESS/COMPLETED/EXCEPTION/CANCELLED
+  // （无 'pending'/'PENDING'），该方法对任何租户永远返回空数组。已修复为
+  // status='OPEN'（语义上"待派发"= 刚创建、尚未分配用户）。
   // 见 src/adapters/supabase/repositories/SupabaseWorkOrderRepository.ts:34-40。
-  // 语义上"待派发"应对应 status='OPEN'（默认值，尚未分配用户），需人工确认后修复。
-  test.skip('findPendingDispatch：查找待派发工单（生产代码 bug：见上方注释，status 过滤条件 "pending" 永远不会匹配任何行）', async () => {
+  test('findPendingDispatch：查找待派发工单', async () => {
     const created = await repo.create({
       tenant_id: tenantId,
       task_type: 'PICK',

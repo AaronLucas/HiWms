@@ -58,7 +58,7 @@ export class SupabaseVehicleRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'available');
+      .eq('status', 'AVAILABLE');
 
     if (vehicleType) query = query.eq('vehicle_type', vehicleType);
 
