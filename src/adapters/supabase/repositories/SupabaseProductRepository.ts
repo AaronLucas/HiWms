@@ -34,13 +34,13 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options: { limit?: number; offset?: number; abcClass?: string } = {}
+    options: { limit?: number; offset?: number; abcClass?: string; authToken?: string } = {}
   ): Promise<ProductRow[]> {
-    const { limit = 50, offset = 0, abcClass } = options;
+    const { limit = 50, offset = 0, abcClass, authToken } = options;
     const filters: Record<string, unknown> = { tenant_id: tenantId };
     if (abcClass) filters.abc_class = abcClass;
 
-    return this.findAll({ limit, offset, filters, orderBy: 'sku', ascending: true });
+    return this.findAll({ limit, offset, filters, orderBy: 'sku', ascending: true, authToken });
   }
 
   async findWithConstraints(productId: string): Promise<{
@@ -64,8 +64,8 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
     return this.update(productId, { abc_class: abcClass, updated_at: new Date().toISOString() } as TablesUpdate<'products'>);
   }
 
-  async search(query: string, tenantId: string): Promise<ProductRow[]> {
-    const { data, error } = await this.getClient()
+  async search(query: string, tenantId: string, authToken?: string): Promise<ProductRow[]> {
+    const { data, error } = await this.getClient(false, authToken)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)

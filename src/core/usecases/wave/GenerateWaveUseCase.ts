@@ -20,7 +20,7 @@ export interface GenerateWaveInput {
 export class GenerateWaveUseCase {
   constructor(private supabase: WmsSupabaseClient) {}
 
-  async execute(input: GenerateWaveInput): Promise<{
+  async execute(input: GenerateWaveInput, authToken?: string): Promise<{
     waveId: string;
     strategyConfig: Record<string, unknown>;
     orderCount: number;
@@ -30,10 +30,10 @@ export class GenerateWaveUseCase {
     // 3. 生成波次记录
     // 4. 返回波次 ID
 
-    // 创建波次
+    // 创建波次（authToken 存在时走 per-request authenticated client，RLS 按真实用户生效，ADR-015）
     const waveNo = `W-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
     const { data: wave, error } = await this.supabase
-      .from('waves')
+      .from('waves', false, authToken)
       .insert({
         tenant_id: input.tenantId,
         wave_no: waveNo,
@@ -53,14 +53,14 @@ export class GenerateWaveUseCase {
     }));
 
     const { error: mappingError } = await this.supabase
-      .from('wave_order_mapping')
+      .from('wave_order_mapping', false, authToken)
       .insert(mappings);
 
     if (mappingError) throw new Error(`关联订单失败: ${mappingError.message}`);
 
     // 更新订单状态
     await this.supabase
-      .from('orders')
+      .from('orders', false, authToken)
       .update({ status: ORDER_STATUS.ALLOCATED, updated_at: new Date().toISOString() })
       .in('id', input.orderIds);
 
