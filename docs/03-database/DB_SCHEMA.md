@@ -1,6 +1,6 @@
 # DB_SCHEMA.md
 
-> **版本**: v2.8.0 (2026-07-26)  
+> **版本**: v2.9.0 (2026-07-27)  
 > **同步来源**: `supabase/migrations/`（001-023 编号迁移）+ `supabase/ops-scripts/`（运维脚本）+ `supabase/design-docs/`（DBA 设计文档）。**注意**：`supabase/` 目录已按项目决定加入 `.gitignore`（不再纳入版本管理），因此本文档而非某个具体 SQL 文件才是表结构的版本化事实来源；SQL 迁移脚本的实际落地由部署流程另行维护。HiWmsSupabase 仓库同步机制见 `scripts/sync-db-migrations.sh`。  
 > **状态**: ✅ V2.1 主体生产就绪；✅ Layer 2-23 全部 22 层迁移已由 DBA 团队部署到生产环境；✅ ops-scripts（监控视图/cron 任务/PgBouncer 配置）已同步至本地；✅ 设计文档（39 份）已同步至 `.readonly/`；✅ HiWmsSupabase 009-018 交叉核实已完成（见 §0 v2.6.0 记录）；✅ 迁移 023 Ghost Function 修复已同步（见 §0 v2.8.0 记录）  
 > **ECC 分析**: 迁移 023 多维度 ECC 影响分析见 `docs/03-database/MIGRATION_023_IMPACT_ANALYSIS.md`（2026-07-26）
@@ -42,6 +42,13 @@ DBA 团队交付迁移 023（`023_fix_ghost_function_and_hardening.sql`），修
 - **应用层影响**: `src/types/database.ts` 移除旧单参数重载 union member；`IPurgeOldLogsRpc` 接口清理 legacy 类型和 `isBatchedResult()` 类型守卫；应用层代码无运行时变更（已强制 p_batch_size 必填）
 
 > 详细影响分析见 `docs/03-database/MIGRATION_023_IMPACT_ANALYSIS.md`。
+
+### v2.9.0（2026-07-27）
+ADR-015（登录/注册身份模型桥接）应用层已实施（Sprint 0）：`SupabaseAuthProvider`/`IAuthProvider`
+契约修正、`SupabaseBaseRepository` per-request authenticated client、`injectRlsContext` 改造均
+已完成并通过评审。**数据库侧尚未变更**——`auth.users → public.users` 桥接触发器待
+`docs/03-database/DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md` 评审确认后才会落地，
+本文档 §2.4 `users` 表结构现状照旧（`id` 仍是独立 `uuid_generate_v4()`，未引用 `auth.users`）。
 
 ---
 
@@ -168,6 +175,14 @@ DBA 团队交付迁移 023（`023_fix_ghost_function_and_hardening.sql`），修
 | created_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | updated_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | UNIQUE(tenant_id, username) | | | |
+
+> **ADR-015 桥接状态（2026-07-27）**：应用层（`SupabaseAuthProvider`/per-request authenticated
+> client/`injectRlsContext`）已按 ADR-015 实施完成，但数据库侧 `auth.users → public.users` 桥接
+> 触发器（`handle_new_user`）**尚未实施**，待
+> `docs/03-database/DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md` 评审确认后落地。
+> 当前 `public.users.id` 仍是独立的 `uuid_generate_v4()`，与 `auth.users.id` 无关联；
+> `fn_current_tenant_id()` 的 JWT `app_metadata.tenant_id` 路径也依赖该触发器写入才能对自助
+> 注册用户生效。
 
 ### 2.5 devices (设备)
 

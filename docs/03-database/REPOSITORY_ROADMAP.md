@@ -1,6 +1,8 @@
 # 仓储层实施路线图
 
 > **2026-07-27 审计更新**: 后端全面审计发现 Phase 2（P0 出库作业 8 个仓库）仍为零进度。已纳入 ECC 执行计划 Sprint 1。详见 `docs/00-project/BACKEND_GAP_ANALYSIS.md` 和 `docs/00-project/ECC_EXECUTION_PLAN.md`。
+>
+> **2026-07-27 Sprint 0 完成更新**：ADR-015 应用层改动（per-request authenticated client、`injectRlsContext` 改造）已实施完成并通过评审，`SupabaseBaseRepository` 已具备 `authToken` 参数与 `TTableName` 泛型约束，Sprint 1 新增仓库可直接复用这套模式。**但 Sprint 1 启动前需注意**：数据库侧 `handle_new_user` 触发器尚未落地（等 DBA Addendum 评审），且现有 `authToken` 机制还没有接到任何具体仓库的业务查询方法或路由层，Sprint 1 实现新仓库时应同步把 `authToken` 贯通到位，不能假设 RLS 已经在生产查询里验证生效。另因 `TTableName` 强类型检查，本轮暴露出 11 个既有仓库文件的 schema/业务字段命名不一致问题，已用 `as any` 临时绕过，记录为已知技术债（见 §9 之后「已知技术债」小节）。
 
 ## 项目概览
 - **总表数**：34 个业务表 + 7 个 Layer 2 离线同步/统一异常领域表 + 2 个 Layer 3 同步动作扩展表 + 1 个 Layer 4 追踪策略表 + 5 个 Layer 7/8 库区/序列号/存储管理表
@@ -529,3 +531,36 @@
 `docs/00-project/ROADMAP.md`「HiWmsSupabase 009-016 跨仓库综合分析与任务规划」、
 `docs/01-architecture/ARCHITECTURE.md` §11
 *最近更新：2026-07-20 — ECC 多视角规划复核：修正本文档顶部/底部摘要仍停留在「🔨 已实现未验证」的不一致问题；新增 §9「剩余缺口清单」跟踪下一阶段的 CRITICAL/HIGH/MEDIUM 缺口（`processPendingEvents` bug、CI 未启用本地 Postgres 并发测试、RLS/权限路径未覆盖、HTTP 路由层测试缺失等）*
+
+---
+
+## 已知技术债：`TTableName` 强类型化暴露的字段命名不一致（2026-07-27，ADR-015 Sprint 0 附带发现）
+
+> 背景：`SupabaseBaseRepository` 为支持 ADR-015 per-request authenticated client，新增了
+> `TTableName` 泛型参数，`tableName` 从原来的宽松 `string` 收紧为对 `src/types/database.ts`
+> 生成类型的字面量约束。这次收紧让编译器第一次真正核对每个仓库的 `.from(this.tableName)` 查询
+> 字段是否与数据库实际 schema 一致，结果暴露出以下 11 个仓库文件存在预先存在的字段命名/业务
+> 逻辑与 schema 不一致问题（例如 `vehicles.plate` 实际列名是 `license_plate`、
+> `billing_rules.is_active` 列不存在等）。**这些不是本次 Sprint 0 修复范围内要解决的业务问题**
+> ——涉及具体业务字段含义，需要 DBA/产品确认后才能修正，不能凭猜测改表结构或改代码。为了不
+> 阻塞 Sprint 0 的 tsc 零错误目标，本轮对以下 11 个文件的受影响查询处用精确定点的
+> `(this.getClient() as any)` / `(this.from() as any)` 恢复了改动前的宽松类型检查行为，
+> 待业务/DBA 确认字段口径后再排期修复：
+
+| # | 文件 |
+|---|------|
+| 1 | `src/adapters/supabase/repositories/SupabaseBillingRuleRepository.ts` |
+| 2 | `src/adapters/supabase/repositories/SupabaseContainerRepository.ts` |
+| 3 | `src/adapters/supabase/repositories/SupabaseInboundReceiptRepository.ts` |
+| 4 | `src/adapters/supabase/repositories/SupabaseInventoryLockRepository.ts` |
+| 5 | `src/adapters/supabase/repositories/SupabaseInventoryRepository.ts` |
+| 6 | `src/adapters/supabase/repositories/SupabaseLabelTemplateRepository.ts` |
+| 7 | `src/adapters/supabase/repositories/SupabaseLocationRepository.ts` |
+| 8 | `src/adapters/supabase/repositories/SupabaseQualityInspectionRepository.ts` |
+| 9 | `src/adapters/supabase/repositories/SupabaseVehicleRepository.ts` |
+| 10 | `src/adapters/supabase/repositories/SupabaseVerificationRuleRepository.ts` |
+| 11 | `src/adapters/supabase/repositories/SupabaseWaveRepository.ts` |
+
+**下一步**：作为独立技术债排期，逐个文件与 DBA/产品确认真实字段口径后移除 `as any`、改用正确
+的强类型 `Tables<'table'>` 签名，不建议并入 Sprint 1 顺带处理（避免把业务字段确认这种决策类
+工作和 Sprint 1 的仓库补全工程工作混在一起）。

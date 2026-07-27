@@ -1,7 +1,7 @@
 # ADR-015: 登录/注册身份模型桥接与 RLS 租户上下文注入
 
 ## 状态
-🟡 Proposed（设计已完成，待评审确认后再进入实施；未实施任何代码/迁移改动）
+🟢 应用层已实施（Sprint 0，2026-07-27），数据库侧待 DBA Addendum 落地
 
 ## 背景
 
@@ -147,7 +147,45 @@ profile，永远返回 `tenantId: null`——注册"成功"但账号功能性锁
 - `docs/01-architecture/ADR/007-hexagonal-ports-adapters.md` —— 端口/适配器契约
 - `docs/03-database/REPOSITORY_ROADMAP.md`「剩余缺口清单」#7 —— 任务跟踪
 - `docs/00-project/ROADMAP.md` —— 阶段 2 前端登录/鉴权模块依赖本 ADR 先行完成
+- `docs/03-database/DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md` —— 数据库侧触发器实施请求，待 DBA 评审
 
 ---
 
-*决策者：主工程师 | 状态：待评审 | 记录日期：2026-07-20*
+## 实施记录（Sprint 0，2026-07-27）
+
+应用代码侧 3 项改动已完成并通过两轮独立测试+安全+代码质量评审（`tsc --noEmit` 零错误，
+`vitest` 84 passed / 125 skipped，无 CRITICAL/HIGH 阻塞项）：
+
+1. `IAuthProvider` 端口补充 `signIn`/`signUp` 声明；`SupabaseAuthProvider` 修正 `app_metadata`
+   读写路径（不再误写入 `user_metadata`）。
+2. `SupabaseBaseRepository`/`IRepository` 新增按请求 access_token 创建的 per-request
+   authenticated client（新增 `authToken` 参数 + `TTableName` 泛型约束表名类型安全）。
+3. `ExpressMiddlewareFactory.injectRlsContext()` 改造为真正传递 access_token，而非此前无人
+   读取的 `req.rlsContext`/`x-tenant-id` header。
+4. 新增集成测试 `src/__tests__/integration/auth/tenant-isolation.test.ts`。
+
+数据库侧 `auth.users → public.users` 桥接触发器**尚未实施**——已提交
+`docs/03-database/DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md` 请求 DBA 团队评估，
+等待该文档第六节 5 个开放问题（新租户重名策略、`email` 唯一性范围、现有超管账号迁移等）由
+DBA/产品拍板后才能编写迁移脚本。
+
+**两个尚未达成的限制（不能作为"已完全解决"的依据）**：
+
+- **业务层/路由层尚未接线**：`authToken` 机制目前只打通了 `SupabaseBaseRepository` 的 8 个
+  通用 CRUD 方法；绝大多数具体仓库的业务查询方法、以及目前唯一接线的 `device-api` 路由，都
+  还没有使用这个新机制。"RLS 在真实业务查询里生效"这个本 ADR 的核心目标，本批改动只是打好
+  了地基（per-request client 机制本身是对的、安全的），尚未端到端接线完成，需要后续排期把
+  `authToken` 传递贯通到业务层和路由层。
+- **跨租户隔离测试尚不能作为验证证据**：新增的 `tenant-isolation.test.ts` 在本地实测中因为
+  触发器不存在，`profileA.tenant_id` 为 `null`；CI 由于未设置 `RUN_DB_INTEGRATION_TESTS` 会
+  一直 `skipIf` 跳过。也就是说这个测试目前不能证明"跨租户隔离已验证生效"，要等 DBA 触发器
+  落地后才能真正跑通验证。
+
+此外，本次修复过程中发现并纠正了一个真实回归（`SupabaseUnidentifiedGoodsRepository.ts` 的
+`tableName` 曾被误改为 `'inventory'`，已改回 `'containers'`），并因新增的 `TTableName` 强类型
+检查暴露出 11 个仓库文件的预存 schema/业务字段不一致问题，暂时用精确定点的 `as any` 恢复原有
+宽松类型检查行为，记录为已知技术债（详见 `docs/03-database/REPOSITORY_ROADMAP.md`）。
+
+---
+
+*决策者：主工程师 | 状态：应用层已实施，数据库侧待 DBA 评审 | 记录日期：2026-07-20，更新日期：2026-07-27*

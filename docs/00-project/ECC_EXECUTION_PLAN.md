@@ -45,18 +45,18 @@
 
 ## 执行阶段
 
-### Sprint 0: ADR-015 Auth Identity Bridge（预估 2-3 天）
+### Sprint 0: ADR-015 Auth Identity Bridge（预估 2-3 天）— 应用层已完成（2026-07-27）
 
 **目标**: 让 RLS 租户隔离真正生效
 
-| 任务 | 产出 | 验证 |
-|------|------|------|
-| 0.1 创建 `auth.users` → `public.users` 触发器 | 迁移脚本（提交 HiWmsSupabase 作为 DBA addendum） | 新用户注册后 `public.users` 自动创建行 |
-| 0.2 实现 per-request Supabase client | 修改 `SupabaseClient.ts`/`SupabaseBaseRepository.ts` | `fn_current_tenant_id()` 返回非 NULL |
-| 0.3 修复 `injectRlsContext` | 中间件上下文被 Repository 层消费 | 端到端: 租户 A 用户只能看到自己的订单 |
-| 0.4 跨租户隔离集成测试 | `src/__tests__/integration/auth/tenant-isolation.test.ts` | 租户 A 查不到租户 B 数据 |
+| 任务 | 产出 | 验证 | 状态 |
+|------|------|------|------|
+| 0.1 创建 `auth.users` → `public.users` 触发器 | 迁移脚本（提交 HiWmsSupabase 作为 DBA addendum） | 新用户注册后 `public.users` 自动创建行 | ⏳ 待 DBA 评审（`DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md`，5 个开放问题待拍板） |
+| 0.2 实现 per-request Supabase client | 修改 `SupabaseClient.ts`/`SupabaseBaseRepository.ts` | `fn_current_tenant_id()` 返回非 NULL | ✅ 应用层已完成，`tsc` 零错误 |
+| 0.3 修复 `injectRlsContext` | 中间件上下文被 Repository 层消费 | 端到端: 租户 A 用户只能看到自己的订单 | 🟡 中间件改造已完成，但 `authToken` 尚未接到具体仓库业务方法/路由层，"端到端"验证未达成 |
+| 0.4 跨租户隔离集成测试 | `src/__tests__/integration/auth/tenant-isolation.test.ts` | 租户 A 查不到租户 B 数据 | 🟡 测试已编写，但触发器（0.1）未落地导致本地实测 `tenant_id` 为 null，CI 因未设 `RUN_DB_INTEGRATION_TESTS` 恒跳过，暂不能作为验证证据 |
 
-**文档同步**: ARCHITECTURE.md §11、DB_SCHEMA.md、ROADMAP.md §1.4
+**文档同步**: ARCHITECTURE.md §11、DB_SCHEMA.md、ROADMAP.md §1.4（均已于 2026-07-27 同步）
 
 ### Sprint 1: Repository Phase 2（预估 3-4 天）
 
@@ -128,9 +128,9 @@ Sprint 0 (ADR-015)
 
 ## 成功标准
 
-| Sprint | 标准 |
-|--------|------|
-| Sprint 0 | `fn_current_tenant_id()` 在 authenticated 请求中返回正确 tenant_id；跨租户测试通过 |
-| Sprint 1 | 8 个仓库全部实现 + 单元测试 + 并发测试；tsc 零错误；vitest 全绿 |
-| Sprint 2 | Tenant API 全部端点可调用；HTTP 契约测试通过；前端可开始对接 |
-| Sprint 3 | 缺口清单清零；全部文档同步；CI 可加入 DB 并发测试 |
+| Sprint | 标准 | 当前状态（2026-07-27） |
+|--------|------|------|
+| Sprint 0 | `fn_current_tenant_id()` 在 authenticated 请求中返回正确 tenant_id；跨租户测试通过 | **应用层达成**：`tsc --noEmit` 零错误、`vitest` 84 passed/125 skipped，两轮独立评审无 CRITICAL/HIGH。**未完全达成**：数据库侧触发器待 DBA 落地，`fn_current_tenant_id()` 在真实自助注册用户上尚未验证返回非 NULL；`authToken` 未接线到业务层/路由层；跨租户隔离测试因触发器缺失暂不能作为验证证据。不宜理解为"RLS 已在生产验证生效"或"可直接开始 Sprint 1 且无遗留风险"——具体限制见 ADR-015「实施记录」 |
+| Sprint 1 | 8 个仓库全部实现 + 单元测试 + 并发测试；tsc 零错误；vitest 全绿 | 未开始 |
+| Sprint 2 | Tenant API 全部端点可调用；HTTP 契约测试通过；前端可开始对接 | 未开始 |
+| Sprint 3 | 缺口清单清零；全部文档同步；CI 可加入 DB 并发测试 | 未开始 |
