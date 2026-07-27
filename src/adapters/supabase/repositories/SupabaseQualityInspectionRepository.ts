@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IQualityInspectionRepository } from '@core/ports/db/IQualityInspectionRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { QUALITY_INSPECTION_STATUS } from '../../../core/constants/status';
 
 type QualityInspectionRow = Tables<'quality_inspections'>;
 type QualityInspectionInsert = TablesInsert<'quality_inspections'>;
@@ -93,7 +94,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PENDING')
+      .eq('status', QUALITY_INSPECTION_STATUS.PENDING)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -119,7 +120,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PENDING')
+      .eq('status', QUALITY_INSPECTION_STATUS.PENDING)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -151,7 +152,7 @@ export class SupabaseQualityInspectionRepository extends SupabaseBaseRepository<
   async updateStatus(inspectionId: string, status: string, completedAt?: string): Promise<QualityInspectionRow> {
     const updateData: Partial<QualityInspectionUpdate> = { status };
     if (completedAt) updateData.completed_at = completedAt;
-    else if (status === 'PASSED' || status === 'FAILED') updateData.completed_at = new Date().toISOString();
+    else if (status === QUALITY_INSPECTION_STATUS.PASSED || status === QUALITY_INSPECTION_STATUS.FAILED) updateData.completed_at = new Date().toISOString();
     return this.update(inspectionId, updateData as QualityInspectionUpdate);
   }
 

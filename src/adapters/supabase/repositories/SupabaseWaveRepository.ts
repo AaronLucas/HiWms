@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IWaveRepository } from '@core/ports/db/IWaveRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { ORDER_STATUS, WAVE_STATUS } from '../../../core/constants/status';
 
 type WaveRow = Tables<'waves'>;
 type WaveInsert = TablesInsert<'waves'>;
@@ -91,7 +92,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'IN_PROGRESS')
+      .eq('status', WAVE_STATUS.IN_PROGRESS)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -103,7 +104,7 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PLANNING')
+      .eq('status', WAVE_STATUS.PLANNING)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
@@ -163,10 +164,10 @@ export class SupabaseWaveRepository extends SupabaseBaseRepository<
     // "pickedOrders" 映射为 PICKING（分拣进行中，schema 中没有单独的"已完成分拣"态）。
     return {
       totalOrders: mappings.length,
-      allocatedOrders: mappings.filter(m => m.orders?.status === 'ALLOCATED').length,
-      pickedOrders: mappings.filter(m => m.orders?.status === 'PICKING').length,
-      packedOrders: mappings.filter(m => m.orders?.status === 'PACKED').length,
-      shippedOrders: mappings.filter(m => m.orders?.status === 'SHIPPED').length,
+      allocatedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.ALLOCATED).length,
+      pickedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.PICKING).length,
+      packedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.PACKED).length,
+      shippedOrders: mappings.filter(m => m.orders?.status === ORDER_STATUS.SHIPPED).length,
     };
   }
 

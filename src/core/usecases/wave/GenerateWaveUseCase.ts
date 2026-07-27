@@ -3,6 +3,7 @@
  * 核心策略引擎内核：批次/区域/聚类/波次策略
  */
 import { WmsSupabaseClient } from '@adapters/supabase/SupabaseClient';
+import { ORDER_STATUS, WAVE_STATUS } from '../../constants/status';
 
 export interface GenerateWaveInput {
   tenantId: string;
@@ -36,7 +37,7 @@ export class GenerateWaveUseCase {
       .insert({
         tenant_id: input.tenantId,
         wave_no: waveNo,
-        status: 'PLANNING',
+        status: WAVE_STATUS.PLANNING,
         strategy_type: input.strategyType.toUpperCase(),
         strategy_config: input.config,
       })
@@ -60,7 +61,7 @@ export class GenerateWaveUseCase {
     // 更新订单状态
     await this.supabase
       .from('orders')
-      .update({ status: 'ALLOCATED', updated_at: new Date().toISOString() })
+      .update({ status: ORDER_STATUS.ALLOCATED, updated_at: new Date().toISOString() })
       .in('id', input.orderIds);
 
     return {

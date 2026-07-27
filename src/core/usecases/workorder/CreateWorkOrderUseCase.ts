@@ -2,6 +2,7 @@
  * 创建工单用例
  */
 import { WmsSupabaseClient } from '@adapters/supabase/SupabaseClient';
+import { WORK_ORDER_STATUS, type WorkOrderStatus } from '../../constants/status';
 
 export interface CreateWorkOrderInput {
   tenantId: string;
@@ -26,7 +27,7 @@ export class CreateWorkOrderUseCase {
         related_order_id: input.relatedOrderId ?? null,
         assigned_user_id: input.assignedUserId ?? null,
         expected_duration_seconds: input.expectedDurationSeconds ?? null,
-        status: 'OPEN',
+        status: WORK_ORDER_STATUS.OPEN,
         pda_summary: null,
         metadata: input.metadata ?? null,
       })
@@ -89,7 +90,7 @@ export class ExecuteWorkOrderActionUseCase {
  */
 export interface UpdateWorkOrderStatusInput {
   workOrderId: string;
-  status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'EXCEPTION' | 'CANCELLED';
+  status: WorkOrderStatus;
   completedAt?: string;
 }
 
@@ -104,7 +105,7 @@ export class UpdateWorkOrderStatusUseCase {
     if (input.completedAt) {
       updateData.completed_at = input.completedAt;
     }
-    if (input.status === 'COMPLETED' && !input.completedAt) {
+    if (input.status === WORK_ORDER_STATUS.COMPLETED && !input.completedAt) {
       updateData.completed_at = new Date().toISOString();
     }
 

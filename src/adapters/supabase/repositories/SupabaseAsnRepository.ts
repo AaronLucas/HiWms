@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IAsnRepository } from '@core/ports/db/IAsnRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { INBOUND_RECEIPT_STATUS } from '../../../core/constants/status';
 
 type AsnRow = Tables<'inbound_receipts'>;
 type AsnInsert = TablesInsert<'inbound_receipts'>;
@@ -56,7 +57,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PENDING')
+      .eq('status', INBOUND_RECEIPT_STATUS.PENDING)
       .order('expected_at', { ascending: true });
 
     if (error) throw error;
@@ -68,7 +69,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
     const { data, error } = await this.from()
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'CLOSED')
+      .eq('status', INBOUND_RECEIPT_STATUS.CLOSED)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -79,7 +80,7 @@ export class SupabaseAsnRepository extends SupabaseBaseRepository<
   async updateStatus(asnId: string, status: string, receivedAt?: string): Promise<AsnRow> {
     const updateData: Partial<AsnUpdate> = { status };
     if (receivedAt) updateData.received_at = receivedAt;
-    if (status === 'CLOSED') updateData.received_at = new Date().toISOString();
+    if (status === INBOUND_RECEIPT_STATUS.CLOSED) updateData.received_at = new Date().toISOString();
     return this.update(asnId, updateData as AsnUpdate);
   }
 

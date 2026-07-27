@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IInboundReceiptRepository } from '@core/ports/db/IInboundReceiptRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { INBOUND_RECEIPT_STATUS } from '../../../core/constants/status';
 
 type InboundReceiptRow = Tables<'inbound_receipts'>;
 type InboundReceiptInsert = TablesInsert<'inbound_receipts'>;
@@ -91,7 +92,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PENDING')
+      .eq('status', INBOUND_RECEIPT_STATUS.PENDING)
       .order('expected_at', { ascending: true });
 
     if (error) throw error;
@@ -103,7 +104,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'RECEIVED')
+      .eq('status', INBOUND_RECEIPT_STATUS.RECEIVED)
       .order('received_at', { ascending: true });
 
     if (error) throw error;
@@ -116,7 +117,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'CLOSED')
+      .eq('status', INBOUND_RECEIPT_STATUS.CLOSED)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -127,7 +128,7 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
   async updateStatus(receiptId: string, status: string, receivedAt?: string): Promise<InboundReceiptRow> {
     const updateData: Partial<InboundReceiptUpdate> = { status };
     if (receivedAt) updateData.received_at = receivedAt;
-    if (status === 'CLOSED') updateData.received_at = new Date().toISOString();
+    if (status === INBOUND_RECEIPT_STATUS.CLOSED) updateData.received_at = new Date().toISOString();
     return this.update(receiptId, updateData as InboundReceiptUpdate);
   }
 

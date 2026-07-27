@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ISortingTaskRepository } from '@core/ports/db/ISortingTaskRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { SORTING_TASK_STATUS } from '../../../core/constants/status';
 
 type SortingTaskRow = Tables<'sorting_tasks'>;
 type SortingTaskInsert = TablesInsert<'sorting_tasks'>;
@@ -81,7 +82,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PENDING')
+      .eq('status', SORTING_TASK_STATUS.PENDING)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
@@ -105,7 +106,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'COMPLETED')
+      .eq('status', SORTING_TASK_STATUS.COMPLETED)
       .order('completed_at', { ascending: true });
 
     if (error) throw error;
@@ -130,7 +131,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
 
   async recordSortingComplete(taskId: string, sortedQty: number): Promise<SortingTaskRow> {
     return this.update(taskId, {
-      status: 'COMPLETED',
+      status: SORTING_TASK_STATUS.COMPLETED,
       sorted_qty: sortedQty,
       completed_at: new Date().toISOString(),
     } as SortingTaskUpdate);
@@ -138,7 +139,7 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
 
   async recordException(taskId: string, reason: string): Promise<SortingTaskRow> {
     return this.update(taskId, {
-      status: 'EXCEPTION',
+      status: SORTING_TASK_STATUS.EXCEPTION,
       exception_reason: reason,
     } as SortingTaskUpdate);
   }
@@ -159,8 +160,8 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
     if (error) throw error;
     const tasks = data as { status: string; started_at: string | null; completed_at: string | null; qty: number; sorted_qty: number | null }[];
 
-    const completed = tasks.filter(t => t.status === 'COMPLETED');
-    const withException = tasks.filter(t => t.status === 'EXCEPTION').length;
+    const completed = tasks.filter(t => t.status === SORTING_TASK_STATUS.COMPLETED);
+    const withException = tasks.filter(t => t.status === SORTING_TASK_STATUS.EXCEPTION).length;
     const completedWithTimes = completed.filter(t => t.started_at && t.completed_at);
 
     return {
@@ -202,13 +203,13 @@ export class SupabaseSortingTaskRepository extends SupabaseBaseRepository<
     for (const task of tasks) {
       if (!task.assigned_user_id) continue;
       const existing = bySorter.get(task.assigned_user_id) || { taskCount: 0, qty: 0, durations: [], exceptionCount: 0 };
-      if (task.status === 'COMPLETED') {
+      if (task.status === SORTING_TASK_STATUS.COMPLETED) {
         existing.taskCount++;
         existing.qty += task.sorted_qty || 0;
         if (task.started_at && task.completed_at) {
           existing.durations.push((new Date(task.completed_at).getTime() - new Date(task.started_at).getTime()) / 60000);
         }
-      } else if (task.status === 'EXCEPTION') {
+      } else if (task.status === SORTING_TASK_STATUS.EXCEPTION) {
         existing.exceptionCount++;
       }
       bySorter.set(task.assigned_user_id, existing);

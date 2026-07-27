@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IContainerRepository } from '@core/ports/db/IContainerRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { CONTAINER_STATUS } from '../../../core/constants/status';
 
 type ContainerRow = Tables<'containers'>;
 type ContainerInsert = TablesInsert<'containers'>;
@@ -73,7 +74,7 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_sealed', false)
-      .eq('status', 'IDLE');
+      .eq('status', CONTAINER_STATUS.IDLE);
 
     const { data, error } = await query;
     if (error) throw error;

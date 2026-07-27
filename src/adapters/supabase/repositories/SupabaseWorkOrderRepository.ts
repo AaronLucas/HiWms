@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IWorkOrderRepository, WorkOrderRow, ActionLogRow } from '@core/ports/db/IWorkOrderRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { WORK_ORDER_STATUS } from '../../../core/constants/status';
 
 export class SupabaseWorkOrderRepository extends SupabaseBaseRepository<
   Tables<'work_orders'>,
@@ -33,7 +34,7 @@ export class SupabaseWorkOrderRepository extends SupabaseBaseRepository<
 
   async findPendingDispatch(tenantId: string): Promise<WorkOrderRow[]> {
     return this.findAll({
-      filters: { tenant_id: tenantId, status: 'OPEN' },
+      filters: { tenant_id: tenantId, status: WORK_ORDER_STATUS.OPEN },
       orderBy: 'created_at',
       ascending: true,
     });

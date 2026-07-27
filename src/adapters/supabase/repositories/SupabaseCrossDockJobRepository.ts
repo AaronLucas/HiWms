@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ICrossDockJobRepository } from '@core/ports/db/ICrossDockJobRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { CROSS_DOCK_JOB_STATUS } from '../../../core/constants/status';
 
 type CrossDockJobRow = Tables<'cross_dock_jobs'>;
 type CrossDockJobInsert = TablesInsert<'cross_dock_jobs'>;
@@ -58,7 +59,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'MATCHED')
+      .eq('status', CROSS_DOCK_JOB_STATUS.MATCHED)
       .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -70,7 +71,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'MATCHED')
+      .eq('status', CROSS_DOCK_JOB_STATUS.MATCHED)
       .lt('created_at', before);
 
     if (error) throw error;
@@ -133,7 +134,7 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
       inbound_receipt_id: inboundReceiptId,
       outbound_order_id: outboundOrderId,
       matched_qty: matchedQty,
-      status: 'MATCHED',
+      status: CROSS_DOCK_JOB_STATUS.MATCHED,
       matched_at: new Date().toISOString(),
     } as CrossDockJobUpdate);
   }
@@ -161,9 +162,9 @@ export class SupabaseCrossDockJobRepository extends SupabaseBaseRepository<
     const jobs = data as { status: string; created_at: string; matched_at: string | null; shipped_at: string | null }[];
 
     const totalJobs = jobs.length;
-    const shippedJobs = jobs.filter(j => j.status === 'SHIPPED').length;
-    const fallbackJobs = jobs.filter(j => j.status === 'FALLBACK').length;
-    const timeoutJobs = jobs.filter(j => j.status === 'TIMEOUT').length;
+    const shippedJobs = jobs.filter(j => j.status === CROSS_DOCK_JOB_STATUS.SHIPPED).length;
+    const fallbackJobs = jobs.filter(j => j.status === CROSS_DOCK_JOB_STATUS.FALLBACK).length;
+    const timeoutJobs = jobs.filter(j => j.status === CROSS_DOCK_JOB_STATUS.TIMEOUT).length;
 
     const shippedWithTimes = jobs.filter(j => j.shipped_at && j.created_at);
     const avgLeadTimeMinutes = shippedWithTimes.length > 0

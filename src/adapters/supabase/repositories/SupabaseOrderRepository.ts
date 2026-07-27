@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { IOrderRepository } from '../../../core/ports/db/IOrderRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { ORDER_STATUS } from '../../../core/constants/status';
 
 export class SupabaseOrderRepository extends SupabaseBaseRepository<
   Tables<'orders'>,
@@ -64,6 +65,6 @@ export class SupabaseOrderRepository extends SupabaseBaseRepository<
   }
 
   async findPendingAllocation(tenantId: string): Promise<Tables<'orders'>[]> {
-    return this.findByStatus('PENDING', tenantId);
+    return this.findByStatus(ORDER_STATUS.PENDING, tenantId);
   }
 }

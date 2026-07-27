@@ -4,6 +4,7 @@
 import { SupabaseBaseRepository } from './SupabaseBaseRepository';
 import { ILoadingTaskRepository } from '@core/ports/db/ILoadingTaskRepository';
 import type { Tables, TablesInsert, TablesUpdate } from '../../../types/database';
+import { LOADING_TASK_STATUS } from '../../../core/constants/status';
 
 type LoadingTaskRow = Tables<'loading_tasks'>;
 type LoadingTaskInsert = TablesInsert<'loading_tasks'>;
@@ -59,7 +60,7 @@ export class SupabaseLoadingTaskRepository extends SupabaseBaseRepository<
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('status', 'PLANNING')
+      .eq('status', LOADING_TASK_STATUS.PLANNING)
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
