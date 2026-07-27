@@ -131,6 +131,6 @@ Sprint 0 (ADR-015)
 | Sprint | 标准 | 当前状态（2026-07-27） |
 |--------|------|------|
 | Sprint 0 | `fn_current_tenant_id()` 在 authenticated 请求中返回正确 tenant_id；跨租户测试通过 | **应用层达成**：`tsc --noEmit` 零错误、`vitest` 84 passed/125 skipped，两轮独立评审无 CRITICAL/HIGH。**未完全达成**：数据库侧触发器待 DBA 落地，`fn_current_tenant_id()` 在真实自助注册用户上尚未验证返回非 NULL；`authToken` 未接线到业务层/路由层；跨租户隔离测试因触发器缺失暂不能作为验证证据。不宜理解为"RLS 已在生产验证生效"或"可直接开始 Sprint 1 且无遗留风险"——具体限制见 ADR-015「实施记录」 |
-| Sprint 1 | ~~8 个仓库全部实现~~ + 并发测试；tsc 零错误；vitest 全绿 | **实现已达成**（7 个仓库均已实现并接线 DI，2026-07-27 复核确认，更正原"零进度"误判）；**测试补齐进行中** |
-| Sprint 2 | Tenant API 全部端点可调用；HTTP 契约测试通过；前端可开始对接 | 未开始 |
-| Sprint 3 | 缺口清单清零；全部文档同步；CI 可加入 DB 并发测试 | 未开始 |
+| Sprint 1 | ~~8 个仓库全部实现~~ + 并发测试；tsc 零错误；vitest 全绿 | **已完成**（2026-07-27，merged PR #57）：7 个仓库均已实现并接线 DI（更正原"零进度"误判），并发测试补齐，顺带发现并修复约 40 处状态字面量 bug，新建 `src/core/constants/status.ts` 统一常量 |
+| Sprint 2 | Tenant API 全部端点可调用；HTTP 契约测试通过；前端可开始对接 | **已完成**（2026-07-27，draft PR #58）：7 个端点全部可调用，33 个 HTTP 契约测试通过，本地 ECC review 无 CRITICAL/HIGH 遗留。前端可以开始对接，但认证机制是标准 Supabase 用户 JWT（非本文档 ARCHITECTURE.md §4.2 原描述的独立 Tenant JWT），对接时以此为准 |
+| Sprint 3 | 缺口清单清零；全部文档同步；CI 可加入 DB 并发测试 | **已完成**（2026-07-28，draft PR #59）：Phase 8 仓库测试核实已在 PR #49 完成；Device API auth 集成测试过程中发现并修复 4 处 CRITICAL 生产 bug（login/refresh 不可达、JWT 验证恒失败、密钥存储不共享、provision 插入不存在的列）；`fn_expire_task_claims` pg_cron 注册与 permissions 种子数据均已提交 DBA addendum（尚待 DBA 落地，非本仓库可直接完成）；文档同步范围收窄为具体增量（API_SPEC/ARCHITECTURE/ROADMAP/REPOSITORY_ROADMAP），DB_SCHEMA 未改动。CI 加入 DB 并发测试**未做**——不在本轮范围内，仍是待办 |
