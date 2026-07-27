@@ -207,9 +207,14 @@ export class WmsSupabaseClient {
     throw lastError;
   }
 
-  /** 构建带租户上下文的查询 */
-  from(table: string, useAdmin = false) {
-    const client = useAdmin ? this.getAdminClient() : this.getClient();
+  /**
+   * 构建带租户上下文的查询
+   * @param authToken 可选的用户 access_token，传入时优先使用 per-request authenticated client（RLS 生效，ADR-015）
+   */
+  from(table: string, useAdmin = false, authToken?: string) {
+    const client = authToken
+      ? this.getAuthenticatedClient(authToken)
+      : useAdmin ? this.getAdminClient() : this.getClient();
     return (client as any).from(table);
   }
 

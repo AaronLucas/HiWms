@@ -20,13 +20,13 @@ export interface CreateOrderInput {
 export class CreateOrderUseCase {
   constructor(private supabase: WmsSupabaseClient) {}
 
-  async execute(input: CreateOrderInput): Promise<{
+  async execute(input: CreateOrderInput, authToken?: string): Promise<{
     orderId: string;
     lines: Array<{ id: string; productId: string; qty: number }>;
   }> {
-    // 创建订单
+    // 创建订单（authToken 存在时走 per-request authenticated client，RLS 按真实用户生效，ADR-015）
     const { data: order, error } = await this.supabase
-      .from('orders')
+      .from('orders', false, authToken)
       .insert({
         tenant_id: input.tenantId,
         external_order_id: input.externalOrderId,
@@ -50,7 +50,7 @@ export class CreateOrderUseCase {
     }));
 
     const { error: linesError } = await this.supabase
-      .from('order_lines')
+      .from('order_lines', false, authToken)
       .insert(orderLines);
 
     if (linesError) throw new Error(`创建订单明细失败: ${linesError.message}`);

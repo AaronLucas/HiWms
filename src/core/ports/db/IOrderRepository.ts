@@ -24,13 +24,13 @@ export interface IOrderRepository extends IRepository<OrderRow, OrderInsert, Ord
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; status?: string }
+    options?: { limit?: number; offset?: number; status?: string; authToken?: string }
   ): Promise<OrderRow[]>;
 
   /**
    * 获取订单及其明细
    */
-  findWithLines(orderId: string): Promise<{
+  findWithLines(orderId: string, authToken?: string): Promise<{
     order: OrderRow;
     lines: Tables<'order_lines'>[];
   } | null>;
