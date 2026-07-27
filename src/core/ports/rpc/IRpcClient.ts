@@ -142,6 +142,8 @@ export interface RpcOptions {
   headers?: Record<string, string>;
   /** 是否使用管理员客户端 */
   useAdmin?: boolean;
+  /** 可选的用户 access_token，传入时优先使用 per-request authenticated client（RLS 生效，ADR-015） */
+  authToken?: string;
 }
 
 /** RPC 错误类 */

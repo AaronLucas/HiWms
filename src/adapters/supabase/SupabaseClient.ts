@@ -224,7 +224,9 @@ export class WmsSupabaseClient {
     args: Database['public']['Functions'][F]['Args'],
     options: RpcOptions = {}
   ): Promise<Database['public']['Functions'][F]['Returns']> {
-    const client = options.useAdmin ? this.getAdminClient() : this.getClient();
+    const client = options.authToken
+      ? this.getAuthenticatedClient(options.authToken)
+      : options.useAdmin ? this.getAdminClient() : this.getClient();
 
     // 自动注入 tenant_id
     const finalArgs = { ...args } as Record<string, unknown>;

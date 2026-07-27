@@ -4,7 +4,7 @@
  */
 import express, { Request, Response, NextFunction, Router } from 'express';
 import { TenantApiDependencies } from './di';
-import { CreateOrderUseCase } from '../../core/usecases/order/CreateOrderUseCase';
+import { CreateOrderUseCase, AllocateOrderUseCase } from '../../core/usecases/order/CreateOrderUseCase';
 import { GenerateWaveUseCase } from '../../core/usecases/wave/GenerateWaveUseCase';
 import {
   createOrderBodySchema,
@@ -75,6 +75,29 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const useCase = new CreateOrderUseCase(deps.supabaseAdapters.client);
       const result = await useCase.execute({ tenantId, ...req.body }, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/orders/:id/allocate — 将订单从 PENDING 推进到 ALLOCATED（按明细逐行分配库存）
+  router.post('/orders/:id/allocate', validateParams(orderIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+
+      const { id } = req.params as unknown as OrderIdParams;
+      const authToken = req.context?.supabaseToken;
+      const order = await orders.findById(id, authToken);
+
+      if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+      if (!req.context!.user!.isSystemUser && order.tenant_id !== tenantId) {
+        return res.status(404).json({ success: false, error: 'Order not found' });
+      }
+
+      const useCase = new AllocateOrderUseCase(deps.supabaseAdapters.client);
+      const result = await useCase.execute({ orderId: id, tenantId }, authToken);
+      res.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }
