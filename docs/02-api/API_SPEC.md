@@ -300,6 +300,30 @@
 | GET | `/reports/space-utilization` | 空间利用率 | `tenant_admin, warehouse_manager` |
 | GET | `/reports/boss-cockpit` | 老板驾驶舱 | `tenant_admin` |
 
+### 3.16 已实现端点（Sprint 2，2026-07-27，`src/apps/tenant-api/`）
+
+以上 3.1-3.15 是 Tenant API 的完整规划面，实际落地按 Sprint 逐步推进。下表是
+Sprint 2 第一批真实交付的 7 个端点——路径用的是精简的 `/api/*`，还没有对齐上面
+规划里 `/outbound/`、`/inbound/` 这类前缀分组（tenant-api 是新起的应用，先跑通
+认证链路+最小闭环，前缀分组留到后续 Sprint 按需迁移）。认证复用
+`ExpressMiddlewareFactory` 的 `authenticate()`/`resolveTenant()`/
+`injectRlsContext()`，走标准 Supabase 用户 JWT + ADR-015 per-request RLS，
+不是 `requirePermission()` 的 RBAC 权限模型（RBAC 目前只接在 Device API 的
+`POST /device/provision` 上，见 §4）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/orders` | 订单列表（对应 3.6 `/outbound/orders`） |
+| GET | `/api/orders/{id}` | 订单详情+明细行 |
+| POST | `/api/orders` | 创建订单 |
+| POST | `/api/orders/{id}/allocate` | 按明细行分配库存，PENDING → ALLOCATED（对应 3.6 `/outbound/waves/{id}/allocate`，但这里是按订单而非按波次） |
+| GET | `/api/inventory` | 库存列表（对应 3.2 `/inventory`） |
+| GET | `/api/inventory/{id}` | 库存明细 |
+| GET | `/api/products` | 商品列表/`?q=` 模糊搜索（对应 3.1 `/products`） |
+| GET | `/api/products/{id}` | 商品详情 |
+| GET | `/api/waves` | 波次列表（对应 3.6 `/outbound/waves`） |
+| POST | `/api/waves/generate` | 生成波次 |
+
 ---
 
 ## 4. Device API (PDA/手持终端端)
