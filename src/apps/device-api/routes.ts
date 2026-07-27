@@ -64,6 +64,10 @@ import {
   type DeviceCredentialsConfig,
 } from './auth/device-credentials';
 
+// 与真实密码无关的固定 bcrypt 哈希，仅用于在操作员签到查不到用户时占用与真实校验
+// 相当的耗时，避免响应时长差异暴露用户名是否存在。
+const DUMMY_PASSWORD_HASH_FOR_TIMING = '$2b$10$z2eRBXdZHG/q3ReOnt.9XOdxAo2CR57ocDRBsfwfvznQjLXcMG19u';
+
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   const router = Router();
   const { supabaseAdapters } = deps;
@@ -132,8 +136,11 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
           .eq('username', username)
           .single();
 
-        // 统一响应，防止用户名枚举/密码哈希缺失状态泄露
+        // 用户不存在/未激活/无密码哈希时，仍对固定 dummy hash 跑一次 bcrypt compare
+        // 再返回 401——不这样做的话，"用户名不存在"会比"用户名存在但密码错误"快得多
+        // （少了一次故意慢的 bcrypt 比较），响应时长差异本身就是一种用户名枚举侧信道。
         if (error || !user || !user.is_active || !user.password_hash) {
+          await verifyOperatorPassword(password, DUMMY_PASSWORD_HASH_FOR_TIMING);
           return res.status(401).json({ error: 'Authentication failed' });
         }
 
