@@ -33,7 +33,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   const { orders, inventory, products, waves } = deps.supabaseAdapters.repositories;
 
   // GET /api/orders — 列出当前租户订单
-  router.get('/orders', validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/orders', deps.middlewareFactory.requirePermission('orders', 'READ'), validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -47,7 +47,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/orders/:id — 获取订单及明细
-  router.get('/orders/:id', validateParams(orderIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/orders/:id', deps.middlewareFactory.requirePermission('orders', 'READ'), validateParams(orderIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params as unknown as OrderIdParams;
       const result = await orders.findWithLines(id, req.context?.supabaseToken);
@@ -67,7 +67,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // POST /api/orders — 创建订单
-  router.post('/orders', validateBody(createOrderBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/orders', deps.middlewareFactory.requirePermission('orders', 'CREATE'), validateBody(createOrderBodySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -81,7 +81,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // POST /api/orders/:id/allocate — 将订单从 PENDING 推进到 ALLOCATED（按明细逐行分配库存）
-  router.post('/orders/:id/allocate', validateParams(orderIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/orders/:id/allocate', deps.middlewareFactory.requirePermission('orders', 'UPDATE'), validateParams(orderIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -104,7 +104,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/inventory — 列出当前租户库存（只读）
-  router.get('/inventory', validateQuery(listInventoryQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/inventory', deps.middlewareFactory.requirePermission('inventory', 'READ'), validateQuery(listInventoryQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -129,7 +129,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/inventory/:id — 获取单条库存记录
-  router.get('/inventory/:id', validateParams(inventoryIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/inventory/:id', deps.middlewareFactory.requirePermission('inventory', 'READ'), validateParams(inventoryIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params as unknown as InventoryIdParams;
       const result = await inventory.findById(id, req.context?.supabaseToken);
@@ -148,7 +148,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/products — 列出/搜索当前租户商品
-  router.get('/products', validateQuery(listProductsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/products', deps.middlewareFactory.requirePermission('products', 'READ'), validateQuery(listProductsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -165,7 +165,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/products/:id — 获取单个商品
-  router.get('/products/:id', validateParams(productIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/products/:id', deps.middlewareFactory.requirePermission('products', 'READ'), validateParams(productIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params as unknown as ProductIdParams;
       const result = await products.findById(id, req.context?.supabaseToken);
@@ -184,7 +184,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // GET /api/waves — 列出当前租户波次
-  router.get('/waves', validateQuery(listWavesQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.get('/waves', deps.middlewareFactory.requirePermission('waves', 'READ'), validateQuery(listWavesQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
@@ -204,7 +204,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // POST /api/waves/generate — 生成波次
-  router.post('/waves/generate', validateBody(generateWaveBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/waves/generate', deps.middlewareFactory.requirePermission('waves', 'CREATE'), validateBody(generateWaveBodySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });

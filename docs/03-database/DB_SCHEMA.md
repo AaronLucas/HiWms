@@ -141,13 +141,16 @@ ADR-015（登录/注册身份模型桥接）应用层已实施（Sprint 0）：`
 | created_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | UNIQUE(resource, action) | | | |
 
-> **Migration 018 追加权限行**：
+> **Migration 018 追加权限行**（2026-07-28 更正大小写：直接 `docker exec` 查询本地
+> 沙盒确认线上实际存的是大写 `CREATE/READ/UPDATE/DELETE`，本文档此前摘录的小写版本
+> 与实际不符，`check_user_permission` 的 `p.action = p_action` 是大小写敏感的精确匹配，
+> 混淆两种写法会导致校验恒 403，具体见 `API_SPEC.md` §7.2.1）：
 > ```sql
 > INSERT INTO permissions (id, resource, action) VALUES
->     ('00000000-1000-4000-8000-000000000018', 'devices', 'create'),
->     ('00000000-1000-4000-8000-000000000019', 'devices', 'read'),
->     ('00000000-1000-4000-8000-00000000001a', 'devices', 'update'),
->     ('00000000-1000-4000-8000-00000000001b', 'devices', 'delete')
+>     ('00000000-1000-4000-8000-000000000018', 'devices', 'CREATE'),
+>     ('00000000-1000-4000-8000-000000000019', 'devices', 'READ'),
+>     ('00000000-1000-4000-8000-00000000001a', 'devices', 'UPDATE'),
+>     ('00000000-1000-4000-8000-00000000001b', 'devices', 'DELETE')
 > ON CONFLICT (resource, action) DO NOTHING;
 > ```
 

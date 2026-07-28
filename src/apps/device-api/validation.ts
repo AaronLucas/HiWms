@@ -289,6 +289,14 @@ export const deviceAuthRefreshSchema = z.object({
   refresh_token: z.string().min(1, 'Refresh token is required'),
 });
 
+/** POST /device/auth/operator-checkin 请求体（设备已持有 device token 的前提下，
+ *  操作员用 username+password 换一个携带 user_id 的新 access token，供 RBAC 校验使用）
+ */
+export const operatorCheckinSchema = z.object({
+  username: z.string().min(1, 'Username is required'),
+  password: z.string().min(1, 'Password is required'),
+});
+
 /** POST /device/provision 请求体 (Admin API - 租户自助配发)
  *  tenant_id 由认证上下文派生，不接受客户端传入
  */
@@ -307,6 +315,7 @@ export const devicePairingQrSchema = z.object({
 
 export type DeviceAuthLoginRequest = z.infer<typeof deviceAuthLoginSchema>;
 export type DeviceAuthRefreshRequest = z.infer<typeof deviceAuthRefreshSchema>;
+export type OperatorCheckinRequest = z.infer<typeof operatorCheckinSchema>;
 export type DeviceProvisionRequest = z.infer<typeof deviceProvisionSchema>;
 export type DevicePairingQrRequest = z.infer<typeof devicePairingQrSchema>;
 

@@ -20,6 +20,7 @@ import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
+import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -35,10 +36,15 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
   let tenantId: string;
   let otherTenantId: string;
   let productId: string;
+  let userId: string;
 
+  // 固定的真实测试用户（Sprint 4 RBAC 接入后必须有真实 user_roles/role_permissions 数据，
+  // 不能像此前那样每次请求随手生成一个 randomUUID()——那样的 id 在 user_roles 里查不到
+  // 任何权限，会被 requirePermission() 恒 403。isSystemUser 特意保持 false：用它绕过 RBAC
+  // 会连带绕过应用层的跨租户防御性检查（同一个标志位耦合了两件事），不是本文件想要的。
   const injectContext = (tid: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.context = {
-      user: { id: randomUUID(), tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
+      user: { id: userId, tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
       tenantId: tid,
       correlationId: `test-${Date.now()}`,
     };
@@ -78,7 +84,52 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
     if (productErr) throw productErr;
     productId = product.id;
 
-    const deps = { supabaseAdapters: adapters } as unknown as TenantApiDependencies;
+    const { data: user, error: userErr } = await client
+      .from('users')
+      .insert({ tenant_id: tenantId, username: `ecc-tenant-api-orders-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
+      .select()
+      .single();
+    if (userErr) throw userErr;
+    userId = user.id;
+
+    const { data: role, error: roleErr } = await client
+      .from('roles')
+      .insert({ tenant_id: tenantId, name: `ecc-tenant-api-orders-role-${Date.now()}` })
+      .select()
+      .single();
+    if (roleErr) throw roleErr;
+
+    for (const { resource, action } of [
+      { resource: 'orders', action: 'READ' },
+      { resource: 'orders', action: 'CREATE' },
+      { resource: 'orders', action: 'UPDATE' },
+    ]) {
+      const { data: permission, error: permErr } = await client
+        .from('permissions')
+        .upsert({ resource, action }, { onConflict: 'resource,action' })
+        .select()
+        .single();
+      if (permErr) throw permErr;
+
+      const { error: rolePermErr } = await client
+        .from('role_permissions')
+        .insert({ role_id: role.id, permission_id: permission.id });
+      if (rolePermErr) throw rolePermErr;
+    }
+
+    const { error: userRoleErr } = await client
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: role.id, scope: 'tenant' });
+    if (userRoleErr) throw userRoleErr;
+
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    const deps = { supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies;
     app = express();
     app.use(express.json());
     app.use(injectContext(tenantId));
@@ -160,5 +211,29 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
 
     const res = await request(app).get(`/api/orders/${otherOrder.id}`);
     expect(res.status).toBe(404);
+  });
+
+  test('GET /api/orders：没有 orders:READ 权限的普通用户应返回 403（Sprint 4 #4.5 新接的 RBAC 校验）', async () => {
+    const noPermApp = express();
+    noPermApp.use(express.json());
+    noPermApp.use((req: Request, _res: Response, next: NextFunction) => {
+      req.context = {
+        user: { id: randomUUID(), tenantId, isSystemUser: false, roles: [], permissions: [] },
+        tenantId,
+        correlationId: `test-${Date.now()}`,
+      };
+      next();
+    });
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    noPermApp.use('/api', createTenantApiRouter({ supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies));
+
+    const res = await request(noPermApp).get('/api/orders');
+    expect(res.status).toBe(403);
   });
 });

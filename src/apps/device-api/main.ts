@@ -17,7 +17,7 @@ import { loadDeviceApiConfig, type DeviceApiConfig } from './config';
 import { createDeviceAuthMiddleware } from './DeviceAuthMiddleware';
 
 export async function createDeviceApiApp(config: DeviceApiConfig): Promise<Express> {
-  const deps = await createDeviceApiDependencies();
+  const deps = await createDeviceApiDependencies(config);
 
   const app = express();
   app.use(express.json({ limit: '10mb' }));

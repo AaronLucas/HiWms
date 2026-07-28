@@ -505,6 +505,54 @@ interface TenantJwtPayload {
 | 系统配置 | CRUD | R | R | - | - |
 | 审计日志 | R | R | - | - | - |
 
+### 7.2.1 端点级 RBAC 接入清单（Sprint 4，2026-07-28）
+
+> 上表 §7.2 是角色×资源的设计期矩阵；本节是**直接代码核查**（`grep` 全部路由文件）后
+> 得到的、逐个真实端点的 `resource:action` 接入清单，用于 Sprint 4 任务 4.5/4.6 推广
+> `requirePermission()`/`permissionChecker.check()`。`action` 大小写以线上真实
+> `permissions` 表为准（直接 `docker exec` 查询本地沙盒确认）：`devices` 资源用的是
+> **大写** `CREATE/READ/UPDATE/DELETE`，后续新增资源延续同一大写惯例（`inventory_exception:resolve`
+> 是历史遗留的例外，不作为新惯例参照）。
+
+| # | 端点 | resource | action | 当前状态 |
+|---|------|----------|--------|---------|
+| 1 | `GET /api/orders` | `orders` | `READ` | ⏳ 待接入 |
+| 2 | `GET /api/orders/:id` | `orders` | `READ` | ⏳ 待接入 |
+| 3 | `POST /api/orders` | `orders` | `CREATE` | ⏳ 待接入 |
+| 4 | `POST /api/orders/:id/allocate` | `orders` | `UPDATE` | ⏳ 待接入 |
+| 5 | `GET /api/inventory` | `inventory` | `READ` | ⏳ 待接入 |
+| 6 | `GET /api/inventory/:id` | `inventory` | `READ` | ⏳ 待接入 |
+| 7 | `GET /api/products` | `products` | `READ` | ⏳ 待接入 |
+| 8 | `GET /api/products/:id` | `products` | `READ` | ⏳ 待接入 |
+| 9 | `GET /api/waves` | `waves` | `READ` | ⏳ 待接入 |
+| 10 | `POST /api/waves/generate` | `waves` | `CREATE` | ⏳ 待接入 |
+| 11 | `POST /device/sync/events` | `sync_events` | `CREATE` | ⏳ 待接入 |
+| 12 | `GET /device/sync/pull` | `sync_events` | `READ` | ⏳ 待接入 |
+| 13 | `GET /device/sync/policy` | `sync_policy` | `READ` | ⏳ 待接入 |
+| 14 | `POST /device/tasks/:id/claim` | `task_claims` | `CREATE` | ⏳ 待接入 |
+| 15 | `POST /device/tasks/claims/:id/release` | `task_claims` | `UPDATE` | ⏳ 待接入 |
+| 16 | `GET /device/exceptions` | `exceptions` | `READ` | ⏳ 待接入 |
+| 17 | `GET /device/exceptions/:id` | `exceptions` | `READ` | ⏳ 待接入 |
+| 18 | `POST /device/putaway` | `putaway` | `CREATE` | ⏳ 待接入 |
+| 19 | `POST /device/count` | `inventory_count` | `CREATE` | ⏳ 待接入 |
+| 20 | `POST /device/pack` | `packing` | `CREATE` | ⏳ 待接入 |
+| 21 | `POST /device/missing-label/generate` | `missing_label` | `CREATE` | ⏳ 待接入 |
+| 22 | `POST /device/missing-label/confirm` | `missing_label` | `UPDATE` | ⏳ 待接入 |
+| 23 | `POST /device/unidentified/receive` | `unidentified_goods` | `CREATE` | ⏳ 待接入 |
+| 24 | `POST /device/unidentified/identify` | `unidentified_goods` | `UPDATE` | ⏳ 待接入 |
+| 25 | `POST /device/admin/devices/:id/pairing-qr` | `devices` | `UPDATE` | ⏳ 待接入 |
+| — | `POST /device/device/provision` | `devices` | `CREATE` | ✅ 已接入（Sprint 3 #30），但 `roles`/`role_permissions`/`user_roles` 全空，实测恒 403，等 `PERMISSIONS_SEED` addendum 落地 |
+| — | `POST /device/auth/login`、`/refresh`、`GET /health` | — | — | 无需 RBAC（登录前置/健康检查） |
+
+**新增 resource 的种子数据缺口**：除 `devices` 外，`orders`/`inventory`/`products`/`waves`/
+`sync_events`/`sync_policy`/`task_claims`/`exceptions`/`putaway`/`inventory_count`/`packing`/
+`missing_label`/`unidentified_goods` 这些 resource 目前在线上 `permissions` 表里**完全不存在**
+（直接查询确认，见 `docs/03-database/DBA_ADDENDUM_REQUEST_PERMISSIONS_SEED_2026-07-28.md`）。
+接入这些端点的 `requirePermission()` 调用前，需要先请求 DBA 把对应 `resource:action` 行插入
+`permissions` 表，否则跟 `devices:CREATE` 一样，会出现"代码要求权限、数据库查无此权限定义"的
+情况——`check_user_permission` RPC 查不到匹配行时按 `EXISTS(...)` 语义返回 `false`，效果等同
+恒 403，不会报错，容易被忽略。
+
 ### 7.3 API Key 格式
 ```
 # Platform API Key

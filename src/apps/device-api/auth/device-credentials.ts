@@ -14,6 +14,7 @@
  */
 import { SignJWT, jwtVerify, type JWTPayload, type FlattenedJWSInput } from 'jose';
 import { hash, verify } from 'argon2';
+import { compare as compareBcrypt } from 'bcryptjs';
 
 /** 设备 Token 载荷 */
 export interface DeviceTokenPayload extends JWTPayload {
@@ -156,6 +157,20 @@ export async function verifyApiKeySecret(
 ): Promise<boolean> {
   try {
     return await verify(secretHash, secretPlaintext);
+  } catch {
+    return false;
+  }
+}
+
+/** 验证操作员签到密码（`users.password_hash`，bcrypt 格式，migration 022 CHECK 约束）
+ *  与 API Key（argon2id）是两套不同的哈希算法，不可混用验证函数。
+ */
+export async function verifyOperatorPassword(
+  passwordPlaintext: string,
+  passwordHash: string
+): Promise<boolean> {
+  try {
+    return await compareBcrypt(passwordPlaintext, passwordHash);
   } catch {
     return false;
   }
@@ -379,7 +394,7 @@ export async function issueTokenPair(
   tokenType: 'Bearer';
 }> {
   const [accessToken, refreshToken] = await Promise.all([
-    issueAccessToken(deviceId, tenantId, config),
+    issueAccessToken(deviceId, tenantId, config, userId),
     issueRefreshToken(deviceId, tenantId, config),
   ]);
 

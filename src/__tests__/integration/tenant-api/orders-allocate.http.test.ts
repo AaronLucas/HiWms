@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
+import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
@@ -35,10 +36,13 @@ describe.skipIf(!RUN)('tenant-api POST /api/orders/:id/allocate HTTP 契约', ()
   let tenantId: string;
   let otherTenantId: string;
   let productId: string;
+  let userId: string;
 
+  // 固定真实测试用户 + 播种权限（Sprint 4 RBAC 接入后必须有真实 user_roles 数据）。
+  // isSystemUser 保持 false：用它绕过 RBAC 会连带绕过应用层跨租户防御检查。
   const injectContext = (tid: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.context = {
-      user: { id: randomUUID(), tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
+      user: { id: userId, tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
       tenantId: tid,
       correlationId: `test-${Date.now()}`,
     };
@@ -93,7 +97,51 @@ describe.skipIf(!RUN)('tenant-api POST /api/orders/:id/allocate HTTP 契约', ()
       .from('inventory').insert({ tenant_id: tenantId, product_id: productId, location_id: location.id, container_id: container.id, quantity: 20 });
     if (invErr) throw invErr;
 
-    const deps = { supabaseAdapters: adapters } as unknown as TenantApiDependencies;
+    const { data: user, error: userErr } = await client
+      .from('users')
+      .insert({ tenant_id: tenantId, username: `ecc-tenant-api-alloc-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
+      .select()
+      .single();
+    if (userErr) throw userErr;
+    userId = user.id;
+
+    const { data: role, error: roleErr } = await client
+      .from('roles')
+      .insert({ tenant_id: tenantId, name: `ecc-tenant-api-alloc-role-${Date.now()}` })
+      .select()
+      .single();
+    if (roleErr) throw roleErr;
+
+    for (const { resource, action } of [
+      { resource: 'orders', action: 'READ' },
+      { resource: 'orders', action: 'UPDATE' },
+    ]) {
+      const { data: permission, error: permErr } = await client
+        .from('permissions')
+        .upsert({ resource, action }, { onConflict: 'resource,action' })
+        .select()
+        .single();
+      if (permErr) throw permErr;
+
+      const { error: rolePermErr } = await client
+        .from('role_permissions')
+        .insert({ role_id: role.id, permission_id: permission.id });
+      if (rolePermErr) throw rolePermErr;
+    }
+
+    const { error: userRoleErr } = await client
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: role.id, scope: 'tenant' });
+    if (userRoleErr) throw userRoleErr;
+
+    const middlewareFactory = new ExpressMiddlewareFactory(
+      adapters.auth.provider,
+      adapters.auth.permissionChecker,
+      adapters.auth.tenantResolver,
+      adapters.cache.provider,
+      adapters.cache.keyBuilder
+    );
+    const deps = { supabaseAdapters: adapters, middlewareFactory } as unknown as TenantApiDependencies;
     app = express();
     app.use(express.json());
     app.use(injectContext(tenantId));

@@ -27,8 +27,15 @@ export function createDevicePublicAuthRouter(deps: DeviceApiDependencies): Route
   const router = Router();
   const { supabaseAdapters } = deps;
 
+  // jwtIssuer/jwtAudience 必须与 main.ts 里 DeviceAuthMiddleware 使用的 deps.config.device.*
+  // 保持一致（同一份 config 对象），不能各自取 DEFAULT_DEVICE_CREDENTIALS_CONFIG 的硬编码值——
+  // 后者是 'hiwms'，而 loadDeviceApiConfig() 在 DEVICE_JWT_ISSUER 环境变量未设置时的真实默认值
+  // 是 'hiwms-device-api'，两者不一致会导致登录签发的 token 在 Bearer 验证时因 iss claim
+  // 不匹配恒 401（2026-07-28 经代码核查确认：全仓库包括 .env.example 均未设置过该环境变量）。
   const credentialsConfig: DeviceCredentialsConfig = {
     ...DEFAULT_DEVICE_CREDENTIALS_CONFIG,
+    jwtIssuer: deps.config.device.jwtIssuer,
+    jwtAudience: deps.config.device.jwtAudience,
     tenantSigningKeys: sharedTenantSigningKeys,
   };
 
