@@ -132,7 +132,8 @@
 - [x] **二维码配对流程端点**（`POST /admin/devices/:id/pairing-qr`）
   - ✅ 生成新 API Key → 轮换 `secret_hash`/`secret_rotated_at` → 返回 base64url 二维码
 - [x] **测试覆盖**：单元测试 59/59 ✅ | 集成测试 5/5 ✅（sync 端点 HTTP 契约）
-- [ ] **device auth HTTP 集成测试补充**（login/refresh/provision/pairing-qr 端到端，Sprint 3）
+- [x] **device auth HTTP 集成测试补充**（login/refresh/provision/pairing-qr 端到端，Sprint 3）——
+      `src/__tests__/integration/device-api/auth.http.test.ts` 已存在，即 Sprint 3.2 所述工作，2026-08-01 复核确认
 
 ---
 
@@ -142,29 +143,33 @@
 > **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`  
 > **总体后端完成度**: ~55%
 
-#### Sprint 0: ADR-015 Auth Identity Bridge（🟡 应用层已完成，2026-07-27，等待 DBA Addendum）
+#### Sprint 0: ADR-015 Auth Identity Bridge（✅ 已完成，含数据库侧，2026-08-01 ECC 复核确认）
 
-- [ ] 0.1 创建 `auth.users` → `public.users` 触发器（HiWmsSupabase addendum，已提交 `DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md`，等待 DBA/产品对 5 个开放问题拍板）
+- [x] 0.1 创建 `auth.users` → `public.users` 触发器（已落地为 `supabase/migrations/026_auth_identity_bridge_trigger.sql`；5 个开放问题已于 2026-07-28 拍板，2026-08-01 复核确认）
 - [x] 0.2 实现 per-request Supabase client（`SupabaseClient`/`SupabaseBaseRepository`，`authToken` 参数 + `TTableName` 泛型），2026-07-27 完成，`tsc` 零错误
 - [x] 0.3 修复 `injectRlsContext` 让 Repository 层消费 per-request JWT，2026-07-27 完成
 - [x] 0.4 跨租户隔离集成测试（`tenant-isolation.test.ts`），2026-07-27 已编写并纳入 vitest 套件
 
-**完成日期**：2026-07-27（应用层）。**备注（两个尚未达成的限制）**：
+**完成日期**：2026-07-27（应用层）+ 2026-07-31（数据库侧触发器落地）。**备注（两个尚未达成的限制，2026-08-01 复核，①仍成立/②已解除）**：
 ① `authToken` 目前只打通了 `SupabaseBaseRepository` 8 个通用 CRUD 方法，绝大多数具体仓库业务
-查询方法与目前唯一接线的 `device-api` 路由尚未使用该机制，RLS 尚未在真实业务查询里端到端验证；
-② `tenant-isolation.test.ts` 本地实测因触发器不存在导致 `profileA.tenant_id` 为 `null`，CI 因
-未设置 `RUN_DB_INTEGRATION_TESTS` 恒被 `skipIf` 跳过，该测试暂不能作为隔离已验证生效的证据，
-需等 0.1 触发器落地后补充真实验证。
+查询方法（含 `SupabaseInventoryRepository` 9 个业务方法）尚未使用该机制，RLS 尚未在真实业务
+查询里端到端验证——**2026-08-01 ECC 安全复核进一步确认：`SupabasePermissionChecker`、
+`SupabaseTenantResolver`、`SupabaseAuthProvider.verifyToken()` 的 profile/role 查询均未附带
+调用方 JWT，实际运行在匿名单例上下文**，详见下方"ECC 多维度评审"CRITICAL/HIGH 项；
+② `tenant-isolation.test.ts` 已于 2026-08-01 通过 `.github/workflows/db-integration.yml` 注入
+`RUN_DB_INTEGRATION_TESTS=1`，CI 中真实执行（不再恒被 skip），该限制已解除。
 
-#### Sprint 1: Repository Phase 2（⏳ 待 Sprint 0 完成）
+#### Sprint 1: Repository Phase 2（✅ 已完成，2026-08-01 复核确认——实现文件与并发测试均已存在）
 
-- [ ] 1.1 `SupabaseTenantRepository`
-- [ ] 1.2 `SupabaseProductRepository` + `SupabaseProductConstraintRepository`
-- [ ] 1.3 `SupabaseInventoryRepository`
-- [ ] 1.4 `SupabaseOrderRepository`
-- [ ] 1.5 `SupabaseWorkOrderRepository`
-- [ ] 1.6 `SupabaseSortingChuteRepository`
-- [ ] 1.7 Admin API 绕过 Repository 层修复
+- [x] 1.1 `SupabaseTenantRepository`
+- [x] 1.2 `SupabaseProductRepository` + `SupabaseProductConstraintRepository`
+- [x] 1.3 `SupabaseInventoryRepository`
+- [x] 1.4 `SupabaseOrderRepository`
+- [x] 1.5 `SupabaseWorkOrderRepository`
+- [x] 1.6 `SupabaseSortingChuteRepository`
+- [ ] 1.7 Admin API 绕过 Repository 层修复（与 Sprint 5 5.2 重复项，2026-08-01 ECC 架构复核确认
+      `src/apps/admin-api/main.ts:130,145,161` 仍有 3 处 `getAdminClient().from()` 直查；复核
+      同时发现该文件比 5.2 记录的问题更严重，见下方"ECC 多维度评审"P2-7）
 
 #### Sprint 2: Tenant API + Use Case 层（✅ 已完成，2026-07-27，draft PR #58）
 
@@ -193,23 +198,43 @@
 
 > 详细任务表与依赖关系见 `docs/00-project/ECC_EXECUTION_PLAN.md`「第二阶段 ECC 多维度复核」
 
-- [ ] 4.1 推进 AUTH_IDENTITY_BRIDGE 5 个开放问题拍板（可立即启动，不依赖 DBA）
-- [ ] 4.2 触发器落地后解除 `tenant-isolation.test.ts` 的 skip，真实验证跨租户隔离（阻塞中，待 4.1）
-- [ ] 4.3 修复 `SupabaseAuthProvider.signUp/signIn/generateTokens` 3 处已知遗留问题（阻塞中，待 4.1）
-- [ ] 4.4 RBAC 覆盖矩阵设计（可立即启动）——直接代码核查确认：tenant-api 10 端点 + device-api
-      15 个业务端点共 25 个受保护端点，仅 1 个（`POST /device/provision`）接了权限校验
-- [ ] 4.5 推广 RBAC 到 tenant-api 写端点（`POST /orders`、`/orders/:id/allocate`、`/waves/generate`）
-- [ ] 4.6 推广 RBAC 到 device-api 剩余业务端点
-- [ ] 4.7 `fn_expire_task_claims` cron + permissions 种子数据落地验证（待 DBA 反馈两个已提交 addendum）
-- [ ] 4.8 收窄 `ExpressMiddlewareFactory.requirePermission()` 里 `is_system_user` 的硬编码 RBAC
-      bypass，改为走真实 `check_user_permission` RPC；同步修复 `waves.http.test.ts` 对该 bypass
-      的显式依赖。设计分析见 `docs/01-architecture/ADR/016-system-user-authorization-model.md`
+- [x] 4.1 推进 AUTH_IDENTITY_BRIDGE 5 个开放问题拍板（2026-07-28 已拍板，见 026 迁移文件头部记录，2026-08-01 复核确认）
+- [x] 4.2 触发器落地后解除 `tenant-isolation.test.ts` 的 skip，真实验证跨租户隔离（PR #66，`RUN_DB_INTEGRATION_TESTS=1` 已注入 CI，2026-08-01 复核确认）
+- [ ] 4.3 修复 `SupabaseAuthProvider.signUp/signIn/generateTokens` 3 处已知遗留问题——signIn/signUp
+      的 tenantId 读取逻辑已修（PR #67 + PR #69 captchaToken），仅剩 `generateTokens()` 去留未决
+      （仍 `throw`，注释写"Consider deprecating"，`SupabaseAuthProvider.ts:131`）。**2026-08-01
+      ECC 安全复核额外发现更严重的同源问题，未被此项原始范围覆盖，见下方 CRITICAL 项**
+- [x] 4.4 RBAC 覆盖矩阵设计——`API_SPEC.md` §7.2 矩阵已写，tenant-api 10/10、device-api 18 路由
+      16 处 `requireDevicePermission` 已接（2026-08-01 复核确认）
+- [x] 4.5 推广 RBAC 到 tenant-api 写端点（`POST /orders`、`/orders/:id/allocate`、`/waves/generate`，2026-08-01 复核确认）
+- [x] 4.6 推广 RBAC 到 device-api 剩余业务端点（2026-08-01 复核确认）
+- [x] 4.7 `fn_expire_task_claims` cron + permissions 种子数据落地验证（迁移 024/025 已入库，db-integration CI 全量应用，2026-08-01 复核确认）
+- [x] 4.8 收窄 `ExpressMiddlewareFactory.requirePermission()` 里 `is_system_user` 的硬编码 RBAC
+      bypass，改为走真实 `check_user_permission` RPC（PR #65，已合入，2026-08-01 复核确认
+      `ExpressMiddlewareFactory.ts:123` 处 bypass 已移除，仅留 ADR-016 引用注释）
 - [ ] 4.9（后续架构方向，未排期）评估 ADR-016 提出的 `scope='platform'` RBAC 原生权限模型 /
       限时影子登录+审计模式，替代当前 `is_system_user` 布尔值的双重语义复用
-- [ ] 4.10（安全，未排期）核查所有仓储业务查询方法是否均已接入 `authToken`/per-request
-      authenticated client 机制（ADR-016 §现状分析 3 相邻发现：漏传 `authToken` 的仓储方法，
-      配合 `SupabaseTenantResolver` 未校验归属的 `?tenant_id=`/`x-tenant-id` 参数，理论上对
-      任意用户可越权跨租户读取）
+- [ ] 4.10（安全，**建议提前排期，不再是"理论上"**）核查所有仓储业务查询方法是否均已接入
+      `authToken`/per-request authenticated client 机制——2026-08-01 ECC 复核确认两个具体、
+      已验证（非猜测）的问题需要一并解决：
+      ① `SupabaseInventoryRepository` 9 个业务方法零 `authToken`（仅 Base 类 CRUD 支持）；
+      ② `SupabaseTenantResolver.resolveFromRequest()`（`SupabaseTenantResolver.ts:40-53`）接受
+      `x-tenant-id` 头 / `?tenant_id=` 参数，只校验租户存在且 active，**不校验是否归属当前调用
+      用户**，`ExpressMiddlewareFactory.resolveTenant()`（87-94 行）原样透传，目前仅靠 RLS 兜底。
+      建议在前端定 API 契约（是否允许客户端传 `x-tenant-id`）前排期解决，否则契约定完后改起来
+      成本更高。
+- [ ] 4.12（**CRITICAL，2026-08-01 ECC 安全复核新发现，建议 Sprint 6 前修复**）共享单例
+      Supabase client 的会话被 `signIn`/`signUp` 污染，导致并发下跨用户/跨租户 RLS 上下文串扰：
+      `SupabaseAuthProvider.signIn()`（`SupabaseAuthProvider.ts:152`）与 `signUp()`（208 行）
+      直接在 `this.client`——即 `WmsSupabaseClient` 单例的 `getClient()` 返回对象，与
+      `SupabaseTenantResolver`、`SupabasePermissionChecker` 共享同一引用——上调用
+      `signInWithPassword`/`signUp`，会原地修改该单例的会话状态（`Authorization` header），
+      污染同一 Node 事件循环里所有其他并发请求通过该单例发起的 `.from()`/`.rpc()` 调用的 RLS
+      身份。已知修复模式（本会话测试代码中已用于规避同一问题）：`signIn`/`signUp` 内部改用
+      独立的一次性 `createClient()` 实例，不复用共享单例。**HIGH 附带项**：
+      `SupabasePermissionChecker`/`SupabaseTenantResolver`/`verifyToken()` 的 profile/role 查询
+      均未附带调用方 JWT（未用 `authToken`/per-request client），当前非独立可利用，但与上述
+      单例污染叠加后，这些查询的实际 RLS 身份变得不可预测而非可靠为 NULL，建议一并修复。
 - [x] 4.11 Finding #5：CAPTCHA provider 可配置化 + `captchaToken` 透传（PR #69，已合入）——
       `IAuthProvider`/`SupabaseAuthProvider` 支持可选 `captchaToken`（provider-agnostic 透传，
       不判断/不探测具体 provider）+ `CAPTCHA_PROVIDER` 环境变量三态日志标记；本地用 Docker
@@ -217,22 +242,57 @@
       （拒绝路径额外用非测试密钥验证过，与密钥是否为测试密钥无关）。
       **⚠️ 生产开启前置条件（阻塞项，未排期）**：本仓库目前没有任何前端验证码控件，
       `captchaToken` 无来源。若在 Supabase Cloud Dashboard 打开 Attack Protection，
-      会导致所有走 `signIn`/`signUp` 的人工登录/注册请求立即全部失败（含 admin-api 现有
-      `POST /auth/login`），因为没有任何调用方会传入真实 token。**必须先完成前端验证码
-      控件（Sprint 6 前端启动准备的一部分）产出真实 `captchaToken`，才能在生产打开
-      Attack Protection**，否则会锁死所有人工登录。
+      会导致所有走 `signIn`/`signUp` 的人工登录/注册请求立即全部失败，因为没有任何调用方
+      会传入真实 token。受影响范围：① admin-api 现有 `POST /auth/login`；② **device-api
+      的 `POST /device/auth/operator-checkin`**（`src/apps/device-api/routes.ts:152`，走的
+      是同一个匿名 anon-key 客户端 + `signInWithPassword`，GoTrue 的 Attack Protection 是
+      项目级全局开关，不区分"浏览器登录"与"设备已认证上下文里的服务端调用"，完成前端
+      控件、打开生产开关后会连带打断整个仓库现场的操作员登录，PR #69 独立代码复核
+      2026-08-01 发现，此前遗漏）。**必须先完成前端验证码控件（Sprint 6 前端启动准备的
+      一部分）产出真实 `captchaToken`，并明确 operator-checkin 是否需要独立豁免策略，
+      才能在生产打开 Attack Protection**，否则会锁死所有人工登录及设备端操作员签到。
 
-#### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划）
+#### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划；2026-08-01 ECC 架构复核扩充）
 
-- [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁
-- [ ] 5.2 Admin API 绕过 Repository 层技术债清理
+- [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁——租户隔离验证
+      目前仍是软门禁（2026-08-01 复核确认现状未变）
+- [ ] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-01 ECC 架构复核确认问题比原记录更
+      严重：`src/apps/admin-api/main.ts` 是单文件 184 行，没有 `config.ts`/`di.ts`/`routes.ts`/
+      `validation.ts`（与 `ARCHITECTURE.md` §2.3 描述的分层结构不符）；鉴权只有 `isSystemUser`
+      布尔判断（70-76 行），没有走 `requirePermission()`；请求体零 schema 校验（`req.body as any`，
+      90/119 行）；`/auth/login` 无 `rateLimit()`，暴力破解无限流保护
 - [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
+- [ ] 5.4（2026-08-01 新增）`changePassword()` 无任何 HTTP 路由可达——`SupabaseAuthProvider
+      .changePassword()`（`SupabaseAuthProvider.ts:273`）已实现但零调用方，`DB_SCHEMA.md:184`
+      记载它是废弃 `IUserRepository.resetPassword` 的替代方案，需补对应路由
+- [ ] 5.5（2026-08-01 新增）端口/适配器不一致清理：`IVasBomRepository`（`src/core/ports/db/`）
+      有端口无实现，`REPOSITORY_ROADMAP.md:119` 误标 ✅ 已完成，需订正；`src/core/{auth,db,
+      cache,external,queue}/` 存在一套零引用的重复端口目录（含过期的 `src/core/auth/
+      IAuthProvider.ts`，与真正生效的 `src/core/ports/auth/IAuthProvider.ts` 并存，本轮
+      captchaToken 改动未同步到这份死代码），建议整体删除
 
-#### Sprint 6: 前端启动准备（⏳ 依赖 Sprint 4 安全闭环，2026-07-28 规划）
+#### Sprint 6: 前端启动准备（⏳ 依赖 Sprint 4 安全闭环，2026-07-28 规划；2026-08-01 ECC 架构复核：**当前判定"未就绪"，非仅剩尾工**）
+
+> 2026-08-01 ECC 架构复核结论：tenant-api 已实现的 9 个业务端点本身质量良好（真实用例接线 +
+> RBAC + zod 校验，非 stub），但缺口在"能不能被浏览器前端接入"这一层，以下 P0 项建议先解决
+> 再让前端团队正式开工，否则会在集成第一天就卡住。
 
 - [ ] 6.1 确认前端仓库/技术栈落地方式（`ROADMAP.md` 阶段 2 提到 Uniapp Vue3，待确认是否独立仓库）
-- [ ] 6.2 API 对接文档定稿（认证方式：标准 Supabase 用户 JWT，基于 `API_SPEC.md` §3.16）
-- [ ] 6.3 CORS / 环境变量对接清单
+- [ ] 6.2（**P0，2026-08-01 复核标注**）API 对接文档定稿——认证方式实际上尚未定案：`tenant-api/
+      main.ts` 只挂了 `/health` + 受保护的 `/api` 路由，**没有任何登录/登出/刷新/重置密码路由**
+      （对比 admin-api 有 `POST /auth/login`、device-api 有 `/device/auth/login`+`/refresh`）。
+      需先决定租户前端登录走"直连 Supabase Auth（`supabase-js`）"还是"新增 tenant-api 路由"，
+      再写入 `API_SPEC.md`
+- [ ] 6.3（**P0**）CORS / 环境变量对接清单——`tenant-api`/`admin-api`/`device-api` 三个 `main.ts`
+      均未设置任何 CORS 头，仓库内无 `cors` 依赖，浏览器发起的任何请求会在 preflight 阶段直接
+      失败，必须在前端第一次联调前解决
+- [ ] 6.4（**P1，2026-08-01 新增**）三个 App 的响应体结构不统一：tenant-api 用 `{success,
+      data}`/`{success, error}`（符合 `CONVENTIONS.md` 约定），admin-api 混用 `{data}`/裸对象/
+      `{error}`，device-api 用各自業務形状 + `{error, message}`——前端需要写三套解析逻辑，建议
+      收敛到统一 envelope 再对接
+- [ ] 6.5（**P1，2026-08-01 新增**）无 API 契约生成：`API_SPEC.md` 为手写 Markdown，无 OpenAPI
+      codegen、无共享类型包，前端类型只能手抄，长期会漂移——建议至少给已实现的端点生成 OpenAPI
+      schema
 
 ---
 
