@@ -33,11 +33,6 @@ export interface IUserRepository extends IRepository<UserRow, UserInsert, UserUp
   updateRole(userId: string, role: string): Promise<UserRow>;
 
   /**
-   * 重置密码
-   */
-  resetPassword(userId: string, newPasswordHash: string): Promise<void>;
-
-  /**
    * 检查用户名是否存在
    */
   usernameExists(username: string): Promise<boolean>;

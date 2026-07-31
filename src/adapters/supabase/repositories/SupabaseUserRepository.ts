@@ -60,10 +60,6 @@ export class SupabaseUserRepository extends SupabaseBaseRepository<
     return this.update(userId, { role } as UserUpdate);
   }
 
-  async resetPassword(userId: string, newPasswordHash: string): Promise<void> {
-    await this.update(userId, { password_hash: newPasswordHash } as UserUpdate);
-  }
-
   async usernameExists(username: string): Promise<boolean> {
     const { data, error } = await this.getClient()
       .from(this.tableName)

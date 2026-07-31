@@ -86,7 +86,6 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
     productId = product.id;
 
     const user = await createTestUser(client, { tenantId, username: `ecc-tenant-api-orders-user-${Date.now()}` });
-    if (userErr) throw userErr;
     userId = user.id;
 
     const { data: role, error: roleErr } = await client

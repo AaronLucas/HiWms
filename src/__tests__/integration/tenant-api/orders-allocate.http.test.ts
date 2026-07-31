@@ -99,7 +99,6 @@ describe.skipIf(!RUN)('tenant-api POST /api/orders/:id/allocate HTTP 契约', ()
     if (invErr) throw invErr;
 
     const user = await createTestUser(client, { tenantId, username: `ecc-tenant-api-alloc-user-${Date.now()}` });
-    if (userErr) throw userErr;
     userId = user.id;
 
     const { data: role, error: roleErr } = await client
