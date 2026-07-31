@@ -88,6 +88,16 @@ export async function createAdminApiApp(config: AdminApiConfig): Promise<express
   adminRouter.post('/tenants', async (req: Request, res: Response) => {
     try {
       const tenant = await supabaseAdapters.repositories.tenants.create(req.body as any);
+
+      // 建租户后必须初始化默认 ADMIN 角色 + RBAC 权限（迁移 024），否则该租户
+      // 挂不上任何角色/权限，后续所有用户在这个租户下都会被 RBAC 拒绝。
+      const { error: provisionError } = await supabaseAdapters.client
+        .getAdminClient()
+        .rpc('fn_provision_tenant_defaults', { p_tenant_id: tenant.id });
+      if (provisionError) {
+        console.error(`租户 ${tenant.id} 创建成功但默认角色/权限初始化失败:`, provisionError);
+      }
+
       res.status(201).json(tenant);
     } catch (error) {
       res.status(500).json({ error: 'Failed to create tenant' });

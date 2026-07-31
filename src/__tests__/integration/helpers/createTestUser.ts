@@ -17,7 +17,14 @@ type UserRow = Database['public']['Tables']['users']['Row'];
 
 export async function createTestUser(
   adminClient: SupabaseClient<Database>,
-  opts: { tenantId?: string; username?: string; role?: string; isActive?: boolean; password?: string } = {}
+  opts: {
+    tenantId?: string;
+    username?: string;
+    role?: string;
+    isActive?: boolean;
+    password?: string;
+    isSystemUser?: boolean;
+  } = {}
 ): Promise<UserRow> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `ecc-test-${suffix}@ecc-test.invalid`;
@@ -40,6 +47,7 @@ export async function createTestUser(
   const patch: Partial<UserRow> = {};
   if (opts.role) patch.role = opts.role;
   if (opts.isActive !== undefined) patch.is_active = opts.isActive;
+  if (opts.isSystemUser !== undefined) patch.is_system_user = opts.isSystemUser;
 
   if (opts.tenantId && opts.tenantId !== autoCreatedTenantId) {
     patch.tenant_id = opts.tenantId;
