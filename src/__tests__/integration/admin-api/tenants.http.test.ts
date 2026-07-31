@@ -11,11 +11,13 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import request from 'supertest';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Express } from 'express';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createAdminApiApp } from '../../../apps/admin-api/main';
 import { createTestUser } from '../helpers/createTestUser';
+import type { Database } from '../../../types/database';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -43,7 +45,15 @@ describe.skipIf(!RUN)('admin-api POST /api/admin/tenants HTTP 契约', () => {
     const adminClient = adapters.client.getAdminClient();
 
     const platformAdmin = await createTestUser(adminClient, { isSystemUser: true });
-    const { data: signIn, error } = await adminClient.auth.signInWithPassword({
+
+    // 注意：登录必须用独立的匿名 client，不能复用 adminClient——supabase-js 的
+    // auth.signInWithPassword() 会把调用它的那个 client 实例的内部会话状态从
+    // service_role 篡改成登录用户的 authenticated 身份，导致 adminClient 后续
+    // 查询也被 RLS 拦截（本文件早期版本踩过这个坑，排查记录见 PR 描述）。
+    const anonSignInClient: SupabaseClient<Database> = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false },
+    });
+    const { data: signIn, error } = await anonSignInClient.auth.signInWithPassword({
       email: platformAdmin.email!,
       password: 'Ecc-Test-Password-2026!',
     });
