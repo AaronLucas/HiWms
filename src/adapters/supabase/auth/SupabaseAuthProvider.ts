@@ -17,11 +17,29 @@ interface UserRole {
   }> | null;
 }
 
+/**
+ * 当前生效的 CAPTCHA provider——只用于日志标记，不改变任何校验逻辑：
+ * Supabase 的 captchaToken 字段本身是 provider-agnostic 的，是否真的要求/校验
+ * 完全由 Supabase 项目侧 Attack Protection 配置决定，应用层无法也无需探测。
+ * 这里只是把部署时明确配置的值记录下来，方便排障时确认"当前以为开的是哪个"。
+ */
+type CaptchaProviderMode = 'none' | 'hcaptcha' | 'turnstile';
+
+function resolveCaptchaProviderMode(): CaptchaProviderMode {
+  const raw = (process.env.CAPTCHA_PROVIDER ?? '').trim().toLowerCase();
+  return raw === 'hcaptcha' || raw === 'turnstile' ? raw : 'none';
+}
+
 export class SupabaseAuthProvider implements IAuthProvider {
+  private readonly captchaProviderMode: CaptchaProviderMode;
+
   constructor(
     private client: SupabaseJsClient<Database>,
     private adminClient: SupabaseJsClient<Database> | null = null
-  ) {}
+  ) {
+    this.captchaProviderMode = resolveCaptchaProviderMode();
+    console.log(`SupabaseAuthProvider: CAPTCHA_PROVIDER=${this.captchaProviderMode}`);
+  }
 
   async verifyToken(token: string): Promise<{
     userId: string;
@@ -125,13 +143,24 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   /** 使用邮箱密码登录 - ADR-015: 修正从 profile/app_metadata 读取 tenantId */
-  async signIn(email: string, password: string): Promise<{
+  async signIn(email: string, password: string, captchaToken?: string): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
     user: { id: string; tenantId: string | null };
   } | null> {
-    const { data, error } = await this.client.auth.signInWithPassword({ email, password });
+    const { data, error } = await this.client.auth.signInWithPassword({
+      email,
+      password,
+      options: { captchaToken },
+    });
+
+    if (this.captchaProviderMode !== 'none') {
+      console.log(
+        `SupabaseAuthProvider.signIn: captcha_provider=${this.captchaProviderMode} ` +
+        `captcha_token=${captchaToken ? 'provided' : 'absent'} result=${error || !data.session ? 'failed' : 'ok'}`
+      );
+    }
 
     if (error || !data.session) {
       return null;
@@ -168,7 +197,7 @@ export class SupabaseAuthProvider implements IAuthProvider {
    * 触发器 handle_new_user 会在 public.users 创建行并建立租户，
    * 然后此处通过 Admin API 将 tenant_id 写入 app_metadata
    */
-  async signUp(email: string, password: string, metadata: Record<string, unknown>): Promise<{
+  async signUp(email: string, password: string, metadata: Record<string, unknown>, captchaToken?: string): Promise<{
     userId: string;
     tenantId: string | null;
   } | null> {
@@ -180,9 +209,17 @@ export class SupabaseAuthProvider implements IAuthProvider {
       email,
       password,
       options: {
-        data: metadata  // user_metadata：用户可改的资料（昵称等）
+        data: metadata,  // user_metadata：用户可改的资料（昵称等）
+        captchaToken,
       },
     });
+
+    if (this.captchaProviderMode !== 'none') {
+      console.log(
+        `SupabaseAuthProvider.signUp: captcha_provider=${this.captchaProviderMode} ` +
+        `captcha_token=${captchaToken ? 'provided' : 'absent'} result=${error || !data.user ? 'failed' : 'ok'}`
+      );
+    }
 
     if (error || !data.user) {
       return null;

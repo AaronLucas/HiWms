@@ -48,9 +48,12 @@ export interface IAuthProvider {
    * 使用邮箱密码登录
    * @param email 邮箱
    * @param password 密码
+   * @param captchaToken 可选，前端验证码控件（hCaptcha/Turnstile）产出的 token；
+   *   是否校验完全由 Supabase 项目侧 Attack Protection 配置决定——未开启时该参数
+   *   被忽略，开启后未提供会被拒绝。应用层不需要关心具体是哪个 provider。
    * @returns 访问令牌、刷新令牌、用户信息
    */
-  signIn(email: string, password: string): Promise<{
+  signIn(email: string, password: string, captchaToken?: string): Promise<{
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
@@ -62,9 +65,10 @@ export interface IAuthProvider {
    * @param email 邮箱
    * @param password 密码
    * @param metadata 额外元数据（如租户名、角色等）
+   * @param captchaToken 可选，同 signIn 的 captchaToken
    * @returns 用户ID、租户ID
    */
-  signUp(email: string, password: string, metadata: Record<string, unknown>): Promise<{
+  signUp(email: string, password: string, metadata: Record<string, unknown>, captchaToken?: string): Promise<{
     userId: string;
     tenantId: string | null;
   } | null>;
