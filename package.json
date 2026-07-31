@@ -24,7 +24,6 @@
     "@reduxjs/toolkit": "^2.3.0",
     "@supabase/supabase-js": "^2.110.0",
     "argon2": "^0.45.1",
-    "bcryptjs": "^3.0.3",
     "express": "^4.19.2",
     "hiwms-workflow-engine": "workspace:*",
     "jose": "^6.2.4",

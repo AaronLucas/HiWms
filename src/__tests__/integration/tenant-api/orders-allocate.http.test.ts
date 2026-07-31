@@ -20,6 +20,7 @@ import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
+import { createTestUser } from '../helpers/createTestUser';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
@@ -97,12 +98,7 @@ describe.skipIf(!RUN)('tenant-api POST /api/orders/:id/allocate HTTP 契约', ()
       .from('inventory').insert({ tenant_id: tenantId, product_id: productId, location_id: location.id, container_id: container.id, quantity: 20 });
     if (invErr) throw invErr;
 
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-tenant-api-alloc-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (userErr) throw userErr;
+    const user = await createTestUser(client, { tenantId, username: `ecc-tenant-api-alloc-user-${Date.now()}` });
     userId = user.id;
 
     const { data: role, error: roleErr } = await client

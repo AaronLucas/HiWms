@@ -46,6 +46,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 import { SupabaseMissingLabelRepository } from '../../../adapters/supabase/repositories/SupabaseMissingLabelRepository';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -106,12 +107,7 @@ describe.skipIf(!RUN)('SupabaseMissingLabelRepository 漏码闭环正确性（Ph
     if (tenantErr) throw tenantErr;
     tenantId = tenant.id;
 
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p1-3-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (userErr) throw userErr;
+    const user = await createTestUser(client, { tenantId, username: `ecc-p1-3-user-${Date.now()}` });
     userId = user.id;
 
     // fn_confirm_label_applied 通过 fn_resolve_exception 关闭异常，要求 resolver 具备

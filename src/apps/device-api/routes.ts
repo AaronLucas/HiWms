@@ -58,15 +58,16 @@ import {
   generateApiKey,
   encodePairingQr,
   issueAccessToken,
-  verifyOperatorPassword,
   DEFAULT_DEVICE_CREDENTIALS_CONFIG,
   sharedTenantSigningKeys,
   type DeviceCredentialsConfig,
 } from './auth/device-credentials';
 
-// 与真实密码无关的固定 bcrypt 哈希，仅用于在操作员签到查不到用户时占用与真实校验
-// 相当的耗时，避免响应时长差异暴露用户名是否存在。
-const DUMMY_PASSWORD_HASH_FOR_TIMING = '$2b$10$z2eRBXdZHG/q3ReOnt.9XOdxAo2CR57ocDRBsfwfvznQjLXcMG19u';
+// 与真实账号无关的固定占位邮箱，仅用于在操作员签到查不到本地账号时仍触发一次
+// 等价耗时的 Supabase Auth signIn 调用，避免"账号不存在直接跳过"与"账号存在但
+// 密码错误"之间的响应时长差异暴露用户名是否存在（改用 Supabase Auth 前是对固定
+// bcrypt 哈希做 dummy compare，这里延续同样的等时性设计）。
+const DUMMY_EMAIL_FOR_TIMING = 'no-such-operator@device-checkin.invalid';
 
 export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
   const router = Router();
@@ -115,7 +116,13 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
    * POST /device/auth/operator-checkin
    * 设备已持有 device token 的前提下，操作员用 username+password 换一个
    * 携带 user_id 的新 access token，后续业务端点的 RBAC 校验依赖这个 user_id。
-   * 复用 users.username/password_hash（bcrypt），不新增 schema。
+   *
+   * 密码校验统一委托给 Supabase Auth（signInWithPassword），不再自行存储/比对
+   * 密码——migration 026 删除了 users.password_hash，且业务上"操作员"和"后台
+   * 管理员"都是同一套身份体系下的账号，没有理由维护两套密码校验逻辑（2026-07-31
+   * 项目负责人拍板：登录/注册/验证/改密码已全部收敛到 Supabase Auth，operator
+   * 签到不应是例外）。username 仅用于按租户查出对应账号的 email，再转手用
+   * email+password 走标准的 Supabase Auth 密码授权。
    */
   router.post('/auth/operator-checkin',
     validateRequest({ body: operatorCheckinSchema }),
@@ -131,21 +138,23 @@ export function createDeviceApiRouter(deps: DeviceApiDependencies): Router {
 
         const { data: user, error } = await supabaseAdapters.client.getAdminClient()
           .from('users')
-          .select('id, password_hash, is_active')
+          .select('id, email, is_active')
           .eq('tenant_id', tenantId)
           .eq('username', username)
           .single();
 
-        // 用户不存在/未激活/无密码哈希时，仍对固定 dummy hash 跑一次 bcrypt compare
-        // 再返回 401——不这样做的话，"用户名不存在"会比"用户名存在但密码错误"快得多
-        // （少了一次故意慢的 bcrypt 比较），响应时长差异本身就是一种用户名枚举侧信道。
-        if (error || !user || !user.is_active || !user.password_hash) {
-          await verifyOperatorPassword(password, DUMMY_PASSWORD_HASH_FOR_TIMING);
-          return res.status(401).json({ error: 'Authentication failed' });
-        }
+        const canAttemptLogin = !error && !!user && user.is_active && !!user.email;
 
-        const isValid = await verifyOperatorPassword(password, user.password_hash);
-        if (!isValid) {
+        // 账号不存在/未激活/尚未绑定 email（例如仍在用旧密码体系、还没有对应
+        // auth.users 记录的历史账号）时，仍对固定占位邮箱跑一次 signIn 再返回
+        // 401——理由同旧实现的 dummy bcrypt compare：避免"账号不存在"比"账号
+        // 存在但密码错误"响应更快，造成用户名枚举侧信道。
+        const session = await supabaseAdapters.auth.provider.signIn(
+          canAttemptLogin ? user!.email! : DUMMY_EMAIL_FOR_TIMING,
+          password
+        );
+
+        if (!canAttemptLogin || !session || session.user.id !== user!.id) {
           return res.status(401).json({ error: 'Authentication failed' });
         }
 

@@ -41,11 +41,24 @@ export class SupabaseAuthProvider implements IAuthProvider {
       // ADR-015: 优先从 app_metadata 读取 tenant_id（JWT 路径），回退查 users 表
       const tenantIdFromJwt = user.app_metadata?.tenant_id as string | undefined;
 
-      const { data: profile } = await this.client
+      const { data: profile, error: profileError } = await this.client
         .from('users')
         .select('tenant_id, role, is_system_user')
         .eq('id', user.id)
         .single();
+
+      // token 本身已通过 Supabase Auth 验证（上面 getUser 成功），但 public.users
+      // 档案查不到——不是"未登录"，是"已登录但档案缺失/查询失败"，会静默退化成
+      // tenantId=null、roles=[]、permissions=[] 的"已认证但零权限"对象，排障时
+      // 很容易被误当成正常的匿名/无权限请求。这里补日志，方便定位到底是触发器
+      // 没跑完（见 migration 026 handle_new_user）还是数据异常。
+      if (profileError) {
+        console.error(
+          `verifyToken: 用户 ${user.id} 已通过 Supabase Auth 验证，但查询 public.users 档案失败 ` +
+          `（code=${profileError.code}）——本次会话会退化为"已登录但零租户/零权限"`,
+          profileError
+        );
+      }
 
       // 获取用户角色和权限
       const { data: userRoles } = await this.client
@@ -214,5 +227,16 @@ export class SupabaseAuthProvider implements IAuthProvider {
       userId: data.user.id,
       tenantId,
     };
+  }
+
+  /** 修改用户密码——见 IAuthProvider.changePassword 注释 */
+  async changePassword(userId: string, newPassword: string): Promise<void> {
+    if (!this.adminClient) {
+      throw new Error('Admin client required for changePassword (needs service_role_key)');
+    }
+    const { error } = await this.adminClient.auth.admin.updateUserById(userId, { password: newPassword });
+    if (error) {
+      throw new Error(`changePassword failed: ${error.message}`);
+    }
   }
 }

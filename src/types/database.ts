@@ -7,9 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // graphql_public schema：pg_graphql 扩展自动生成的 GraphQL 端点。
-  // 本应用不直接调用该 schema；访问控制（REVOKE EXECUTE / RLS）
-  // 由 Supabase 平台层和 DBA 团队在 HiWmsSupabase 仓库管理。
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -2966,10 +2963,10 @@ export type Database = {
       users: {
         Row: {
           created_at: string | null
+          email: string | null
           id: string
           is_active: boolean | null
           is_system_user: boolean | null
-          password_hash: string
           role: string | null
           tenant_id: string | null
           updated_at: string | null
@@ -2977,10 +2974,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          email?: string | null
           id?: string
           is_active?: boolean | null
           is_system_user?: boolean | null
-          password_hash: string
           role?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -2988,10 +2985,10 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          email?: string | null
           id?: string
           is_active?: boolean | null
           is_system_user?: boolean | null
-          password_hash?: string
           role?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -4026,6 +4023,7 @@ export type Database = {
       fn_cross_dock_timeout_sweep: { Args: never; Returns: number }
       fn_current_tenant_id: { Args: never; Returns: string }
       fn_current_user_id: { Args: never; Returns: string }
+      fn_current_user_tenant_id_no_rls: { Args: never; Returns: string }
       fn_expire_stalled_sync_events: {
         Args: { p_timeout_interval?: string }
         Returns: number
@@ -4126,6 +4124,10 @@ export type Database = {
           p_serial_number: string
           p_tenant_id: string
         }
+        Returns: string
+      }
+      fn_provision_tenant_defaults: {
+        Args: { p_tenant_id: string }
         Returns: string
       }
       fn_purge_old_action_logs: {

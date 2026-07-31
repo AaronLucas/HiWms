@@ -39,6 +39,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 import { SupabaseExceptionRepository } from '../../../adapters/supabase/repositories/SupabaseExceptionRepository';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -133,20 +134,10 @@ describe.skipIf(!RUN)('SupabaseExceptionRepository 统一异常领域正确性�
       quantity: 50,
     });
 
-    const { data: authUser, error: authUserErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `exc-auth-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (authUserErr) throw authUserErr;
+    const authUser = await createTestUser(client, { tenantId, username: `exc-auth-user-${Date.now()}` });
     authorizedUserId = authUser.id;
 
-    const { data: unauthUser, error: unauthUserErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `exc-unauth-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (unauthUserErr) throw unauthUserErr;
+    const unauthUser = await createTestUser(client, { tenantId, username: `exc-unauth-user-${Date.now()}` });
     unauthorizedUserId = unauthUser.id;
 
     // permissions 是全局表（不带 tenant_id），先查后建，避免和其他并行测试撞唯一约束

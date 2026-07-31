@@ -30,6 +30,7 @@ import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createDeviceApiRouter } from '../../../apps/device-api/routes';
 import type { DeviceApiDependencies } from '../../../apps/device-api/di';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -135,12 +136,7 @@ describe.skipIf(!RUN)('device-api routes HTTP 契约正确性（剩余缺口清�
     // sync_events.operator_user_id 有外键约束指向 users 表，注入一个真实存在的行，
     // 不能像其他仓储层测试那样随手塞一个 randomUUID()（那些测试没有经过这条会写
     // operator_user_id 的路由代码路径，不会触发这个约束）。
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p2-http-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (userErr) throw userErr;
+    const user = await createTestUser(client, { tenantId, username: `ecc-p2-http-user-${Date.now()}` });
     userId = user.id;
 
     // Sprint 3 #30 + Sprint 4 #4.5/4.6：给 userId 授予本文件全部测试用例会用到的

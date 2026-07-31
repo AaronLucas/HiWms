@@ -17,7 +17,7 @@ import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters
 import { createDeviceApiApp } from '../../../apps/device-api/main';
 import type { DeviceApiConfig } from '../../../apps/device-api/config';
 import { generateApiKey } from '../../../apps/device-api/auth/device-credentials';
-import { hash as bcryptHash } from 'bcryptjs';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -73,16 +73,17 @@ describe.skipIf(!RUN)('device-api 认证端点 HTTP 集成（Sprint 3 #28）', (
     const config = { supabase: { url: SUPABASE_URL, anonKey: SUPABASE_SERVICE_ROLE_KEY, serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY }, server: { port: 0, host: '0.0.0.0' }, device: { jwtSecret: process.env.DEVICE_JWT_SECRET!, jwtIssuer: 'hiwms', jwtAudience: 'hiwms-devices' } } as DeviceApiConfig;
     app = await createDeviceApiApp(config);
 
-    // Sprint 4：操作员签到用的真实测试用户（真实 bcrypt 哈希，不是占位符），
-    // 授予 sync_policy:READ 供本文件"登录→签到→调用业务端点"的完整链路测试。
+    // Sprint 4：操作员签到用的真实测试用户，经真实 auth.users 触发器链路创建
+    // （migration 026 后 password_hash 已删除，operator-checkin 改走 Supabase
+    // Auth signIn），授予 sync_policy:READ 供本文件"登录→签到→调用业务端点"
+    // 的完整链路测试。
     operatorUsername = `ecc-operator-checkin-${Date.now()}`;
-    const passwordHash = await bcryptHash(operatorPassword, 10);
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: operatorUsername, password_hash: passwordHash, is_active: true })
-      .select()
-      .single();
-    if (userErr) throw userErr;
+    const user = await createTestUser(client, {
+      tenantId,
+      username: operatorUsername,
+      password: operatorPassword,
+      isActive: true,
+    });
 
     const { data: role, error: roleErr } = await client
       .from('roles')
