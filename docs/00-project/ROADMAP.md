@@ -201,6 +201,15 @@
 - [ ] 4.5 推广 RBAC 到 tenant-api 写端点（`POST /orders`、`/orders/:id/allocate`、`/waves/generate`）
 - [ ] 4.6 推广 RBAC 到 device-api 剩余业务端点
 - [ ] 4.7 `fn_expire_task_claims` cron + permissions 种子数据落地验证（待 DBA 反馈两个已提交 addendum）
+- [ ] 4.8 收窄 `ExpressMiddlewareFactory.requirePermission()` 里 `is_system_user` 的硬编码 RBAC
+      bypass，改为走真实 `check_user_permission` RPC；同步修复 `waves.http.test.ts` 对该 bypass
+      的显式依赖。设计分析见 `docs/01-architecture/ADR/016-system-user-authorization-model.md`
+- [ ] 4.9（后续架构方向，未排期）评估 ADR-016 提出的 `scope='platform'` RBAC 原生权限模型 /
+      限时影子登录+审计模式，替代当前 `is_system_user` 布尔值的双重语义复用
+- [ ] 4.10（安全，未排期）核查所有仓储业务查询方法是否均已接入 `authToken`/per-request
+      authenticated client 机制（ADR-016 §现状分析 3 相邻发现：漏传 `authToken` 的仓储方法，
+      配合 `SupabaseTenantResolver` 未校验归属的 `?tenant_id=`/`x-tenant-id` 参数，理论上对
+      任意用户可越权跨租户读取）
 
 #### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划）
 
