@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { randomUUID } from 'crypto';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseWorkOrderRepository } from '../../../adapters/supabase/repositories/SupabaseWorkOrderRepository';
+import { createTestUser } from '../helpers/createTestUser';
 import type { WorkOrderInsert } from '../../../core/ports/db/IWorkOrderRepository';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
@@ -80,16 +81,7 @@ describe.skipIf(!RUN)('SupabaseWorkOrderRepository 工单 CRUD 正确性（Phase
     if (waveError || !wave) throw waveError ?? new Error('创建测试波次失败');
     waveId = wave.id;
 
-    const { data: user, error: userError } = await client
-      .from('users')
-      .insert({
-        tenant_id: tenantId,
-        username: `phase8-wo-user-${randomUUID().slice(0, 8)}`,
-        password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-      })
-      .select()
-      .single();
-    if (userError || !user) throw userError ?? new Error('创建测试用户失败');
+    const user = await createTestUser(client, { tenantId, username: `phase8-wo-user-${randomUUID().slice(0, 8)}` });
     userId = user.id;
   });
 

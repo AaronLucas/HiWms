@@ -43,6 +43,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 import { SupabaseUnidentifiedGoodsRepository } from '../../../adapters/supabase/repositories/SupabaseUnidentifiedGoodsRepository';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -77,12 +78,7 @@ describe.skipIf(!RUN)('SupabaseUnidentifiedGoodsRepository 未识别货物闭环
     if (tenantErr) throw tenantErr;
     tenantId = tenant.id;
 
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-p2-3-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
-    if (userErr) throw userErr;
+    const user = await createTestUser(client, { tenantId, username: `ecc-p2-3-user-${Date.now()}` });
     userId = user.id;
 
     const { data: location, error: locErr } = await client
