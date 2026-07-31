@@ -21,6 +21,7 @@ import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
 import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -84,11 +85,7 @@ describe.skipIf(!RUN)('tenant-api /api/orders HTTP 契约', () => {
     if (productErr) throw productErr;
     productId = product.id;
 
-    const { data: user, error: userErr } = await client
-      .from('users')
-      .insert({ tenant_id: tenantId, username: `ecc-tenant-api-orders-user-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-      .select()
-      .single();
+    const user = await createTestUser(client, { tenantId, username: `ecc-tenant-api-orders-user-${Date.now()}` });
     if (userErr) throw userErr;
     userId = user.id;
 
