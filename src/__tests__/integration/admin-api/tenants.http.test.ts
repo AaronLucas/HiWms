@@ -91,10 +91,11 @@ describe.skipIf(!RUN)('admin-api POST /api/admin/tenants HTTP 契约', () => {
     expect(roleErr).toBeNull();
     expect(role).not.toBeNull();
 
-    const { data: rolePerms } = await adminClient
+    const { data: rolePerms, error: rolePermsErr } = await adminClient
       .from('role_permissions')
-      .select('id')
+      .select('permission_id')
       .eq('role_id', role!.id);
+    expect(rolePermsErr).toBeNull();
     expect(rolePerms!.length).toBeGreaterThan(0);
   });
 });
