@@ -1,7 +1,8 @@
 # ADR-015: 登录/注册身份模型桥接与 RLS 租户上下文注入
 
 ## 状态
-🟢 应用层已实施（Sprint 0，2026-07-27），数据库侧待 DBA Addendum 落地
+🟢 应用层 + 数据库侧均已实施并端到端验证（2026-07-31）——触发器落地、RLS 递归修复、
+operator-checkin 收敛，详见文末「实施记录（2026-07-31）」
 
 ## 背景
 
@@ -188,4 +189,50 @@ DBA/产品拍板后才能编写迁移脚本。
 
 ---
 
-*决策者：主工程师 | 状态：应用层已实施，数据库侧待 DBA 评审 | 记录日期：2026-07-20，更新日期：2026-07-27*
+## 实施记录（2026-07-31）——数据库侧触发器落地 + operator-checkin 收敛
+
+自上次记录（2026-07-27）以来，DBA 团队已完成本 ADR 依赖的数据库侧全部工作，
+应用团队据此完成了收尾适配，本 ADR 描述的登录/注册/RLS 隔离链路现已端到端可用：
+
+### 1. 数据库侧（DBA 团队交付，HiWmsSupabase 仓库）
+- 迁移 024（`fn_provision_tenant_defaults`）、025、026（`handle_new_user` 触发器：
+  `auth.users` 插入后自动建租户、写 `public.users` 行、挂默认角色权限）已落地，
+  对应 Issue #54/#55/#56 已关闭。
+- `026_auth_identity_bridge_trigger.sql` 同时修复了本文档记录的另一个独立 CRITICAL
+  问题（`docs/03-database/DBA_ADDENDUM_REQUEST_TENANT_ID_RLS_RECURSION_2026-07-29.md`，
+  HiWmsSupabase Issue #61，PR #62）：`fn_current_tenant_id()` 回退路径改为调用新增的
+  `fn_current_user_tenant_id_no_rls()`（`SECURITY DEFINER`），消除对 `users` 表自身
+  `tenant_isolation` 策略的自引用递归。
+- `public.users.password_hash` 列已删除，`users.id` 新增 `REFERENCES auth.users(id)`
+  外键约束——`public.users` 与 `auth.users` 的桥接从"设计"变为 schema 级强制。
+
+### 2. 应用侧收尾（本次新发现，非原计划范围）
+`src/types/database.ts` 按新 schema 重新生成后，`tsc` 暴露出 `password_hash` 列删除
+的真实影响，触发以下修复（原因见下方 3）：
+
+- **`device-api` operator-checkin 收敛至 Supabase Auth**：仓库现场 PDA 操作员签到
+  （`src/apps/device-api/routes.ts`）此前直接用 bcrypt 比对本地 `password_hash`，
+  是独立于本 ADR 的第二套密码体系。列删除后必然全量 401，且用户明确反对"维护两套
+  密码体系"（登录/注册/改密码均已切到 Supabase Auth，operator 侧没有例外的理由）。
+  现改为调用 `SupabaseAuthProvider.signIn()`，与网页后台管理员登录走同一套
+  `auth.signInWithPassword`，仅调用方不同（device-api 路由 vs. tenant-api 路由）。
+  本 ADR 第 72-82 节「方案对比」表格中"对 device-api 影响：零影响"这一行需修正为
+  "operator-checkin 现在也走 signIn()，与设备本身的 device_id+api_key 认证是两条独立
+  链路——设备身份仍零影响，但设备上的操作员登录并不零影响"。
+- **`IUserRepository.resetPassword`**（原实现直接写 `password_hash` 列，列删除后
+  失效）迁移为 `IAuthProvider.changePassword()`，改用 Supabase Admin API
+  （`auth.admin.updateUserById`）。
+- **`verifyToken()`** 补充 `public.users` 档案查询失败时的错误日志，避免"已通过
+  Supabase Auth 验证但档案查不到"退化为静默的"已登录但零权限"状态。
+- 10 处集成测试的 `password_hash` 直接 insert 改为通过真实 `auth.users` 触发器链路
+  建号（新增共享测试 helper `createTestUser`）。
+
+### 3. 结论
+本 ADR 原「实施计划」5 步已全部完成。`docs/03-database/REPOSITORY_ROADMAP.md`
+排期任务 #5（`authenticated` 角色集成测试）与 `tenant-isolation.test.ts` 现在具备
+真实可用的触发器地基，可以产出有效结果（此前因触发器不存在，`tenant_id` 恒为
+`null`）。DB 集成测试全量回归：313 passed / 0 failed。
+
+---
+
+*决策者：主工程师 | 状态：应用层+数据库侧均已实施 | 记录日期：2026-07-20，更新日期：2026-07-31*

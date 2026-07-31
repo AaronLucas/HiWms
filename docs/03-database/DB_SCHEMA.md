@@ -168,10 +168,10 @@ ADR-015（登录/注册身份模型桥接）应用层已实施（Sprint 0）：`
 ### 2.4 users (用户)
 | 列名 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | uuid | PK, DEFAULT uuid_generate_v4() | |
+| id | uuid | PK, FK→auth.users(id)（迁移 026 起） | 不再是独立生成，随 `auth.users` 建号 |
 | tenant_id | uuid | FK→tenants(id) CASCADE, NOT NULL | |
 | username | varchar(100) | NOT NULL | 租户内唯一 |
-| password_hash | varchar(255) | NOT NULL | |
+| email | varchar(255) | NULL | 迁移 026 新增，来自 `auth.users.email` |
 | role | varchar(50) | DEFAULT 'OPERATOR' | 兼容旧版单角色字段 |
 | is_system_user | boolean | DEFAULT FALSE | 系统/集成账号 |
 | is_active | boolean | DEFAULT TRUE | |
@@ -179,13 +179,18 @@ ADR-015（登录/注册身份模型桥接）应用层已实施（Sprint 0）：`
 | updated_at | timestamp | DEFAULT CURRENT_TIMESTAMP | |
 | UNIQUE(tenant_id, username) | | | |
 
-> **ADR-015 桥接状态（2026-07-27）**：应用层（`SupabaseAuthProvider`/per-request authenticated
-> client/`injectRlsContext`）已按 ADR-015 实施完成，但数据库侧 `auth.users → public.users` 桥接
-> 触发器（`handle_new_user`）**尚未实施**，待
-> `docs/03-database/DBA_ADDENDUM_REQUEST_AUTH_IDENTITY_BRIDGE_2026-07-27.md` 评审确认后落地。
-> 当前 `public.users.id` 仍是独立的 `uuid_generate_v4()`，与 `auth.users.id` 无关联；
-> `fn_current_tenant_id()` 的 JWT `app_metadata.tenant_id` 路径也依赖该触发器写入才能对自助
-> 注册用户生效。
+> **`password_hash` 列已删除（迁移 026，2026-07-31 确认落地）**：密码不再存于
+> `public.users`，认证/改密码统一走 Supabase Auth（`auth.users`，托管哈希）。应用层
+> `IUserRepository.resetPassword` 已废弃，改为 `IAuthProvider.changePassword()`
+> （Supabase Admin API）。上一条 `chk_password_hash_format` CHECK 约束（见 §迁移
+> 022）随列删除同时失效。
+
+> **ADR-015 桥接状态（2026-07-31，已落地）**：数据库侧 `auth.users → public.users`
+> 桥接触发器（`handle_new_user`，迁移 026）已实施：新用户注册即在 `public.users`
+> 建行并绑定 `id = auth.users.id`。`fn_current_tenant_id()` 回退路径同批修复了自引用
+> RLS 无限递归（`fn_current_user_tenant_id_no_rls()`，`SECURITY DEFINER`，见
+> HiWmsSupabase Issue #61）。详见 `docs/01-architecture/ADR/015-auth-identity-bridge.md`
+> 「实施记录（2026-07-31）」。
 
 ### 2.5 devices (设备)
 
