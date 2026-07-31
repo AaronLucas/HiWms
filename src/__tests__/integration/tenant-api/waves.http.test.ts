@@ -11,11 +11,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
-import { randomUUID } from 'crypto';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { createSupabaseAdapters, type SupabaseAdapters } from '../../../adapters/supabase';
 import { createTenantApiRouter } from '../../../apps/tenant-api/routes';
 import { ExpressMiddlewareFactory } from '../../../adapters/express/ExpressMiddlewareFactory';
+import { createTestUser } from '../helpers/createTestUser';
 import type { TenantApiDependencies } from '../../../apps/tenant-api/di';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
@@ -32,12 +32,13 @@ describe.skipIf(!RUN)('tenant-api /api/waves HTTP 契约', () => {
   let tenantId: string;
   let productId: string;
   let orderId: string;
+  let userId: string;
 
   const injectContext = (tid: string) => (req: Request, _res: Response, next: NextFunction) => {
     req.context = {
-      // isSystemUser: true 绕过 Sprint 4 新接入的 requirePermission() RBAC 校验，RBAC 403
-      // 场景由 orders.http.test.ts 代表性验证。
-      user: { id: randomUUID(), tenantId: tid, isSystemUser: true, roles: [], permissions: [] },
+      // ADR-016：requirePermission() 不再对 isSystemUser 硬编码放行，这里改为携带
+      // beforeAll 中挂好真实 waves READ/CREATE 权限的测试账号。
+      user: { id: userId, tenantId: tid, isSystemUser: false, roles: [], permissions: [] },
       tenantId: tid,
       correlationId: `test-${Date.now()}`,
     };
@@ -67,6 +68,35 @@ describe.skipIf(!RUN)('tenant-api /api/waves HTTP 契约', () => {
       .from('orders').insert({ tenant_id: tenantId, external_order_id: `WAVE-ORDER-${Date.now()}`, order_type: 'outbound', status: 'PENDING' }).select().single();
     if (orderErr) throw orderErr;
     orderId = order.id;
+
+    const user = await createTestUser(client, { tenantId, username: `ecc-tenant-api-waves-user-${Date.now()}` });
+    userId = user.id;
+
+    const { data: role, error: roleErr } = await client
+      .from('roles')
+      .insert({ tenant_id: tenantId, name: `ecc-tenant-api-waves-role-${Date.now()}` })
+      .select()
+      .single();
+    if (roleErr) throw roleErr;
+
+    const { data: permissions, error: permErr } = await client
+      .from('permissions')
+      .upsert([
+        { resource: 'waves', action: 'READ' },
+        { resource: 'waves', action: 'CREATE' },
+      ], { onConflict: 'resource,action' })
+      .select();
+    if (permErr) throw permErr;
+
+    const { error: rolePermErr } = await client
+      .from('role_permissions')
+      .insert(permissions!.map(p => ({ role_id: role.id, permission_id: p.id })));
+    if (rolePermErr) throw rolePermErr;
+
+    const { error: userRoleErr } = await client
+      .from('user_roles')
+      .insert({ user_id: userId, role_id: role.id, scope: 'tenant' });
+    if (userRoleErr) throw userRoleErr;
 
     const middlewareFactory = new ExpressMiddlewareFactory(
       adapters.auth.provider,
