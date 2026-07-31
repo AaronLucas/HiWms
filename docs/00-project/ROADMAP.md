@@ -210,6 +210,17 @@
       authenticated client 机制（ADR-016 §现状分析 3 相邻发现：漏传 `authToken` 的仓储方法，
       配合 `SupabaseTenantResolver` 未校验归属的 `?tenant_id=`/`x-tenant-id` 参数，理论上对
       任意用户可越权跨租户读取）
+- [x] 4.11 Finding #5：CAPTCHA provider 可配置化 + `captchaToken` 透传（PR #69，已合入）——
+      `IAuthProvider`/`SupabaseAuthProvider` 支持可选 `captchaToken`（provider-agnostic 透传，
+      不判断/不探测具体 provider）+ `CAPTCHA_PROVIDER` 环境变量三态日志标记；本地用 Docker
+      GoTrue + hCaptcha/Turnstile 官方 always-pass 测试密钥实测三态拒绝/放行行为均符合预期
+      （拒绝路径额外用非测试密钥验证过，与密钥是否为测试密钥无关）。
+      **⚠️ 生产开启前置条件（阻塞项，未排期）**：本仓库目前没有任何前端验证码控件，
+      `captchaToken` 无来源。若在 Supabase Cloud Dashboard 打开 Attack Protection，
+      会导致所有走 `signIn`/`signUp` 的人工登录/注册请求立即全部失败（含 admin-api 现有
+      `POST /auth/login`），因为没有任何调用方会传入真实 token。**必须先完成前端验证码
+      控件（Sprint 6 前端启动准备的一部分）产出真实 `captchaToken`，才能在生产打开
+      Attack Protection**，否则会锁死所有人工登录。
 
 #### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划）
 

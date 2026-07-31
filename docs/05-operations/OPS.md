@@ -276,6 +276,14 @@ systemctl reload pgbouncer
 - [ ] 漏洞管理：依赖扫描、容器镜像扫描、定期渗透测试
 - [ ] 事件响应：演练记录、复盘报告、改进措施落地
 
+### 5.4 禁止对生产项目执行 `supabase config push`（2026-08-01 新增）
+- **风险**：`supabase/config.toml` 是本仓库供本地 `supabase start` / CI Docker Postgres 使用的配置文件（DBA 从 `HiWmsSupabase` 仓库同步，本仓库内 gitignored）。Supabase CLI 提供 `supabase link --project-ref <ref>` + `supabase config push` 命令，会把这份本地 `config.toml` **整份覆盖**推送到已 link 的生产项目，而不是增量合并。
+- **具体隐患**：本地 `config.toml` 的 `[auth.captcha]` 目前是注释掉（未启用）状态。若有人误对生产 project-ref 执行 `config push`，会静默关闭生产环境 Authentication → Attack Protection 下已配置的 CAPTCHA（hCaptcha/Turnstile），且不会有明显报错提示。
+- **规则**：
+  - 禁止对生产 project-ref 执行 `supabase link` + `config push`，除非是有意且明确要同步 Auth/API 等配置到生产（需 DBA + 负责人双人确认）。
+  - 本仓库当前工作流中 `supabase link` 仅用于 `supabase db push`（迁移）与 `supabase gen types`（生成类型），详见 `docs/07-development/DEVELOPMENT.md` §2.3，不涉及 `config push`。
+  - 生产环境 Authentication 相关设置（Rate Limits / Attack Protection 等）只通过 Supabase Cloud Dashboard 手动配置，不通过本仓库的 `config.toml` 同步（也没有反向的 `config pull`——截至 2026-08，该命令仅是 Supabase 官方 GitHub Discussion 中的功能请求，尚未发布）。
+
 ---
 
 ## 6. 备份与灾难恢复
@@ -349,6 +357,10 @@ LOKI_URL=http://loki:3100
 DINGTALK_WEBHOOK_URL=https://oapi.dingtalk.com/robot/send?access_token=xxx
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/xxx
 PAGERDUTY_INTEGRATION_KEY=xxx
+
+# CAPTCHA（仅日志标记用，见 §5.4；实际是否校验由 Supabase Cloud Dashboard →
+# Authentication → Attack Protection 决定，不由本变量控制）
+# CAPTCHA_PROVIDER=hcaptcha   # 可选值：hcaptcha | turnstile；不设为未启用
 
 # 存储
 S3_ENDPOINT=https://s3.example.com

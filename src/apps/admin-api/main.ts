@@ -48,8 +48,8 @@ export async function createAdminApiApp(config: AdminApiConfig): Promise<express
   // 登录（平台管理员）
   app.post('/auth/login', async (req: Request, res: Response) => {
     try {
-      const { email, password } = req.body;
-      const result = await supabaseAdapters.auth.provider.signIn(email, password);
+      const { email, password, captchaToken } = req.body;
+      const result = await supabaseAdapters.auth.provider.signIn(email, password, captchaToken);
       if (!result) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
