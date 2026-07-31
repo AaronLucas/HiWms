@@ -21,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
 import { SupabaseRpcClient } from '../../../adapters/supabase/rpc/SupabaseRpcClient';
 import { SupabaseTaskClaimRepository } from '../../../adapters/supabase/repositories/SupabaseTaskClaimRepository';
+import { createTestUser } from '../helpers/createTestUser';
 
 const RUN = process.env.RUN_DB_CONCURRENCY_TESTS === 'true';
 
@@ -66,12 +67,7 @@ describe.skipIf(!RUN)('SupabaseTaskClaimRepository 竞争性任务领用正确�
     tenantId = tenant.id;
 
     for (let i = 0; i < 6; i++) {
-      const { data: user, error: userErr } = await client
-        .from('users')
-        .insert({ tenant_id: tenantId, username: `ecc-p0-user-${i}-${Date.now()}`, password_hash: '$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' })
-        .select()
-        .single();
-      if (userErr) throw userErr;
+      const user = await createTestUser(client, { tenantId, username: `ecc-p0-user-${i}-${Date.now()}` });
       userIds.push(user.id);
 
       const { data: device, error: deviceErr } = await client
