@@ -120,11 +120,9 @@ export class ExpressMiddlewareFactory {
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      // 系统用户跳过权限检查
-      if (req.context.user.isSystemUser) {
-        return next();
-      }
-
+      // ADR-016：is_system_user 不再硬编码跳过权限检查——该字段在 tenant-api 内的语义是
+      // "本租户内的系统账号"，其权限应由 role_permissions 表（迁移 024 已关联真实 ADMIN
+      // 角色）决定，而非在应用层无条件放行。真正的跨租户平台超管走独立的 admin-api（无 RLS）。
       try {
         const hasPermission = await this.permissionChecker.check({
           userId: req.context.user.id,
