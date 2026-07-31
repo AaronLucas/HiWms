@@ -1,5 +1,16 @@
 # DBA Addendum 请求 —— `fn_current_tenant_id()` 回退路径触发 `users` 表 RLS 无限递归（CRITICAL）
 
+> **状态：已解决（2026-07-31）**——DBA 团队已在 HiWmsSupabase Issue #61 采纳下方
+> 「请求」一节的方案 1，通过 PR #62 合并修复：迁移 026 新增
+> `fn_current_user_tenant_id_no_rls()`（`SECURITY DEFINER`），`fn_current_tenant_id()`
+> 回退路径改为调用该函数读取 `users.tenant_id`，不再触发对 `users` 表自身
+> `tenant_isolation` 策略的递归求值。wms7 侧已重新拉取该迁移、本地
+> `db reset` 后用与下方复现步骤完全相同的真实 Auth API 场景回归验证：修复前
+> 必现的 `57014 statement timeout` 已消失，返回 200 且租户隔离结果正确（仅
+> 返回当前用户所属租户的单行数据，未出现跨租户泄露）。此修复同时是
+> `docs/01-architecture/ADR/015-auth-identity-bridge.md` 描述的注册链路能够
+> 端到端可用的前置阻塞项，现已解除。
+
 > **性质**：应用团队在真实本地环境实测复现的运行时 CRITICAL 缺陷，不修改任何
 > `.sql` 文件——`fn_current_tenant_id()` 的权威定义在 DBA 团队管理的
 > `HiWmsSupabase` 仓库（本仓库 `supabase/` 整个目录被 gitignore）。
