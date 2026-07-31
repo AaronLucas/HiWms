@@ -196,8 +196,12 @@ export class SupabaseAuthProvider implements IAuthProvider {
 
     // 等待触发器完成并查询租户 ID
     // 这里简单轮询，生产环境建议用数据库触发器内 pg_net 直接写 app_metadata
+    // 必须用 adminClient（service_role）查询：此时新用户 JWT 的 app_metadata.tenant_id
+    // 还没写入（正是本函数要做的事），用匿名单例 this.client 查会被 RLS 拦截
+    // （fn_current_tenant_id() 对匿名角色恒为 NULL，查询结果永远是空），且
+    // this.client 是跨请求共享的单例，用它承接 signUp() 的会话状态本身也不安全。
     for (let i = 0; i < 10; i++) {
-      const { data: profile } = await this.client
+      const { data: profile } = await this.adminClient
         .from('users')
         .select('tenant_id')
         .eq('id', data.user.id)
