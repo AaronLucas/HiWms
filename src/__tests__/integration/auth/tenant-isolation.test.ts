@@ -50,7 +50,7 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       email: `tenant-a-user-${Date.now()}@test.com`,
       password: 'Test123!@#',
       email_confirm: true,
-      user_metadata: { tenant_name: 'Test Tenant A' },
+      user_metadata: { company_name: 'Test Tenant A' },
     });
     expect(signUpErrorA).toBeNull();
     expect(signUpA.user).toBeTruthy();
@@ -79,7 +79,7 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       email: `tenant-b-user-${Date.now()}@test.com`,
       password: 'Test123!@#',
       email_confirm: true,
-      user_metadata: { tenant_name: 'Test Tenant B' },
+      user_metadata: { company_name: 'Test Tenant B' },
     });
     expect(signUpErrorB).toBeNull();
     expect(signUpB.user).toBeTruthy();
@@ -172,19 +172,20 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     });
 
     it('租户 A 无法更新租户 B 的记录', async () => {
-      const { error } = await tenantAClient
-        .from('tenants')
-        .update({ name: 'Hacked' })
-        .eq('id', tenantBId);
-      expect(error).toBeTruthy();
+      // RLS 的 USING 子句会让这条 UPDATE 的 WHERE 匹配不到任何行（而不是报错）——
+      // PostgREST 对此返回 error: null、0 行受影响，真正的验证要靠 service_role
+      // 回查目标行是否真的没被改动。
+      await tenantAClient.from('tenants').update({ name: 'Hacked' }).eq('id', tenantBId);
+
+      const { data } = await adminClient.from('tenants').select('name').eq('id', tenantBId).single();
+      expect(data!.name).not.toBe('Hacked');
     });
 
     it('租户 A 无法删除租户 B 的记录', async () => {
-      const { error } = await tenantAClient
-        .from('tenants')
-        .delete()
-        .eq('id', tenantBId);
-      expect(error).toBeTruthy();
+      await tenantAClient.from('tenants').delete().eq('id', tenantBId);
+
+      const { data } = await adminClient.from('tenants').select('id').eq('id', tenantBId).single();
+      expect(data).not.toBeNull();
     });
   });
 
@@ -200,7 +201,6 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
           tenant_id: tenantAId,
           sku: 'PRODUCT-A-001',
           name: 'Tenant A Product',
-          unit_of_measure: 'PCS',
         })
         .select()
         .single();
@@ -214,7 +214,6 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
           tenant_id: tenantBId,
           sku: 'PRODUCT-B-001',
           name: 'Tenant B Product',
-          unit_of_measure: 'PCS',
         })
         .select()
         .single();
@@ -251,11 +250,12 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     });
 
     it('租户 A 无法修改租户 B 的商品', async () => {
-      const { error } = await tenantAClient
-        .from('products')
-        .update({ name: 'Hacked' })
-        .eq('id', productBId);
-      expect(error).toBeTruthy();
+      // 与 tenants 表同理：RLS 的 USING 让 WHERE 匹配不到行，error 为 null，
+      // 需要用 service_role 回查确认目标行真的没被改动。
+      await tenantAClient.from('products').update({ name: 'Hacked' }).eq('id', productBId);
+
+      const { data } = await adminClient.from('products').select('name').eq('id', productBId).single();
+      expect(data!.name).not.toBe('Hacked');
     });
   });
 
@@ -266,17 +266,18 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     let productBId: string;
 
     beforeAll(async () => {
-      // 创建库位
+      // 创建库位（code 全局唯一，需带时间戳避免重复跑测试时撞车）
+      const suffix = Date.now();
       const { data: locA } = await tenantAClient
         .from('locations')
-        .insert({ tenant_id: tenantAId, code: 'LOC-A-01', name: 'Loc A', location_type: 'STORAGE' })
+        .insert({ tenant_id: tenantAId, code: `LOC-A-${suffix}`, name: 'Loc A' })
         .select()
         .single();
       locationAId = locA!.id;
 
       const { data: locB } = await tenantBClient
         .from('locations')
-        .insert({ tenant_id: tenantBId, code: 'LOC-B-01', name: 'Loc B', location_type: 'STORAGE' })
+        .insert({ tenant_id: tenantBId, code: `LOC-B-${suffix}`, name: 'Loc B' })
         .select()
         .single();
       locationBId = locB!.id;
@@ -284,14 +285,14 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       // 创建商品
       const { data: prodA } = await tenantAClient
         .from('products')
-        .insert({ tenant_id: tenantAId, sku: 'INV-A-001', name: 'Inv A', unit_of_measure: 'PCS' })
+        .insert({ tenant_id: tenantAId, sku: 'INV-A-001', name: 'Inv A' })
         .select()
         .single();
       productAId = prodA!.id;
 
       const { data: prodB } = await tenantBClient
         .from('products')
-        .insert({ tenant_id: tenantBId, sku: 'INV-B-001', name: 'Inv B', unit_of_measure: 'PCS' })
+        .insert({ tenant_id: tenantBId, sku: 'INV-B-001', name: 'Inv B' })
         .select()
         .single();
       productBId = prodB!.id;
@@ -327,15 +328,25 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     });
 
     it('租户 A 无法通过 RPC 修改租户 B 的库存', async () => {
-      // 尝试跨租户调用库存调整 RPC
-      const { error } = await tenantAClient.rpc('fn_adjust_inventory_at_location', {
+      // fn_adjust_inventory_at_location 不是 SECURITY DEFINER，以调用者身份运行，
+      // 内部 SELECT ... FOR UPDATE 受 RLS 约束，租户 A 根本看不到租户 B 的库存行——
+      // p_delta 为负时函数直接返回空结果（不建负库存），不是报错，而是"安全地无操作"。
+      const { data, error } = await tenantAClient.rpc('fn_adjust_inventory_at_location', {
         p_tenant_id: tenantAId,
         p_location_id: locationBId,
         p_product_id: productBId,
         p_delta: -50,
       });
-      // RLS 或 RPC 内部校验应该阻止
-      expect(error).toBeTruthy();
+      expect(error).toBeNull();
+      expect(data).toHaveLength(0);
+
+      const { data: inv } = await adminClient
+        .from('inventory')
+        .select('quantity')
+        .eq('product_id', productBId)
+        .eq('location_id', locationBId)
+        .single();
+      expect(inv!.quantity).toBe(200);
     });
   });
 
@@ -343,17 +354,21 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     let orderAId: string;
     let orderBId: string;
 
+    // external_order_id 全局唯一，需带时间戳避免重复跑测试时撞车
+    const orderAExternalId = `ORD-A-${Date.now()}`;
+    const orderBExternalId = `ORD-B-${Date.now()}`;
+
     beforeAll(async () => {
       const { data: orderA } = await tenantAClient
         .from('orders')
-        .insert({ tenant_id: tenantAId, external_order_id: 'ORD-A-001', status: 'PENDING', order_type: 'OUTBOUND' })
+        .insert({ tenant_id: tenantAId, external_order_id: orderAExternalId, status: 'PENDING', order_type: 'outbound' })
         .select()
         .single();
       orderAId = orderA!.id;
 
       const { data: orderB } = await tenantBClient
         .from('orders')
-        .insert({ tenant_id: tenantBId, external_order_id: 'ORD-B-001', status: 'PENDING', order_type: 'OUTBOUND' })
+        .insert({ tenant_id: tenantBId, external_order_id: orderBExternalId, status: 'PENDING', order_type: 'outbound' })
         .select()
         .single();
       orderBId = orderB!.id;
@@ -363,14 +378,14 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       const { data, error } = await tenantAClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].external_order_id).toBe('ORD-A-001');
+      expect(data![0].external_order_id).toBe(orderAExternalId);
     });
 
     it('租户 B 只能看到自己的订单', async () => {
       const { data, error } = await tenantBClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].external_order_id).toBe('ORD-B-001');
+      expect(data![0].external_order_id).toBe(orderBExternalId);
     });
 
     it('租户 A 无法创建属于租户 B 的订单', async () => {
@@ -378,7 +393,7 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
         tenant_id: tenantBId, // 尝试伪造 tenant_id
         external_order_id: 'ORD-FAKE',
         status: 'PENDING',
-        order_type: 'OUTBOUND',
+        order_type: 'outbound',
       });
       expect(error).toBeTruthy();
     });
@@ -434,8 +449,10 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
         global: { headers: { Authorization: 'Bearer invalid-token' } },
       });
 
+      // 无效 JWT 会被 PostgREST 在鉴权阶段直接拒绝（401），data 是 null 而不是空数组。
       const { data, error } = await invalidClient.from('tenants').select('*');
-      expect(data).toHaveLength(0);
+      expect(error).toBeTruthy();
+      expect(data).toBeNull();
     });
   });
 });

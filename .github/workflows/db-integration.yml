@@ -87,6 +87,7 @@ jobs:
         run: pnpm run test
         env:
           RUN_DB_CONCURRENCY_TESTS: 'true'
+          RUN_DB_INTEGRATION_TESTS: '1'
 
       - name: Stop local Supabase
         if: always()
