@@ -266,17 +266,18 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     let productBId: string;
 
     beforeAll(async () => {
-      // 创建库位
+      // 创建库位（code 全局唯一，需带时间戳避免重复跑测试时撞车）
+      const suffix = Date.now();
       const { data: locA } = await tenantAClient
         .from('locations')
-        .insert({ tenant_id: tenantAId, code: 'LOC-A-01', name: 'Loc A' })
+        .insert({ tenant_id: tenantAId, code: `LOC-A-${suffix}`, name: 'Loc A' })
         .select()
         .single();
       locationAId = locA!.id;
 
       const { data: locB } = await tenantBClient
         .from('locations')
-        .insert({ tenant_id: tenantBId, code: 'LOC-B-01', name: 'Loc B' })
+        .insert({ tenant_id: tenantBId, code: `LOC-B-${suffix}`, name: 'Loc B' })
         .select()
         .single();
       locationBId = locB!.id;
@@ -353,17 +354,21 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
     let orderAId: string;
     let orderBId: string;
 
+    // external_order_id 全局唯一，需带时间戳避免重复跑测试时撞车
+    const orderAExternalId = `ORD-A-${Date.now()}`;
+    const orderBExternalId = `ORD-B-${Date.now()}`;
+
     beforeAll(async () => {
       const { data: orderA } = await tenantAClient
         .from('orders')
-        .insert({ tenant_id: tenantAId, external_order_id: 'ORD-A-001', status: 'PENDING', order_type: 'outbound' })
+        .insert({ tenant_id: tenantAId, external_order_id: orderAExternalId, status: 'PENDING', order_type: 'outbound' })
         .select()
         .single();
       orderAId = orderA!.id;
 
       const { data: orderB } = await tenantBClient
         .from('orders')
-        .insert({ tenant_id: tenantBId, external_order_id: 'ORD-B-001', status: 'PENDING', order_type: 'outbound' })
+        .insert({ tenant_id: tenantBId, external_order_id: orderBExternalId, status: 'PENDING', order_type: 'outbound' })
         .select()
         .single();
       orderBId = orderB!.id;
@@ -373,14 +378,14 @@ describe.skipIf(!RUN_INTEGRATION_TESTS)('ADR-015: 跨租户隔离集成测试 (R
       const { data, error } = await tenantAClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].external_order_id).toBe('ORD-A-001');
+      expect(data![0].external_order_id).toBe(orderAExternalId);
     });
 
     it('租户 B 只能看到自己的订单', async () => {
       const { data, error } = await tenantBClient.from('orders').select('*');
       expect(error).toBeNull();
       expect(data).toHaveLength(1);
-      expect(data![0].external_order_id).toBe('ORD-B-001');
+      expect(data![0].external_order_id).toBe(orderBExternalId);
     });
 
     it('租户 A 无法创建属于租户 B 的订单', async () => {
