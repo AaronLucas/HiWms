@@ -362,6 +362,11 @@ PAGERDUTY_INTEGRATION_KEY=xxx
 # Authentication → Attack Protection 决定，不由本变量控制）
 # CAPTCHA_PROVIDER=hcaptcha   # 可选值：hcaptcha | turnstile；不设为未启用
 
+# CORS 允许来源——tenant-api / admin-api 各自独立配置，两个信任边界不共用一份
+# 列表（device-api 无浏览器前端，不接入 CORS）。生产环境未配置时 fail closed。
+# TENANT_API_ALLOWED_ORIGINS=https://app.example.com
+# ADMIN_API_ALLOWED_ORIGINS=https://admin.example.com
+
 # 存储
 S3_ENDPOINT=https://s3.example.com
 S3_ACCESS_KEY=xxx

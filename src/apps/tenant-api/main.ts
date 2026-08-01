@@ -14,11 +14,13 @@ import express, { Request, Response, Express } from 'express';
 import { createTenantApiDependencies } from './di';
 import { createTenantApiRouter } from './routes';
 import { loadTenantApiConfig, type TenantApiConfig } from './config';
+import { createCorsMiddleware } from '../../adapters/express/corsConfig';
 
 export async function createTenantApiApp(_config: TenantApiConfig): Promise<Express> {
   const deps = await createTenantApiDependencies();
 
   const app = express();
+  app.use(createCorsMiddleware('TENANT_API_ALLOWED_ORIGINS'));
   app.use(express.json({ limit: '10mb' }));
 
   // 全局中间件

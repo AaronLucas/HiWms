@@ -6,6 +6,7 @@
  */
 import express, { Request, Response } from 'express';
 import { ExpressMiddlewareFactory } from '../../adapters/express/ExpressMiddlewareFactory';
+import { createCorsMiddleware } from '../../adapters/express/corsConfig';
 import { createSupabaseAdapters } from '../../adapters/supabase';
 
 interface AdminApiConfig {
@@ -19,6 +20,7 @@ interface AdminApiConfig {
 export async function createAdminApiApp(config: AdminApiConfig): Promise<express.Application> {
   const app = express();
 
+  app.use(createCorsMiddleware('ADMIN_API_ALLOWED_ORIGINS'));
   app.use(express.json({ limit: '10mb' }));
 
   // 初始化 Supabase 适配器（使用 service role）
