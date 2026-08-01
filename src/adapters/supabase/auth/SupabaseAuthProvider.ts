@@ -35,7 +35,15 @@ export class SupabaseAuthProvider implements IAuthProvider {
 
   constructor(
     private client: SupabaseJsClient<Database>,
-    private adminClient: SupabaseJsClient<Database> | null = null
+    private adminClient: SupabaseJsClient<Database> | null = null,
+    /**
+     * 返回一个全新、不共享的匿名客户端，专供 signIn/signUp/refreshToken/
+     * revokeToken 使用——这几个调用会改写客户端自身的会话状态，绝不能用
+     * 跨请求共享的 `client`（会污染并发请求的 RLS 身份，ROADMAP 4.12）。
+     * 未提供时回退到共享 `client`（仅用于未经过 `createSupabaseAdapters`
+     * 直接构造本类的旧测试代码，生产路径始终会提供该工厂函数）。
+     */
+    private createFreshAuthClient: () => SupabaseJsClient<Database> = () => client
   ) {
     this.captchaProviderMode = resolveCaptchaProviderMode();
     console.log(`SupabaseAuthProvider: CAPTCHA_PROVIDER=${this.captchaProviderMode}`);
@@ -107,7 +115,7 @@ export class SupabaseAuthProvider implements IAuthProvider {
     expiresIn: number;
   } | null> {
     try {
-      const { data, error } = await this.client.auth.refreshSession({ refresh_token: refreshToken });
+      const { data, error } = await this.createFreshAuthClient().auth.refreshSession({ refresh_token: refreshToken });
 
       if (error || !data.session) {
         return null;
@@ -137,9 +145,15 @@ export class SupabaseAuthProvider implements IAuthProvider {
   }
 
   async revokeToken(token: string): Promise<void> {
-    // Supabase 不直接支持撤销单个 access token
-    // 可以通过刷新令牌轮换或用户登出实现
-    await this.client.auth.signOut({ scope: 'global' });
+    // 原实现完全没用到 token 参数——在共享单例 client 上调用 signOut()，撤销的是
+    // 单例当前恰好残留的会话（可能是任意并发请求留下的，不一定是调用方传入 token
+    // 对应的用户），2026-08-01 ECC 安全复核连带发现。Admin API 的 admin.signOut(jwt)
+    // 按传入的 JWT 精确撤销，且走 service_role 鉴权、不依赖/不改写任何客户端的
+    // 本地会话状态，同时修正了这个问题。
+    if (!this.adminClient) {
+      throw new Error('Admin client required for revokeToken (needs service_role_key)');
+    }
+    await this.adminClient.auth.admin.signOut(token, 'global');
   }
 
   /** 使用邮箱密码登录 - ADR-015: 修正从 profile/app_metadata 读取 tenantId */
@@ -149,7 +163,11 @@ export class SupabaseAuthProvider implements IAuthProvider {
     expiresIn: number;
     user: { id: string; tenantId: string | null };
   } | null> {
-    const { data, error } = await this.client.auth.signInWithPassword({
+    // 用一次性客户端承接本次登录的会话状态——不能用跨请求共享的 this.client，
+    // 否则 signInWithPassword 会原地改写单例的会话，污染同一事件循环里其他
+    // 并发请求经由该单例发起的查询的 RLS 身份（ROADMAP 4.12）。
+    const authClient = this.createFreshAuthClient();
+    const { data, error } = await authClient.auth.signInWithPassword({
       email,
       password,
       options: { captchaToken },
@@ -169,10 +187,11 @@ export class SupabaseAuthProvider implements IAuthProvider {
     // 优先从 JWT app_metadata 读取（方案 A：JWT 路径）
     const tenantIdFromJwt = data.user.app_metadata?.tenant_id as string | undefined;
 
-    // 回退查 users 表（方案 A 回退路径）
+    // 回退查 users 表（方案 A 回退路径）——复用 authClient（此时已持有刚登录用户
+    // 的会话），而不是匿名的 this.client，否则 RLS 会让这条回退查询恒为空
     let tenantIdFromProfile: string | null = null;
     if (!tenantIdFromJwt) {
-      const { data: profile } = await this.client
+      const { data: profile } = await authClient
         .from('users')
         .select('tenant_id')
         .eq('id', data.user.id)
@@ -205,7 +224,10 @@ export class SupabaseAuthProvider implements IAuthProvider {
       throw new Error('Admin client required for signUp (needs service_role_key)');
     }
 
-    const { data, error } = await this.client.auth.signUp({
+    // 同 signIn()：signUp 也会改写调用它的客户端的会话状态，必须用一次性客户端，
+    // 不能用跨请求共享的 this.client（ROADMAP 4.12）。
+    const authClient = this.createFreshAuthClient();
+    const { data, error } = await authClient.auth.signUp({
       email,
       password,
       options: {

@@ -138,6 +138,23 @@ export class WmsSupabaseClient {
   }
 
   /**
+   * 获取一个全新的、一次性匿名客户端——不缓存、不共享，专供会改变客户端自身
+   * 会话状态的调用使用（signInWithPassword/signUp/refreshSession/signOut）。
+   *
+   * 背景：`getClient()` 返回的是跨请求共享的单例，`signInWithPassword` 等调用
+   * 会原地改写该单例的内部会话（Authorization header），污染同一事件循环里
+   * 所有其他并发请求通过这个单例发起的查询的 RLS 身份。这类调用必须用独立
+   * 实例承接自己的会话状态，不能复用共享单例（2026-08-01 ECC 安全复核发现，
+   * ROADMAP 4.12）。
+   */
+  createFreshAnonClient(): SupabaseClient<Database> {
+    return createClient<Database>(this.config.url, this.config.anonKey, {
+      auth: { persistSession: false },
+      db: { schema: 'public' },
+    });
+  }
+
+  /**
    * 获取带用户 JWT 的认证客户端（per-request，使 auth.uid() 返回真实用户 ID）
    *
    * 每次调用创建新实例——不缓存，因为 token 随请求变化。

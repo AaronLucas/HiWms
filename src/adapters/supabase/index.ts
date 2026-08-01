@@ -273,7 +273,11 @@ export function createSupabaseAdapters(config: {
       zones: new SupabaseZoneRepository(client),
     },
     auth: {
-      provider: new SupabaseAuthProvider(client.getClient(), config.serviceRoleKey ? client.getAdminClient() : null),
+      provider: new SupabaseAuthProvider(
+        client.getClient(),
+        config.serviceRoleKey ? client.getAdminClient() : null,
+        () => client.createFreshAnonClient()
+      ),
       permissionChecker: new SupabasePermissionChecker(client),
       tenantResolver: new SupabaseTenantResolver(
         client,
