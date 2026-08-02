@@ -256,11 +256,13 @@
 
 - [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁——租户隔离验证
       目前仍是软门禁（2026-08-01 复核确认现状未变）
-- [ ] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-01 ECC 架构复核确认问题比原记录更
-      严重：`src/apps/admin-api/main.ts` 是单文件 184 行，没有 `config.ts`/`di.ts`/`routes.ts`/
-      `validation.ts`（与 `ARCHITECTURE.md` §2.3 描述的分层结构不符）；鉴权只有 `isSystemUser`
-      布尔判断（70-76 行），没有走 `requirePermission()`；请求体零 schema 校验（`req.body as any`，
-      90/119 行）；`/auth/login` 无 `rateLimit()`，暴力破解无限流保护
+- [x] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-03 完成重构：
+      ✅ admin-api 拆分为 config.ts / di.ts / routes.ts / validation.ts 四层结构（main.ts 从
+      184 行降至 50 行）；✅ 全部路由接入 `requirePermission(resource, action, 'platform')`，
+      strict/compat 双模式可控；✅ login 加 rateLimit(5/15min)；✅ 全部请求体改 zod 校验
+      （替换 req.body as any + 手写 typeof）；✅ 响应 envelope 统一 `{success, data/error}`；
+      ⏳ 3 处 getAdminClient().from() 直查暂保留（users/billing_rules/monitoring 是跨租户聚合查询，
+      天然无 tenant scope，不适合走 tenant-scoped Repository）；⏳ 真正生效需等 DBA 种子数据
 - [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
 - [x] 5.4（2026-08-01 新增，PR #75 已合入）`changePassword()` 无任何 HTTP 路由可达——已补：
       tenant-api `PATCH /api/users/me/password`（自助改密码，zod 校验，需认证）+
