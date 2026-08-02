@@ -212,8 +212,11 @@
 - [x] 4.8 收窄 `ExpressMiddlewareFactory.requirePermission()` 里 `is_system_user` 的硬编码 RBAC
       bypass，改为走真实 `check_user_permission` RPC（PR #65，已合入，2026-08-01 复核确认
       `ExpressMiddlewareFactory.ts:123` 处 bypass 已移除，仅留 ADR-016 引用注释）
-- [ ] 4.9（后续架构方向，未排期）评估 ADR-016 提出的 `scope='platform'` RBAC 原生权限模型 /
-      限时影子登录+审计模式，替代当前 `is_system_user` 布尔值的双重语义复用
+- [~] 4.9（方案 B 已实施，2026-08-03）ADR-017 设计定稿：scope='platform' RBAC。
+      ✅ 应用层已就绪——admin-api 路由层全部接入 `requirePermission(resource, action, 'platform')`，
+      由 `ADMIN_API_RBAC_MODE=compat|strict` 控制切换；compat 模式沿用 isSystemUser 兼容期。
+      ⏳ 待 DBA：permissions 表补充 platform 级资源行 + roles 表 platform_admin/platform_operator
+      + role_permissions 关联。DBA 种子数据落地后切 strict 即完成方案 B 全量交付。
 - [x] 4.10（安全，2026-08-02 已修复）核查所有仓储业务查询方法是否均已接入
       `authToken`/per-request authenticated client 机制：
       ① `SupabaseInventoryRepository` 9 个业务方法 + `IInventoryRepository` 接口全部
