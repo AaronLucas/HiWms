@@ -3,7 +3,7 @@
  */
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
-import { ORDER_STATUS, WAVE_STATUS } from '../../core/constants/status';
+import { ORDER_STATUS, WAVE_STATUS, INBOUND_RECEIPT_STATUS, QUALITY_INSPECTION_RESULT } from '../../core/constants/status';
 
 // ========== 通用类型 ==========
 
@@ -264,3 +264,108 @@ export const listShippingDocsQuerySchema = z.object({
   status: z.enum(['draft', 'issued', 'in_transit', 'delivered', 'cancelled']).optional(),
 });
 export type ListShippingDocsQuery = z.infer<typeof listShippingDocsQuerySchema>;
+
+// ===== Sprint 5: 入库全链路（ASN→收货→质检→上架） =====
+
+const inboundReceiptStatusValues = Object.values(INBOUND_RECEIPT_STATUS) as [string, ...string[]];
+const qualityInspectionResultValues = Object.values(QUALITY_INSPECTION_RESULT) as [string, ...string[]];
+
+// --- ASN ---
+export const createAsnBodySchema = z.object({
+  receiptNo: z.string().min(1),
+  supplierName: z.string().min(1).optional(),
+  expectedAt: isoDateTimeSchema.optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateAsnBody = z.infer<typeof createAsnBodySchema>;
+
+export const listAsnQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(inboundReceiptStatusValues).optional(),
+  supplierName: z.string().optional(),
+});
+export type ListAsnQuery = z.infer<typeof listAsnQuerySchema>;
+
+export const asnIdParamsSchema = z.object({ id: uuidSchema });
+export type AsnIdParams = z.infer<typeof asnIdParamsSchema>;
+
+// --- 入库单 ---
+export const createInboundReceiptBodySchema = z.object({
+  receiptNo: z.string().min(1),
+  supplierName: z.string().min(1).optional(),
+  expectedAt: isoDateTimeSchema.optional(),
+  waveId: uuidSchema.optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateInboundReceiptBody = z.infer<typeof createInboundReceiptBodySchema>;
+
+export const listInboundReceiptsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(inboundReceiptStatusValues).optional(),
+  supplierName: z.string().optional(),
+});
+export type ListInboundReceiptsQuery = z.infer<typeof listInboundReceiptsQuerySchema>;
+
+export const inboundReceiptIdParamsSchema = z.object({ id: uuidSchema });
+export type InboundReceiptIdParams = z.infer<typeof inboundReceiptIdParamsSchema>;
+
+export const updateInboundReceiptStatusBodySchema = z.object({
+  status: z.enum(inboundReceiptStatusValues),
+});
+export type UpdateInboundReceiptStatusBody = z.infer<typeof updateInboundReceiptStatusBodySchema>;
+
+export const receiveInboundReceiptBodySchema = z.object({
+  receivedAt: isoDateTimeSchema.optional(),
+});
+export type ReceiveInboundReceiptBody = z.infer<typeof receiveInboundReceiptBodySchema>;
+
+export const putawayInboundReceiptBodySchema = z.object({
+  assignedUserId: uuidSchema.optional(),
+});
+export type PutawayInboundReceiptBody = z.infer<typeof putawayInboundReceiptBodySchema>;
+
+// --- 质检单 ---
+export const createQualityInspectionBodySchema = z.object({
+  inspectionNo: z.string().min(1),
+  orderId: uuidSchema.optional(),
+  waveId: uuidSchema.optional(),
+  skuId: uuidSchema.optional(),
+  inspectorId: uuidSchema.optional(),
+  deviceId: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateQualityInspectionBody = z.infer<typeof createQualityInspectionBodySchema>;
+
+export const listQualityInspectionsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.string().optional(),
+  result: z.enum(qualityInspectionResultValues).optional(),
+  orderId: uuidSchema.optional(),
+  waveId: uuidSchema.optional(),
+});
+export type ListQualityInspectionsQuery = z.infer<typeof listQualityInspectionsQuerySchema>;
+
+export const qualityInspectionIdParamsSchema = z.object({ id: uuidSchema });
+export type QualityInspectionIdParams = z.infer<typeof qualityInspectionIdParamsSchema>;
+
+export const inspectionItemSchema = z.object({
+  checkType: z.string().min(1),
+  expectedValue: z.unknown().optional(),
+  tolerancePct: z.number().optional(),
+  notes: z.string().optional(),
+});
+
+export const addInspectionItemsBodySchema = z.object({
+  items: z.array(inspectionItemSchema).min(1, 'At least one inspection item required'),
+});
+export type AddInspectionItemsBody = z.infer<typeof addInspectionItemsBodySchema>;
+
+export const recordInspectionResultBodySchema = z.object({
+  result: z.enum(qualityInspectionResultValues),
+  discrepancyDetails: z.record(z.string(), z.unknown()).optional(),
+  notes: z.string().optional(),
+});
+export type RecordInspectionResultBody = z.infer<typeof recordInspectionResultBodySchema>;

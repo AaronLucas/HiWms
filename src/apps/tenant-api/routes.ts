@@ -6,6 +6,10 @@ import express, { Request, Response, NextFunction, Router } from 'express';
 import { TenantApiDependencies } from './di';
 import { CreateOrderUseCase, AllocateOrderUseCase } from '../../core/usecases/order/CreateOrderUseCase';
 import { GenerateWaveUseCase } from '../../core/usecases/wave/GenerateWaveUseCase';
+import { ReceiveInboundReceiptUseCase } from '../../core/usecases/inbound/ReceiveInboundReceiptUseCase';
+import { GeneratePutawayWorkOrderUseCase } from '../../core/usecases/inbound/GeneratePutawayWorkOrderUseCase';
+import { RecordInspectionResultUseCase } from '../../core/usecases/inspection/RecordInspectionResultUseCase';
+import type { QualityInspectionResult } from '../../core/constants/status';
 import {
   createOrderBodySchema,
   listOrdersQuerySchema,
@@ -33,6 +37,20 @@ import {
   listWorkOrdersQuerySchema,
   listVehiclesQuerySchema,
   listShippingDocsQuerySchema,
+  createAsnBodySchema,
+  listAsnQuerySchema,
+  asnIdParamsSchema,
+  createInboundReceiptBodySchema,
+  listInboundReceiptsQuerySchema,
+  inboundReceiptIdParamsSchema,
+  updateInboundReceiptStatusBodySchema,
+  receiveInboundReceiptBodySchema,
+  putawayInboundReceiptBodySchema,
+  createQualityInspectionBodySchema,
+  listQualityInspectionsQuerySchema,
+  qualityInspectionIdParamsSchema,
+  addInspectionItemsBodySchema,
+  recordInspectionResultBodySchema,
   validateBody,
   validateQuery,
   validateParams,
@@ -60,6 +78,20 @@ import {
   type ListWorkOrdersQuery,
   type ListVehiclesQuery,
   type ListShippingDocsQuery,
+  type CreateAsnBody,
+  type ListAsnQuery,
+  type AsnIdParams,
+  type CreateInboundReceiptBody,
+  type ListInboundReceiptsQuery,
+  type InboundReceiptIdParams,
+  type UpdateInboundReceiptStatusBody,
+  type ReceiveInboundReceiptBody,
+  type PutawayInboundReceiptBody,
+  type CreateQualityInspectionBody,
+  type ListQualityInspectionsQuery,
+  type QualityInspectionIdParams,
+  type AddInspectionItemsBody,
+  type RecordInspectionResultBody,
 } from './validation';
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
@@ -494,6 +526,225 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       body.tenant_id = tenantId;
       const result = await vehiclesRepo.create(body as any, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ===== Sprint 5: 入库全链路（ASN→收货→质检→上架） =====
+  const { asn, inboundReceipts, qualityInspections } = deps.supabaseAdapters.repositories;
+
+  // --- 创建 ASN ---
+  router.post('/asn', deps.middlewareFactory.requirePermission('asn', 'CREATE'), validateBody(createAsnBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const body = req.body as CreateAsnBody;
+      const result = await asn.create({
+        tenant_id: tenantId,
+        receipt_no: body.receiptNo,
+        supplier_name: body.supplierName ?? null,
+        expected_at: body.expectedAt ?? null,
+        metadata: body.metadata ?? null,
+        status: 'PENDING',
+      } as any, req.context?.supabaseToken);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- ASN 列表 ---
+  router.get('/asn', deps.middlewareFactory.requirePermission('asn', 'READ'), validateQuery(listAsnQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { limit, offset, status, supplierName } = req.query as unknown as ListAsnQuery;
+      const result = await asn.findByTenant(tenantId, { limit, offset, status, supplierName });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- ASN 详情 ---
+  router.get('/asn/:id', deps.middlewareFactory.requirePermission('asn', 'READ'), validateParams(asnIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as AsnIdParams;
+      const result = await asn.findById(id, req.context?.supabaseToken);
+      if (!result) return res.status(404).json({ success: false, error: 'ASN not found' });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 入库单列表 ---
+  router.get('/inbound-receipts', deps.middlewareFactory.requirePermission('inbound_receipts', 'READ'), validateQuery(listInboundReceiptsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { limit, offset, status, supplierName } = req.query as unknown as ListInboundReceiptsQuery;
+      const result = await inboundReceipts.findByTenant(tenantId, { limit, offset, status, supplierName });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 入库单详情 ---
+  router.get('/inbound-receipts/:id', deps.middlewareFactory.requirePermission('inbound_receipts', 'READ'), validateParams(inboundReceiptIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as InboundReceiptIdParams;
+      const result = await inboundReceipts.findById(id, req.context?.supabaseToken);
+      if (!result) return res.status(404).json({ success: false, error: 'Inbound receipt not found' });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 创建入库单 ---
+  router.post('/inbound-receipts', deps.middlewareFactory.requirePermission('inbound_receipts', 'CREATE'), validateBody(createInboundReceiptBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const body = req.body as CreateInboundReceiptBody;
+      const result = await inboundReceipts.create({
+        tenant_id: tenantId,
+        receipt_no: body.receiptNo,
+        supplier_name: body.supplierName ?? null,
+        expected_at: body.expectedAt ?? null,
+        wave_id: body.waveId ?? null,
+        metadata: body.metadata ?? null,
+        status: 'PENDING',
+      } as any, req.context?.supabaseToken);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 入库单状态更新 ---
+  router.patch('/inbound-receipts/:id/status', deps.middlewareFactory.requirePermission('inbound_receipts', 'UPDATE'), validateParams(inboundReceiptIdParamsSchema), validateBody(updateInboundReceiptStatusBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as InboundReceiptIdParams;
+      const { status } = req.body as UpdateInboundReceiptStatusBody;
+      const updated = await inboundReceipts.updateStatus(id, status);
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 入库单收货 ---
+  router.post('/inbound-receipts/:id/receive', deps.middlewareFactory.requirePermission('inbound_receipts', 'UPDATE'), validateParams(inboundReceiptIdParamsSchema), validateBody(receiveInboundReceiptBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { id } = req.params as unknown as InboundReceiptIdParams;
+      const { receivedAt } = req.body as ReceiveInboundReceiptBody;
+      const useCase = new ReceiveInboundReceiptUseCase(deps.supabaseAdapters.client);
+      const result = await useCase.execute({ tenantId, receiptId: id, receivedAt }, req.context?.supabaseToken);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 入库单触发上架 ---
+  router.post('/inbound-receipts/:id/putaway', deps.middlewareFactory.requirePermission('inbound_receipts', 'UPDATE'), validateParams(inboundReceiptIdParamsSchema), validateBody(putawayInboundReceiptBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { id } = req.params as unknown as InboundReceiptIdParams;
+      const { assignedUserId } = req.body as PutawayInboundReceiptBody;
+      const useCase = new GeneratePutawayWorkOrderUseCase(deps.supabaseAdapters.client);
+      const result = await useCase.execute({ tenantId, receiptId: id, assignedUserId }, req.context?.supabaseToken);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 质检单列表 ---
+  router.get('/quality-inspections', deps.middlewareFactory.requirePermission('quality_inspections', 'READ'), validateQuery(listQualityInspectionsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { limit, offset, status, result, orderId, waveId } = req.query as unknown as ListQualityInspectionsQuery;
+      const data = await qualityInspections.findByTenant(tenantId, { limit, offset, status, result, orderId, waveId });
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 质检单详情（含明细项） ---
+  router.get('/quality-inspections/:id', deps.middlewareFactory.requirePermission('quality_inspections', 'READ'), validateParams(qualityInspectionIdParamsSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as QualityInspectionIdParams;
+      const result = await qualityInspections.findWithItems(id);
+      if (!result) return res.status(404).json({ success: false, error: 'Quality inspection not found' });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 创建质检单 ---
+  router.post('/quality-inspections', deps.middlewareFactory.requirePermission('quality_inspections', 'CREATE'), validateBody(createQualityInspectionBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const body = req.body as CreateQualityInspectionBody;
+      const result = await qualityInspections.create({
+        tenant_id: tenantId,
+        inspection_no: body.inspectionNo,
+        order_id: body.orderId ?? null,
+        wave_id: body.waveId ?? null,
+        sku_id: body.skuId ?? null,
+        inspector_id: body.inspectorId ?? null,
+        device_id: body.deviceId ?? null,
+        metadata: body.metadata ?? null,
+        status: 'PENDING',
+      } as any, req.context?.supabaseToken);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 添加质检明细项 ---
+  router.post('/quality-inspections/:id/items', deps.middlewareFactory.requirePermission('quality_inspections', 'UPDATE'), validateParams(qualityInspectionIdParamsSchema), validateBody(addInspectionItemsBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params as unknown as QualityInspectionIdParams;
+      const tenantId = req.context!.tenantId;
+      const { items } = req.body as AddInspectionItemsBody;
+      const inserted = await qualityInspections.createInspectionItems(items.map(item => ({
+        inspection_id: id,
+        tenant_id: tenantId,
+        check_type: item.checkType,
+        expected_value: item.expectedValue ?? null,
+        tolerance_pct: item.tolerancePct ?? null,
+        notes: item.notes ?? null,
+      })) as any);
+      res.status(201).json({ success: true, data: inserted });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // --- 记录质检结果（同时视为完成质检） ---
+  router.patch('/quality-inspections/:id/result', deps.middlewareFactory.requirePermission('quality_inspections', 'UPDATE'), validateParams(qualityInspectionIdParamsSchema), validateBody(recordInspectionResultBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const { id } = req.params as unknown as QualityInspectionIdParams;
+      const { result, discrepancyDetails, notes } = req.body as RecordInspectionResultBody;
+      const useCase = new RecordInspectionResultUseCase(deps.supabaseAdapters.client);
+      const data = await useCase.execute({ tenantId, inspectionId: id, result: result as QualityInspectionResult, discrepancyDetails, notes }, req.context?.supabaseToken);
+      res.json({ success: true, data });
     } catch (error) {
       next(error);
     }
