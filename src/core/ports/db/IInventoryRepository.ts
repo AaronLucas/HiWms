@@ -12,22 +12,22 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
   /**
    * 按库位查找库存
    */
-  findByLocation(locationId: string): Promise<InventoryRow[]>;
+  findByLocation(locationId: string, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 按产品查找库存
    */
-  findByProduct(productId: string): Promise<InventoryRow[]>;
+  findByProduct(productId: string, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 按容器查找库存
    */
-  findByContainer(containerId: string): Promise<InventoryRow[]>;
+  findByContainer(containerId: string, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 查找可用库存（排除已锁定/预留）
    */
-  findAvailable(productId: string, locationId?: string): Promise<InventoryRow[]>;
+  findAvailable(productId: string, locationId?: string, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 批量更新库存数量（乐观锁）
@@ -36,17 +36,17 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
     id: string;
     quantity: number;
     expectedVersion: number;
-  }>): Promise<InventoryRow[]>;
+  }>, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 获取库存总量（按产品聚合）
    */
-  getTotalQuantity(productId: string, tenantId: string): Promise<number>;
+  getTotalQuantity(productId: string, tenantId: string, authToken?: string): Promise<number>;
 
   /**
    * 查找需要补货的库位
    */
-  findReplenishmentNeeded(tenantId: string): Promise<InventoryRow[]>;
+  findReplenishmentNeeded(tenantId: string, authToken?: string): Promise<InventoryRow[]>;
 
   /**
    * 查找可用的补货源库位（有库存、符合区域类型、数量足够）
@@ -55,12 +55,12 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
     skuId: string;
     zoneTypes: string[];
     minQuantity: number;
-  }): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>>;
+  }, authToken?: string): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>>;
 
   /**
    * 查询补货需求视图
    */
-  getReplenishmentNeeds(tenantId?: string): Promise<Array<{
+  getReplenishmentNeeds(tenantId?: string, authToken?: string): Promise<Array<{
     loc_id: string;
     loc_code: string;
     sku_id: string;

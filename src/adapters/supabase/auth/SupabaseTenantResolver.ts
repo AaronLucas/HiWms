@@ -12,9 +12,15 @@ export class SupabaseTenantResolver implements ITenantResolver {
     private permissionChecker: IPermissionChecker
   ) {}
 
-  async resolveFromUser(userId: string): Promise<string | null> {
+  private getClient(authToken?: string) {
+    return authToken
+      ? this.supabase.getAuthenticatedClient(authToken)
+      : this.supabase.getClient();
+  }
+
+  async resolveFromUser(userId: string, authToken?: string): Promise<string | null> {
     try {
-      const { data, error } = await this.supabase.getClient()
+      const { data, error } = await this.getClient(authToken)
         .from('users')
         .select('tenant_id, is_system_user')
         .eq('id', userId)
@@ -35,11 +41,12 @@ export class SupabaseTenantResolver implements ITenantResolver {
     headers?: Record<string, string>;
     query?: Record<string, string>;
     user?: { id: string; tenantId?: string };
-  }): Promise<string | null> {
+  }, authToken?: string): Promise<string | null> {
     // 优先级 1：请求头中的租户 ID（用于 API 网关透传）
     if (request.headers?.['x-tenant-id']) {
       const tenantId = request.headers['x-tenant-id'];
-      if (await this.validateTenant(tenantId)) {
+      // ROADMAP 4.10: x-tenant-id 需校验当前用户是否属于该租户
+      if (await this.validateTenantOwnership(tenantId, request.user?.id, authToken)) {
         return tenantId;
       }
     }
@@ -47,27 +54,63 @@ export class SupabaseTenantResolver implements ITenantResolver {
     // 优先级 2：查询参数中的租户 ID
     if (request.query?.tenant_id) {
       const tenantId = request.query.tenant_id;
-      if (await this.validateTenant(tenantId)) {
+      if (await this.validateTenantOwnership(tenantId, request.user?.id, authToken)) {
         return tenantId;
       }
     }
 
-    // 优先级 3：已认证用户的租户 ID
+    // 优先级 3：已认证用户的租户 ID（从 JWT token 中获取，最可信）
     if (request.user?.tenantId) {
       return request.user.tenantId;
     }
 
-    // 优先级 4：从用户 ID 解析
+    // 优先级 4：从用户 ID 解析（DB 查询 users.tenant_id）
     if (request.user?.id) {
-      return this.resolveFromUser(request.user.id);
+      return this.resolveFromUser(request.user.id, authToken);
     }
 
     return null;
   }
 
-  async validateTenant(tenantId: string): Promise<boolean> {
+  /**
+   * 验证租户存在且活跃，同时检查当前用户是否属于该租户。
+   * 与 validateTenant() 不同：此方法额外校验 x-tenant-id 头/参数的
+   * 调用方是否有权以该租户身份操作（ROADMAP 4.10 ②）。
+   */
+  private async validateTenantOwnership(
+    tenantId: string,
+    userId?: string,
+    authToken?: string
+  ): Promise<boolean> {
+    // 先校验租户存在且活跃
+    const isActive = await this.validateTenant(tenantId, authToken);
+    if (!isActive) return false;
+
+    // 未提供用户上下文时，无法校验归属，仅校验租户有效性
+    if (!userId) return true;
+
+    // 平台管理员可以访问任意租户
+    const isPlatform = await this.isPlatformAdmin(userId, authToken);
+    if (isPlatform) return true;
+
+    // 检查用户是否属于该租户
     try {
-      const { data, error } = await this.supabase.getClient()
+      const { data, error } = await this.getClient(authToken)
+        .from('users')
+        .select('tenant_id')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data) return false;
+      return data.tenant_id === tenantId;
+    } catch {
+      return false;
+    }
+  }
+
+  async validateTenant(tenantId: string, authToken?: string): Promise<boolean> {
+    try {
+      const { data, error } = await this.getClient(authToken)
         .from('tenants')
         .select('id, is_active')
         .eq('id', tenantId)
@@ -88,7 +131,7 @@ export class SupabaseTenantResolver implements ITenantResolver {
     billingStrategy: Record<string, unknown> | null;
   } | null> {
     try {
-      const { data, error } = await this.supabase.getClient()
+      const { data, error } = await this.getClient()
         .from('tenants')
         .select('id, name, is_active, billing_strategy')
         .eq('id', tenantId)
@@ -108,9 +151,9 @@ export class SupabaseTenantResolver implements ITenantResolver {
   }
 
   /** 检查用户是否为平台超管 */
-  async isPlatformAdmin(userId: string): Promise<boolean> {
+  async isPlatformAdmin(userId: string, authToken?: string): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase.getClient()
+      const { data, error } = await this.getClient(authToken)
         .from('users')
         .select('is_system_user, role')
         .eq('id', userId)

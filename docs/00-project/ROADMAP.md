@@ -201,10 +201,9 @@
 
 - [x] 4.1 推进 AUTH_IDENTITY_BRIDGE 5 个开放问题拍板（2026-07-28 已拍板，见 026 迁移文件头部记录，2026-08-01 复核确认）
 - [x] 4.2 触发器落地后解除 `tenant-isolation.test.ts` 的 skip，真实验证跨租户隔离（PR #66，`RUN_DB_INTEGRATION_TESTS=1` 已注入 CI，2026-08-01 复核确认）
-- [ ] 4.3 修复 `SupabaseAuthProvider.signUp/signIn/generateTokens` 3 处已知遗留问题——signIn/signUp
-      的 tenantId 读取逻辑已修（PR #67 + PR #69 captchaToken），仅剩 `generateTokens()` 去留未决
-      （仍 `throw`，注释写"Consider deprecating"，`SupabaseAuthProvider.ts:131`）。**2026-08-01
-      ECC 安全复核额外发现更严重的同源问题，未被此项原始范围覆盖，见下方 CRITICAL 项**
+- [x] 4.3 修复 `SupabaseAuthProvider.signUp/signIn/generateTokens` 3 处已知遗留问题——signIn/signUp
+      的 tenantId 读取逻辑已修（PR #67 + PR #69 captchaToken），`generateTokens()` 已删除
+      （全仓库零调用方，接口+实现+死代码副本 2026-08-02 一并移除）
 - [x] 4.4 RBAC 覆盖矩阵设计——`API_SPEC.md` §7.2 矩阵已写，tenant-api 10/10、device-api 18 路由
       16 处 `requireDevicePermission` 已接（2026-08-01 复核确认）
 - [x] 4.5 推广 RBAC 到 tenant-api 写端点（`POST /orders`、`/orders/:id/allocate`、`/waves/generate`，2026-08-01 复核确认）
@@ -215,25 +214,24 @@
       `ExpressMiddlewareFactory.ts:123` 处 bypass 已移除，仅留 ADR-016 引用注释）
 - [ ] 4.9（后续架构方向，未排期）评估 ADR-016 提出的 `scope='platform'` RBAC 原生权限模型 /
       限时影子登录+审计模式，替代当前 `is_system_user` 布尔值的双重语义复用
-- [ ] 4.10（安全，**建议提前排期，不再是"理论上"**）核查所有仓储业务查询方法是否均已接入
-      `authToken`/per-request authenticated client 机制——2026-08-01 ECC 复核确认两个具体、
-      已验证（非猜测）的问题需要一并解决：
-      ① `SupabaseInventoryRepository` 9 个业务方法零 `authToken`（仅 Base 类 CRUD 支持）；
-      ② `SupabaseTenantResolver.resolveFromRequest()`（`SupabaseTenantResolver.ts:40-53`）接受
-      `x-tenant-id` 头 / `?tenant_id=` 参数，只校验租户存在且 active，**不校验是否归属当前调用
-      用户**，`ExpressMiddlewareFactory.resolveTenant()`（87-94 行）原样透传，目前仅靠 RLS 兜底。
-      建议在前端定 API 契约（是否允许客户端传 `x-tenant-id`）前排期解决，否则契约定完后改起来
-      成本更高。
+- [x] 4.10（安全，2026-08-02 已修复）核查所有仓储业务查询方法是否均已接入
+      `authToken`/per-request authenticated client 机制：
+      ① `SupabaseInventoryRepository` 9 个业务方法 + `IInventoryRepository` 接口全部
+      补上 `authToken` 可选参数，`getClient(false, authToken)` 贯通到底层查询；
+      ② `SupabaseTenantResolver.resolveFromRequest()` 新增 `validateTenantOwnership()`
+      ——x-tenant-id 头/参数现在会校验当前用户是否属于目标租户，非归属+非平台管理员
+      直接拒绝（不再仅靠 RLS 兜底）。
+      同时修复的配套缺口：`SupabasePermissionChecker.check/getUserPermissions` +
+      `ExpressMiddlewareFactory` 三处中间件全链路传递 `supabaseToken`
 - [x] 4.12（**CRITICAL，2026-08-01 ECC 安全复核新发现，PR #71 已合入修复**）共享单例
       Supabase client 的会话被 `signIn`/`signUp` 污染，导致并发下跨用户/跨租户 RLS 上下文串扰。
       **修复方案**：`SupabaseAuthProvider` 构造函数新增 `createFreshAuthClient` 工厂参数，
       `signIn`/`signUp`/`refreshToken` 改用独立的一次性 `createClient()` 实例，不复用共享单例；
       `WmsSupabaseClient` 新增 `createFreshAnonClient()` 方法（`persistSession: false`）。
       `revokeToken` 从共享单例 `signOut()` 改为 `adminClient.auth.admin.signOut(token, 'global')`
-      精确 JWT 定向撤销。**HIGH 附带项仍待处理**：
+      精确 JWT 定向撤销。**HIGH 附带项已修复（2026-08-02）**：
       `SupabasePermissionChecker`/`SupabaseTenantResolver`/`verifyToken()` 的 profile/role 查询
-      均未附带调用方 JWT（未用 `authToken`/per-request client），单例污染修复后这些查询恢复为
-      anon 上下文（非可利用，但非预期），建议后续一并修复。
+      现已全部通过 `authToken` 参数以当前调用方 JWT 身份执行，不再是 anon 上下文。
 - [x] 4.11 Finding #5：CAPTCHA provider 可配置化 + `captchaToken` 透传（PR #69，已合入）——
       `IAuthProvider`/`SupabaseAuthProvider` 支持可选 `captchaToken`（provider-agnostic 透传，
       不判断/不探测具体 provider）+ `CAPTCHA_PROVIDER` 环境变量三态日志标记；本地用 Docker
@@ -264,11 +262,10 @@
 - [x] 5.4（2026-08-01 新增，PR #75 已合入）`changePassword()` 无任何 HTTP 路由可达——已补：
       tenant-api `PATCH /api/users/me/password`（自助改密码，zod 校验，需认证）+
       admin-api `PATCH /admin/users/:id/password`（管理员重置密码，需 `isSystemUser`）
-- [ ] 5.5（2026-08-01 新增）端口/适配器不一致清理：`IVasBomRepository`（`src/core/ports/db/`）
-      有端口无实现，`REPOSITORY_ROADMAP.md:119` 误标 ✅ 已完成，需订正；`src/core/{auth,db,
-      cache,external,queue}/` 存在一套零引用的重复端口目录（含过期的 `src/core/auth/
-      IAuthProvider.ts`，与真正生效的 `src/core/ports/auth/IAuthProvider.ts` 并存，本轮
-      captchaToken 改动未同步到这份死代码），建议整体删除
+- [~] 5.5（2026-08-01 新增，2026-08-02 部分完成）端口/适配器不一致清理：
+      ✅ `src/core/{auth,db,cache,external,queue}/` 5 个零引用死端口目录已整体删除（20 文件）；
+      ⏳ `IVasBomRepository`（`src/core/ports/db/`）有端口无实现，`REPOSITORY_ROADMAP.md:119`
+      误标 ✅ 已完成，仍需订正
 
 #### Sprint 6: 前端启动准备（⏳ 依赖 Sprint 4 安全闭环，2026-07-28 规划；2026-08-01 ECC 架构复核：**当前判定"未就绪"，非仅剩尾工**）
 

@@ -13,14 +13,14 @@ export class SupabasePermissionChecker implements IPermissionChecker {
     resource: string;
     action: string;
     scope?: string;
-  }): Promise<boolean> {
+  }, authToken?: string): Promise<boolean> {
     try {
       const result = await this.supabase.rpc('check_user_permission', {
         p_user_id: params.userId,
         p_resource: params.resource,
         p_action: params.action,
         p_scope: params.scope ?? 'tenant',
-      });
+      }, { authToken });
 
       // RPC 返回数组 [{ has_permission: boolean }]
       return Array.isArray(result) && result.length > 0 ? result[0].has_permission === true : false;
@@ -34,7 +34,7 @@ export class SupabasePermissionChecker implements IPermissionChecker {
     resource: string;
     action: string;
     scope?: string;
-  }>): Promise<Map<string, boolean>> {
+  }>, authToken?: string): Promise<Map<string, boolean>> {
     const results = new Map<string, boolean>();
 
     // 并发检查（限制并发数）
@@ -44,7 +44,7 @@ export class SupabasePermissionChecker implements IPermissionChecker {
       await Promise.all(
         batch.map(async p => {
           const key = `${p.userId}:${p.resource}:${p.action}:${p.scope ?? 'tenant'}`;
-          results.set(key, await this.check(p));
+          results.set(key, await this.check(p, authToken));
         })
       );
     }
@@ -52,13 +52,17 @@ export class SupabasePermissionChecker implements IPermissionChecker {
     return results;
   }
 
-  async getUserPermissions(userId: string): Promise<Array<{
+  async getUserPermissions(userId: string, authToken?: string): Promise<Array<{
     resource: string;
     action: string;
     scope: string;
   }>> {
     try {
-      const { data, error } = await this.supabase.getClient()
+      const client = authToken
+        ? this.supabase.getAuthenticatedClient(authToken)
+        : this.supabase.getClient();
+
+      const { data, error } = await client
         .from('user_roles')
         .select(`
           scope,
