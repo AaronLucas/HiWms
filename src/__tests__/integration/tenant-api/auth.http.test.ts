@@ -8,7 +8,7 @@
  *
  * 默认跳过：RUN_DB_CONCURRENCY_TESTS=true npm run test -- tenant-api/auth.http
  */
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { WmsSupabaseClient } from '../../../adapters/supabase/SupabaseClient';
