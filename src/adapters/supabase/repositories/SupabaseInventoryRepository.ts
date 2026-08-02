@@ -18,24 +18,24 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   protected tableName = 'inventory' as const;
   protected idColumn = 'id';
 
-  async findByLocation(locationId: string): Promise<InventoryRow[]> {
-    return this.findAll({ filters: { location_id: locationId }, orderBy: 'product_id', ascending: true });
+  async findByLocation(locationId: string, authToken?: string): Promise<InventoryRow[]> {
+    return this.findAll({ filters: { location_id: locationId }, orderBy: 'product_id', ascending: true, authToken });
   }
 
-  async findByProduct(productId: string): Promise<InventoryRow[]> {
-    return this.findAll({ filters: { product_id: productId }, orderBy: 'location_id', ascending: true });
+  async findByProduct(productId: string, authToken?: string): Promise<InventoryRow[]> {
+    return this.findAll({ filters: { product_id: productId }, orderBy: 'location_id', ascending: true, authToken });
   }
 
-  async findByContainer(containerId: string): Promise<InventoryRow[]> {
-    return this.findAll({ filters: { container_id: containerId }, orderBy: 'product_id', ascending: true });
+  async findByContainer(containerId: string, authToken?: string): Promise<InventoryRow[]> {
+    return this.findAll({ filters: { container_id: containerId }, orderBy: 'product_id', ascending: true, authToken });
   }
 
-  async findAvailable(productId: string, locationId?: string): Promise<InventoryRow[]> {
+  async findAvailable(productId: string, locationId?: string, authToken?: string): Promise<InventoryRow[]> {
     const filters: Record<string, unknown> = { product_id: productId };
     if (locationId) filters.location_id = locationId;
 
     // 查找数量 > 0 且未被锁定/预留的库存
-    const { data, error } = await this.getClient()
+    const { data, error } = await this.getClient(false, authToken)
       .from(this.tableName)
       .select('*')
       .match(filters)
@@ -52,12 +52,12 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     id: string;
     quantity: number;
     expectedVersion: number;
-  }>): Promise<InventoryRow[]> {
+  }>, authToken?: string): Promise<InventoryRow[]> {
     // 使用 RPC 或事务批量更新（乐观锁）
-    // 这里简化为逐个更新，实际生产应使用批量 RPC
     const results: InventoryRow[] = [];
+    const client = this.getClient(false, authToken);
     for (const update of updates) {
-      const { data, error } = await this.getClient()
+      const { data, error } = await client
         .from(this.tableName)
         .update({ quantity: update.quantity, version: update.expectedVersion + 1 })
         .eq('id', update.id)
@@ -71,8 +71,8 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     return results;
   }
 
-  async getTotalQuantity(productId: string, tenantId: string): Promise<number> {
-    const { data, error } = await this.getClient()
+  async getTotalQuantity(productId: string, tenantId: string, authToken?: string): Promise<number> {
+    const { data, error } = await this.getClient(false, authToken)
       .from(this.tableName)
       .select('quantity')
       .eq('product_id', productId)
@@ -82,17 +82,17 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     return (data as { quantity: number }[]).reduce((sum, row) => sum + (row.quantity || 0), 0);
   }
 
-  async findReplenishmentNeeded(tenantId: string): Promise<Tables<'inventory'>[]> {
+  async findReplenishmentNeeded(tenantId: string, authToken?: string): Promise<Tables<'inventory'>[]> {
     // 复用 v_replenishment_needs 视图的补货判定逻辑（getReplenishmentNeeds），
     // 再按视图给出的 (loc_id, sku_id) 精确对拿回真实 inventory 行。
-    const needs = await this.getReplenishmentNeeds(tenantId);
+    const needs = await this.getReplenishmentNeeds(tenantId, authToken);
     if (needs.length === 0) return [];
 
     const pairFilter = needs
       .map((n) => `and(location_id.eq.${n.loc_id},product_id.eq.${n.sku_id})`)
       .join(',');
 
-    const { data, error } = await this.getClient()
+    const { data, error } = await this.getClient(false, authToken)
       .from(this.tableName)
       .select('*')
       .eq('tenant_id', tenantId)
@@ -110,10 +110,10 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     skuId: string;
     zoneTypes: string[];
     minQuantity: number;
-  }): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>> {
+  }, authToken?: string): Promise<Array<{ location_id: string; quantity: number; zone_type: string }>> {
     const { skuId, zoneTypes, minQuantity } = params;
 
-    const { data, error } = await this.getClient()
+    const { data, error } = await this.getClient(false, authToken)
       .from(this.tableName)
       .select(`
         location_id,
@@ -141,7 +141,7 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   /**
    * 查询补货需求视图 v_replenishment_needs
    */
-  async getReplenishmentNeeds(tenantId?: string): Promise<Array<{
+  async getReplenishmentNeeds(tenantId?: string, authToken?: string): Promise<Array<{
     loc_id: string;
     loc_code: string;
     sku_id: string;
@@ -150,7 +150,7 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     picking_max_qty: number;
     fill_rate_pct: number;
   }>> {
-    let query = this.getClient()
+    let query = this.getClient(false, authToken)
       .from('v_replenishment_needs')
       .select('loc_id, loc_code, sku_id, sku_code, current_qty, picking_max_qty, fill_rate_pct');
 

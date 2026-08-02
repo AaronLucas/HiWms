@@ -17,7 +17,7 @@ export interface IPermissionChecker {
     action: string;
     /** 可选：作用域（如 'own', 'tenant', 'platform'） */
     scope?: string;
-  }): Promise<boolean>;
+  }, authToken?: string): Promise<boolean>;
 
   /**
    * 批量检查权限
@@ -32,7 +32,7 @@ export interface IPermissionChecker {
   /**
    * 获取用户所有权限
    */
-  getUserPermissions(userId: string): Promise<Array<{
+  getUserPermissions(userId: string, authToken?: string): Promise<Array<{
     resource: string;
     action: string;
     scope: string;

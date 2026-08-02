@@ -32,6 +32,9 @@ function resolveCaptchaProviderMode(): CaptchaProviderMode {
 
 export class SupabaseAuthProvider implements IAuthProvider {
   private readonly captchaProviderMode: CaptchaProviderMode;
+  /** ROADMAP 4.12: 存储 Supabase URL 和 anon key，用于 verifyToken 中创建以用户身份鉴权的 DB client */
+  private readonly supabaseUrl: string;
+  private readonly supabaseAnonKey: string;
 
   constructor(
     private client: SupabaseJsClient<Database>,
@@ -46,10 +49,13 @@ export class SupabaseAuthProvider implements IAuthProvider {
     private createFreshAuthClient: () => SupabaseJsClient<Database> = () => client
   ) {
     this.captchaProviderMode = resolveCaptchaProviderMode();
+    // Extract URL/anon key from the client for use in verifyToken (protected properties)
+    this.supabaseUrl = (client as any).supabaseUrl ?? '';
+    this.supabaseAnonKey = (client as any).supabaseKey ?? '';
     console.log(`SupabaseAuthProvider: CAPTCHA_PROVIDER=${this.captchaProviderMode}`);
   }
 
-  async verifyToken(token: string): Promise<{
+  async verifyToken(token: string, authTokenForDb?: string): Promise<{
     userId: string;
     tenantId: string | null;
     isSystemUser: boolean;
@@ -63,11 +69,20 @@ export class SupabaseAuthProvider implements IAuthProvider {
         return null;
       }
 
+      // ROADMAP 4.12: 使用用户自己的 JWT 查询 DB（而非匿名单例），使 RLS 能正确识别
+      // auth.uid()。回退到 this.client 以兼容未传 authTokenForDb 的调用方。
+      const dbClient = authTokenForDb
+        ? createClient<Database>(this.supabaseUrl, this.supabaseAnonKey, {
+            auth: { persistSession: false },
+            global: { headers: { Authorization: `Bearer ${authTokenForDb}` } },
+          })
+        : this.client;
+
       // 获取用户详细信息（包括租户、角色）
       // ADR-015: 优先从 app_metadata 读取 tenant_id（JWT 路径），回退查 users 表
       const tenantIdFromJwt = user.app_metadata?.tenant_id as string | undefined;
 
-      const { data: profile, error: profileError } = await this.client
+      const { data: profile, error: profileError } = await dbClient
         .from('users')
         .select('tenant_id, role, is_system_user')
         .eq('id', user.id)
@@ -87,7 +102,7 @@ export class SupabaseAuthProvider implements IAuthProvider {
       }
 
       // 获取用户角色和权限
-      const { data: userRoles } = await this.client
+      const { data: userRoles } = await dbClient
         .from('user_roles')
         .select('role_id, scope, roles(name), role_permissions(permissions(resource, action))')
         .eq('user_id', user.id);
@@ -129,19 +144,6 @@ export class SupabaseAuthProvider implements IAuthProvider {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * ADR-015: Token generation requires user credentials; use signIn instead.
-   * This method is kept for interface compatibility but throws if called.
-   * Consider deprecating in future.
-   */
-  async generateTokens(userId: string, tenantId: string | null): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresIn: number;
-  }> {
-    throw new Error('Token generation requires user credentials. Use signIn instead.');
   }
 
   async revokeToken(token: string): Promise<void> {

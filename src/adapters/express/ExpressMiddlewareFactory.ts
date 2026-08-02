@@ -20,7 +20,7 @@ export interface ExpressRequestContext {
   };
   tenantId?: string | null;
   correlationId?: string;
-  supabaseToken?: string;  // 新增：用于 per-request Supabase client 创建
+  supabaseToken?: string;  // per-request Supabase client JWT
 }
 
 /** 扩展 Express Request 类型 */
@@ -51,7 +51,8 @@ export class ExpressMiddlewareFactory {
         }
 
         const token = authHeader.slice(7);
-        const user = await this.authProvider.verifyToken(token);
+        // ROADMAP 4.12: 将 JWT 传入 verifyToken，使 profile/role 查询以用户身份执行
+        const user = await this.authProvider.verifyToken(token, token);
 
         if (!user) {
           return res.status(401).json({ error: 'Invalid or expired token' });
@@ -65,7 +66,7 @@ export class ExpressMiddlewareFactory {
             roles: user.roles,
             permissions: user.permissions,
           },
-          supabaseToken: token,  // 新增：存储 token 供 per-request Supabase client 使用
+          supabaseToken: token,  // 存储 token 供 per-request Supabase client 使用
           correlationId: (req.headers['x-correlation-id'] as string) || `req-${Date.now()}`,
         };
 
@@ -84,6 +85,7 @@ export class ExpressMiddlewareFactory {
       }
 
       try {
+        // ROADMAP 4.10: 传入 authToken，使 TenantResolver 以用户身份查询
         const tenantId = await this.tenantResolver.resolveFromRequest({
           headers: req.headers as Record<string, string>,
           query: req.query as Record<string, string>,
@@ -91,7 +93,7 @@ export class ExpressMiddlewareFactory {
             id: req.context.user.id,
             tenantId: req.context.user.tenantId ?? undefined,
           },
-        });
+        }, req.context.supabaseToken);
 
         if (!tenantId && !req.context.user.isSystemUser) {
           return res.status(403).json({ error: 'Tenant context required' });
@@ -99,7 +101,7 @@ export class ExpressMiddlewareFactory {
 
         // 验证租户有效性
         if (tenantId) {
-          const isValid = await this.tenantResolver.validateTenant(tenantId);
+          const isValid = await this.tenantResolver.validateTenant(tenantId, req.context.supabaseToken);
           if (!isValid) {
             return res.status(403).json({ error: 'Invalid or inactive tenant' });
           }
@@ -124,12 +126,13 @@ export class ExpressMiddlewareFactory {
       // "本租户内的系统账号"，其权限应由 role_permissions 表（迁移 024 已关联真实 ADMIN
       // 角色）决定，而非在应用层无条件放行。真正的跨租户平台超管走独立的 admin-api（无 RLS）。
       try {
+        // ROADMAP 4.10: 传入 authToken，使 PermissionChecker 以用户身份调 RPC
         const hasPermission = await this.permissionChecker.check({
           userId: req.context.user.id,
           resource,
           action,
           scope: scope ?? 'tenant',
-        });
+        }, req.context.supabaseToken);
 
         if (!hasPermission) {
           return res.status(403).json({
