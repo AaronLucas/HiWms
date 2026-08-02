@@ -1,0 +1,816 @@
+openapi: 3.1.0
+info:
+  title: HiWms API
+  version: 2.2.0
+  description: |
+    HiWms 仓储管理系统 API — 三端（Tenant / Admin / Device）已实现端点。
+    自动生成于 2026-08-03（ROADMAP 6.5）。
+
+servers:
+  - url: http://localhost:3004
+    description: Tenant API (local)
+  - url: http://localhost:3002
+    description: Admin API (local)
+  - url: http://localhost:3003
+    description: Device API (local)
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # === Common ===
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          description: Response payload (varies by endpoint)
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            details:
+              type: object
+
+    PaginationMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    # === Auth ===
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1 }
+        captchaToken: { type: string }
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            tenantId: { type: string, format: uuid, nullable: true }
+
+    ChangePasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword: { type: string, minLength: 8 }
+
+    # === Tenant: Order ===
+    CreateOrderRequest:
+      type: object
+      required: [externalOrderId, orderType, lines]
+      properties:
+        externalOrderId: { type: string, minLength: 1 }
+        orderType: { type: string, enum: [outbound, inbound, transfer] }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, qty]
+            properties:
+              productId: { type: string, format: uuid }
+              qty: { type: integer, exclusiveMinimum: 0 }
+        cutoffTime: { type: string, format: date-time }
+        platformPriority: { type: integer, minimum: 0 }
+
+    # === Tenant: Wave ===
+    GenerateWaveRequest:
+      type: object
+      required: [strategyType, orderIds]
+      properties:
+        strategyType: { type: string, enum: [batch, zone, cluster, wave] }
+        orderIds:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        config:
+          type: object
+          properties:
+            maxOrders: { type: integer, exclusiveMinimum: 0 }
+            maxLines: { type: integer, exclusiveMinimum: 0 }
+            maxQty: { type: integer, exclusiveMinimum: 0 }
+            zoneSequence: { type: array, items: { type: string } }
+
+    # === Admin: Tenant ===
+    CreateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        billing_strategy: { type: object }
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        is_active: { type: boolean }
+        billing_strategy: { type: object }
+
+    # === Device: Sync ===
+    SyncEvent:
+      type: object
+      required: [action_type, payload]
+      properties:
+        local_id: { type: string }
+        action_type: { type: string }
+        payload: { type: object }
+
+    # === Device: Task ===
+    ClaimTaskResponse:
+      type: object
+      properties:
+        claim_id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        expires_at: { type: string, format: date-time }
+
+    # === Device: Provision ===
+    DeviceProvisionRequest:
+      type: object
+      required: [device_name]
+      properties:
+        device_name: { type: string }
+        device_type: { type: string }
+        tenant_id: { type: string, format: uuid }
+
+tags:
+  - name: Auth
+    description: 认证端点（登录、改密码）
+  - name: Orders
+    description: 订单管理（tenant-api）
+  - name: Inventory
+    description: 库存管理（tenant-api）
+  - name: Products
+    description: 商品管理（tenant-api）
+  - name: Waves
+    description: 波次管理（tenant-api）
+  - name: Tenants
+    description: 租户管理（admin-api）
+  - name: Users
+    description: 用户管理（admin-api）
+  - name: Billing
+    description: 计费管理（admin-api）
+  - name: Monitoring
+    description: 系统监控（admin-api）
+  - name: Device Auth
+    description: 设备认证（device-api）
+  - name: Sync
+    description: 离线同步（device-api）
+  - name: Tasks
+    description: 任务执行（device-api）
+  - name: Exceptions
+    description: 异常管理（device-api）
+  - name: Operations
+    description: 作业操作（device-api）
+
+paths:
+  # ===== Tenant API: Auth =====
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 租户用户登录（方案 B — tenant-api 代理）
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 限流（5次/15分钟）
+
+  /api/users/me/password:
+    patch:
+      tags: [Auth]
+      summary: 自助修改密码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/schemas/ValidationError'
+
+  # ===== Tenant API: Orders =====
+  /api/orders:
+    get:
+      tags: [Orders]
+      summary: 订单列表
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 分页订单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { type: object } }
+                      meta:
+                        $ref: '#/components/schemas/PaginationMeta'
+    post:
+      tags: [Orders]
+      summary: 创建订单
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          $ref: '#/components/schemas/SuccessResponse'
+        '422':
+          $ref: '#/components/schemas/ValidationError'
+
+  /api/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: 订单详情（含明细行）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/schemas/ErrorResponse'
+
+  /api/orders/{id}/allocate:
+    post:
+      tags: [Orders]
+      summary: 按明细行分配库存（PENDING → ALLOCATED）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  # ===== Tenant API: Inventory =====
+  /api/inventory:
+    get:
+      tags: [Inventory]
+      summary: 库存列表
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: productId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: locationId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  /api/inventory/{id}:
+    get:
+      tags: [Inventory]
+      summary: 库存明细
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/schemas/ErrorResponse'
+
+  # ===== Tenant API: Products =====
+  /api/products:
+    get:
+      tags: [Products]
+      summary: 商品列表/模糊搜索
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: q
+          in: query
+          description: 搜索词（名称/SKU 模糊匹配，仅允许字母数字空格连字符）
+          schema: { type: string, maxLength: 100, pattern: "^[\\p{L}\\p{N} _-]+$" }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  /api/products/{id}:
+    get:
+      tags: [Products]
+      summary: 商品详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/schemas/ErrorResponse'
+
+  # ===== Tenant API: Waves =====
+  /api/waves:
+    get:
+      tags: [Waves]
+      summary: 波次列表
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: strategyType
+          in: query
+          description: 大写值（BATCH/ZONE/CLUSTER/WAVE）
+          schema: { type: string, enum: [BATCH, ZONE, CLUSTER, WAVE] }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  /api/waves/generate:
+    post:
+      tags: [Waves]
+      summary: 生成波次
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateWaveRequest'
+      responses:
+        '201':
+          $ref: '#/components/schemas/SuccessResponse'
+        '422':
+          $ref: '#/components/schemas/ValidationError'
+
+  # ===== Admin API: Auth =====
+  /api/admin/auth/login:
+    post:
+      tags: [Auth]
+      summary: 平台管理员登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 限流（5次/15分钟）
+
+  # ===== Admin API: Tenants =====
+  /api/admin/tenants:
+    get:
+      tags: [Tenants]
+      summary: 租户列表
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+    post:
+      tags: [Tenants]
+      summary: 创建租户（含默认角色初始化）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          $ref: '#/components/schemas/SuccessResponse'
+        '422':
+          $ref: '#/components/schemas/ValidationError'
+
+  /api/admin/tenants/{id}:
+    get:
+      tags: [Tenants]
+      summary: 租户详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Tenants]
+      summary: 更新租户
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  # ===== Admin API: Users =====
+  /api/admin/users:
+    get:
+      tags: [Users]
+      summary: 用户列表（跨租户，service_role）
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  /api/admin/users/{id}/password:
+    patch:
+      tags: [Users]
+      summary: 管理员重置成员密码
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+        '422':
+          $ref: '#/components/schemas/ValidationError'
+
+  # ===== Admin API: Billing =====
+  /api/admin/billing/rules:
+    get:
+      tags: [Billing]
+      summary: 计费规则列表（跨租户，service_role）
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  # ===== Admin API: Monitoring =====
+  /api/admin/monitoring/stats:
+    get:
+      tags: [Monitoring]
+      summary: 系统监控统计
+      responses:
+        '200':
+          $ref: '#/components/schemas/SuccessResponse'
+
+  # ===== Device API: Auth =====
+  /device/auth/login:
+    post:
+      tags: [Device Auth]
+      summary: 设备 API Key 登录
+      description: API Key 换 Access Token + Refresh Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, pattern: "^hiwms_dk_" }
+      responses:
+        '200':
+          description: Token pair
+        '401':
+          $ref: '#/components/schemas/ErrorResponse'
+
+  /device/auth/refresh:
+    post:
+      tags: [Device Auth]
+      summary: 刷新 Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: New token pair
+
+  /device/auth/operator-checkin:
+    post:
+      tags: [Device Auth]
+      summary: 操作员签到
+      description: 设备已认证后，操作员用邮箱密码签到，关联 human + device 身份
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+
+  /device/provision:
+    post:
+      tags: [Device Auth]
+      summary: 设备配置下发（需人类登录态 + devices:CREATE 权限）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceProvisionRequest'
+      responses:
+        '201':
+          description: 设备已注册并返回 API Key
+
+  /admin/devices/{id}/pairing-qr:
+    post:
+      tags: [Device Auth]
+      summary: 生成配对二维码（轮换 API Key）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 二维码 base64url
+
+  # ===== Device API: Sync =====
+  /device/sync/events:
+    post:
+      tags: [Sync]
+      summary: 提交离线动作事件
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SyncEvent'
+      responses:
+        '200':
+          description: 提交结果（含去重统计）
+
+  /device/sync/pull:
+    get:
+      tags: [Sync]
+      summary: 增量拉取同步数据
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: 增量事件列表 + 下一页游标
+
+  /device/sync/policy:
+    get:
+      tags: [Sync]
+      summary: 查询离线同步策略
+      parameters:
+        - name: task_type
+          in: query
+          schema: { type: string }
+        - name: zone_type
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 离线策略（ALLOW/LIMITED/ONLINE_ONLY）
+
+  # ===== Device API: Tasks =====
+  /device/tasks/{id}/claim:
+    post:
+      tags: [Tasks]
+      summary: 领用任务
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 领用成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimTaskResponse'
+        '409':
+          description: 任务已被领用
+
+  /device/tasks/claims/{id}/release:
+    post:
+      tags: [Tasks]
+      summary: 释放任务领用
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 释放成功
+
+  # ===== Device API: Exceptions =====
+  /device/exceptions:
+    get:
+      tags: [Exceptions]
+      summary: 异常列表
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: offset
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: 分页异常列表
+
+  /device/exceptions/{id}:
+    get:
+      tags: [Exceptions]
+      summary: 异常详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 异常详情
+        '404':
+          $ref: '#/components/schemas/ErrorResponse'
+
+  # ===== Device API: Operations =====
+  /device/putaway:
+    post:
+      tags: [Operations]
+      summary: 上架确认
+      responses:
+        '200':
+          description: 上架结果 + sync event ID
+
+  /device/count:
+    post:
+      tags: [Operations]
+      summary: 盘点提交
+      responses:
+        '200':
+          description: 盘点结果 + sync event ID
+
+  /device/pack:
+    post:
+      tags: [Operations]
+      summary: 打包确认
+      responses:
+        '200':
+          description: 打包结果 + sync event ID
+
+  /device/missing-label/generate:
+    post:
+      tags: [Operations]
+      summary: 生成内部 LPN（无码货物）
+      responses:
+        '200':
+          description: 生成的 LPN 码
+
+  /device/missing-label/confirm:
+    post:
+      tags: [Operations]
+      summary: 确认标签已贴
+      responses:
+        '200':
+          description: 确认结果
+
+  /device/unidentified/receive:
+    post:
+      tags: [Operations]
+      summary: 接收未识别货物
+      responses:
+        '200':
+          description: 接收结果
+
+  /device/unidentified/identify:
+    post:
+      tags: [Operations]
+      summary: 识别未识别货物
+      responses:
+        '200':
+          description: 识别结果
+
+  # ===== Health =====
+  /health:
+    get:
+      tags: [Monitoring]
+      summary: 健康检查（三端通用）
+      security: []
+      responses:
+        '200':
+          description: 服务状态

@@ -288,13 +288,14 @@
 - [x] 6.3（**P0，PR #72 已合入**）CORS 已配置——`createCorsMiddleware(envVarName)` 共享中间件
       已落地到 tenant-api（`TENANT_API_ALLOWED_ORIGINS`）和 admin-api（`ADMIN_API_ALLOWED_ORIGINS`），
       device-api 暂无浏览器接入需求，暂不配置
-- [ ] 6.4（**P1，2026-08-01 新增**）三个 App 的响应体结构不统一：tenant-api 用 `{success,
-      data}`/`{success, error}`（符合 `CONVENTIONS.md` 约定），admin-api 混用 `{data}`/裸对象/
-      `{error}`，device-api 用各自業務形状 + `{error, message}`——前端需要写三套解析逻辑，建议
-      收敛到统一 envelope 再对接
-- [ ] 6.5（**P1，2026-08-01 新增**）无 API 契约生成：`API_SPEC.md` 为手写 Markdown，无 OpenAPI
-      codegen、无共享类型包，前端类型只能手抄，长期会漂移——建议至少给已实现的端点生成 OpenAPI
-      schema
+- [x] 6.4（**P1**）响应体结构统一（2026-08-03）：tenant-api 已用 `{success, data/error}`，
+      admin-api 重构后统一同格式；device-api 为 PDA 机器协议，保留领域特定形状，
+      error 格式统一为 `{error, message?}`。三端不再有三种解析逻辑——浏览器端两端
+      格式一致，device 端有独立协议文档（openapi.yaml）
+- [x] 6.5（**P1**）API 契约生成（2026-08-03）：`docs/02-api/openapi.yaml`（OpenAPI 3.1，
+      816 行）覆盖三端全部 30+ 已实现端点——tenant-api 12 端点、admin-api 9 端点、
+      device-api 15 端点。前端可用 openapi-generator / swagger-typescript-api 从该
+      spec 自动生成类型和客户端，不再手抄
 
 ---
 
