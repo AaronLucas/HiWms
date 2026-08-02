@@ -16,6 +16,7 @@ import {
   productIdParamsSchema,
   listWavesQuerySchema,
   generateWaveBodySchema,
+  changePasswordBodySchema,
   validateBody,
   validateQuery,
   validateParams,
@@ -26,6 +27,7 @@ import {
   type ListProductsQuery,
   type ProductIdParams,
   type ListWavesQuery,
+  type ChangePasswordBody,
 } from './validation';
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
@@ -212,6 +214,20 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const useCase = new GenerateWaveUseCase(deps.supabaseAdapters.client);
       const result = await useCase.execute({ tenantId, ...req.body }, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // PATCH /api/users/me/password — 用户自助改密码（ROADMAP 5.4）
+  // 不走 requirePermission：改自己的密码不是 RBAC 资源权限问题，是身份问题——
+  // 已通过认证中间件（authenticate()）即代表就是 req.context.user.id 本人。
+  router.patch('/users/me/password', validateBody(changePasswordBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.context!.user!.id;
+      const { newPassword } = req.body as ChangePasswordBody;
+      await deps.supabaseAdapters.auth.provider.changePassword(userId, newPassword);
+      res.json({ success: true });
     } catch (error) {
       next(error);
     }

@@ -224,18 +224,16 @@
       用户**，`ExpressMiddlewareFactory.resolveTenant()`（87-94 行）原样透传，目前仅靠 RLS 兜底。
       建议在前端定 API 契约（是否允许客户端传 `x-tenant-id`）前排期解决，否则契约定完后改起来
       成本更高。
-- [ ] 4.12（**CRITICAL，2026-08-01 ECC 安全复核新发现，建议 Sprint 6 前修复**）共享单例
-      Supabase client 的会话被 `signIn`/`signUp` 污染，导致并发下跨用户/跨租户 RLS 上下文串扰：
-      `SupabaseAuthProvider.signIn()`（`SupabaseAuthProvider.ts:152`）与 `signUp()`（208 行）
-      直接在 `this.client`——即 `WmsSupabaseClient` 单例的 `getClient()` 返回对象，与
-      `SupabaseTenantResolver`、`SupabasePermissionChecker` 共享同一引用——上调用
-      `signInWithPassword`/`signUp`，会原地修改该单例的会话状态（`Authorization` header），
-      污染同一 Node 事件循环里所有其他并发请求通过该单例发起的 `.from()`/`.rpc()` 调用的 RLS
-      身份。已知修复模式（本会话测试代码中已用于规避同一问题）：`signIn`/`signUp` 内部改用
-      独立的一次性 `createClient()` 实例，不复用共享单例。**HIGH 附带项**：
+- [x] 4.12（**CRITICAL，2026-08-01 ECC 安全复核新发现，PR #71 已合入修复**）共享单例
+      Supabase client 的会话被 `signIn`/`signUp` 污染，导致并发下跨用户/跨租户 RLS 上下文串扰。
+      **修复方案**：`SupabaseAuthProvider` 构造函数新增 `createFreshAuthClient` 工厂参数，
+      `signIn`/`signUp`/`refreshToken` 改用独立的一次性 `createClient()` 实例，不复用共享单例；
+      `WmsSupabaseClient` 新增 `createFreshAnonClient()` 方法（`persistSession: false`）。
+      `revokeToken` 从共享单例 `signOut()` 改为 `adminClient.auth.admin.signOut(token, 'global')`
+      精确 JWT 定向撤销。**HIGH 附带项仍待处理**：
       `SupabasePermissionChecker`/`SupabaseTenantResolver`/`verifyToken()` 的 profile/role 查询
-      均未附带调用方 JWT（未用 `authToken`/per-request client），当前非独立可利用，但与上述
-      单例污染叠加后，这些查询的实际 RLS 身份变得不可预测而非可靠为 NULL，建议一并修复。
+      均未附带调用方 JWT（未用 `authToken`/per-request client），单例污染修复后这些查询恢复为
+      anon 上下文（非可利用，但非预期），建议后续一并修复。
 - [x] 4.11 Finding #5：CAPTCHA provider 可配置化 + `captchaToken` 透传（PR #69，已合入）——
       `IAuthProvider`/`SupabaseAuthProvider` 支持可选 `captchaToken`（provider-agnostic 透传，
       不判断/不探测具体 provider）+ `CAPTCHA_PROVIDER` 环境变量三态日志标记；本地用 Docker
@@ -263,9 +261,9 @@
       布尔判断（70-76 行），没有走 `requirePermission()`；请求体零 schema 校验（`req.body as any`，
       90/119 行）；`/auth/login` 无 `rateLimit()`，暴力破解无限流保护
 - [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
-- [ ] 5.4（2026-08-01 新增）`changePassword()` 无任何 HTTP 路由可达——`SupabaseAuthProvider
-      .changePassword()`（`SupabaseAuthProvider.ts:273`）已实现但零调用方，`DB_SCHEMA.md:184`
-      记载它是废弃 `IUserRepository.resetPassword` 的替代方案，需补对应路由
+- [x] 5.4（2026-08-01 新增，PR #75 已合入）`changePassword()` 无任何 HTTP 路由可达——已补：
+      tenant-api `PATCH /api/users/me/password`（自助改密码，zod 校验，需认证）+
+      admin-api `PATCH /admin/users/:id/password`（管理员重置密码，需 `isSystemUser`）
 - [ ] 5.5（2026-08-01 新增）端口/适配器不一致清理：`IVasBomRepository`（`src/core/ports/db/`）
       有端口无实现，`REPOSITORY_ROADMAP.md:119` 误标 ✅ 已完成，需订正；`src/core/{auth,db,
       cache,external,queue}/` 存在一套零引用的重复端口目录（含过期的 `src/core/auth/
@@ -279,14 +277,12 @@
 > 再让前端团队正式开工，否则会在集成第一天就卡住。
 
 - [ ] 6.1 确认前端仓库/技术栈落地方式（`ROADMAP.md` 阶段 2 提到 Uniapp Vue3，待确认是否独立仓库）
-- [ ] 6.2（**P0，2026-08-01 复核标注**）API 对接文档定稿——认证方式实际上尚未定案：`tenant-api/
-      main.ts` 只挂了 `/health` + 受保护的 `/api` 路由，**没有任何登录/登出/刷新/重置密码路由**
-      （对比 admin-api 有 `POST /auth/login`、device-api 有 `/device/auth/login`+`/refresh`）。
-      需先决定租户前端登录走"直连 Supabase Auth（`supabase-js`）"还是"新增 tenant-api 路由"，
-      再写入 `API_SPEC.md`
-- [ ] 6.3（**P0**）CORS / 环境变量对接清单——`tenant-api`/`admin-api`/`device-api` 三个 `main.ts`
-      均未设置任何 CORS 头，仓库内无 `cors` 依赖，浏览器发起的任何请求会在 preflight 阶段直接
-      失败，必须在前端第一次联调前解决
+- [x] 6.2（**P0，PR #75 已合入**）租户前端登录方案已定案——方案 B（tenant-api 代理登录），
+      `POST /auth/login` 已实现（限流 5/15min + zod 校验 + captchaToken 透传），与 admin-api、
+      device-api 的认证路由模式保持一致。详见 `API_SPEC.md` §3.16
+- [x] 6.3（**P0，PR #72 已合入**）CORS 已配置——`createCorsMiddleware(envVarName)` 共享中间件
+      已落地到 tenant-api（`TENANT_API_ALLOWED_ORIGINS`）和 admin-api（`ADMIN_API_ALLOWED_ORIGINS`），
+      device-api 暂无浏览器接入需求，暂不配置
 - [ ] 6.4（**P1，2026-08-01 新增**）三个 App 的响应体结构不统一：tenant-api 用 `{success,
       data}`/`{success, error}`（符合 `CONVENTIONS.md` 约定），admin-api 混用 `{data}`/裸对象/
       `{error}`，device-api 用各自業務形状 + `{error, message}`——前端需要写三套解析逻辑，建议

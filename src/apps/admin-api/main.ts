@@ -141,6 +141,22 @@ export async function createAdminApiApp(config: AdminApiConfig): Promise<express
     }
   });
 
+  // 管理员重置成员密码（ROADMAP 5.4）——授权已由 adminRouter 上的 isSystemUser
+  // 门禁覆盖（71-76 行），本路由本身不再额外校验目标用户与操作者的租户归属，
+  // 因为 admin-api 本来就是跨租户的平台管理面。
+  adminRouter.patch('/users/:id/password', async (req: Request, res: Response) => {
+    try {
+      const { newPassword } = req.body ?? {};
+      if (typeof newPassword !== 'string' || newPassword.length < 8) {
+        return res.status(422).json({ error: 'newPassword must be at least 8 characters' });
+      }
+      await supabaseAdapters.auth.provider.changePassword(req.params.id, newPassword);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to reset password' });
+    }
+  });
+
   // 计费管理
   adminRouter.get('/billing/rules', async (req: Request, res: Response) => {
     try {
