@@ -194,5 +194,7 @@ export function createAdminRouter(deps: AdminApiDependencies): Router {
     }
   );
 
+  router.use('/', protectedRouter);
+
   return router;
 }
