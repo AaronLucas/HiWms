@@ -212,8 +212,11 @@
 - [x] 4.8 收窄 `ExpressMiddlewareFactory.requirePermission()` 里 `is_system_user` 的硬编码 RBAC
       bypass，改为走真实 `check_user_permission` RPC（PR #65，已合入，2026-08-01 复核确认
       `ExpressMiddlewareFactory.ts:123` 处 bypass 已移除，仅留 ADR-016 引用注释）
-- [ ] 4.9（后续架构方向，未排期）评估 ADR-016 提出的 `scope='platform'` RBAC 原生权限模型 /
-      限时影子登录+审计模式，替代当前 `is_system_user` 布尔值的双重语义复用
+- [~] 4.9（方案 B 已实施，2026-08-03）ADR-017 设计定稿：scope='platform' RBAC。
+      ✅ 应用层已就绪——admin-api 路由层全部接入 `requirePermission(resource, action, 'platform')`，
+      由 `ADMIN_API_RBAC_MODE=compat|strict` 控制切换；compat 模式沿用 isSystemUser 兼容期。
+      ⏳ 待 DBA：permissions 表补充 platform 级资源行 + roles 表 platform_admin/platform_operator
+      + role_permissions 关联。DBA 种子数据落地后切 strict 即完成方案 B 全量交付。
 - [x] 4.10（安全，2026-08-02 已修复）核查所有仓储业务查询方法是否均已接入
       `authToken`/per-request authenticated client 机制：
       ① `SupabaseInventoryRepository` 9 个业务方法 + `IInventoryRepository` 接口全部
@@ -253,11 +256,13 @@
 
 - [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁——租户隔离验证
       目前仍是软门禁（2026-08-01 复核确认现状未变）
-- [ ] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-01 ECC 架构复核确认问题比原记录更
-      严重：`src/apps/admin-api/main.ts` 是单文件 184 行，没有 `config.ts`/`di.ts`/`routes.ts`/
-      `validation.ts`（与 `ARCHITECTURE.md` §2.3 描述的分层结构不符）；鉴权只有 `isSystemUser`
-      布尔判断（70-76 行），没有走 `requirePermission()`；请求体零 schema 校验（`req.body as any`，
-      90/119 行）；`/auth/login` 无 `rateLimit()`，暴力破解无限流保护
+- [x] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-03 完成重构：
+      ✅ admin-api 拆分为 config.ts / di.ts / routes.ts / validation.ts 四层结构（main.ts 从
+      184 行降至 50 行）；✅ 全部路由接入 `requirePermission(resource, action, 'platform')`，
+      strict/compat 双模式可控；✅ login 加 rateLimit(5/15min)；✅ 全部请求体改 zod 校验
+      （替换 req.body as any + 手写 typeof）；✅ 响应 envelope 统一 `{success, data/error}`；
+      ⏳ 3 处 getAdminClient().from() 直查暂保留（users/billing_rules/monitoring 是跨租户聚合查询，
+      天然无 tenant scope，不适合走 tenant-scoped Repository）；⏳ 真正生效需等 DBA 种子数据
 - [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
 - [x] 5.4（2026-08-01 新增，PR #75 已合入）`changePassword()` 无任何 HTTP 路由可达——已补：
       tenant-api `PATCH /api/users/me/password`（自助改密码，zod 校验，需认证）+

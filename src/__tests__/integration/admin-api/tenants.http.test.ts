@@ -78,7 +78,8 @@ describe.skipIf(!RUN)('admin-api POST /api/admin/tenants HTTP 契约', () => {
       .send({ name: `ecc-admin-api-tenant-${Date.now()}`, is_active: true });
 
     expect(res.status).toBe(201);
-    createdTenantId = res.body.id;
+    expect(res.body.success).toBe(true);
+    createdTenantId = res.body.data.id;
     expect(createdTenantId).toBeTypeOf('string');
 
     const adminClient = adapters.client.getAdminClient();

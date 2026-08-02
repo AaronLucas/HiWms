@@ -1,202 +1,57 @@
 /**
  * 平台超管后台 API 入口
- * 管理端点：/api/admin/*
- * 中间件：认证 + 超管权限检查 + 审计日志
- * 不注入 RLS（平台级访问）
+ * 端点：/api/admin/*
+ *
+ * ROADMAP 5.2 重构（2026-08-03）：
+ * - 拆分 config / di / routes / validation 分层
+ * - strict 模式：全 requirePermission(resource, action, 'platform')
+ * - compat 模式（默认）：沿用 isSystemUser，DBA 种子数据就绪后切换
+ * - 响应 envelope 统一为 {success, data} / {success: false, error}
+ * - login 路由接入 rateLimit + zod 校验 + 错误日志
  */
-import express, { Request, Response } from 'express';
-import { ExpressMiddlewareFactory } from '../../adapters/express/ExpressMiddlewareFactory';
+import express, { Request, Response, Express } from 'express';
 import { createCorsMiddleware } from '../../adapters/express/corsConfig';
-import { createSupabaseAdapters } from '../../adapters/supabase';
+import { createAdminApiDependencies } from './di';
+import { createAdminRouter } from './routes';
+import { loadAdminApiConfig, type AdminApiConfig } from './config';
 
-interface AdminApiConfig {
-  supabase: {
-    url: string;
-    anonKey: string;
-    serviceRoleKey: string; // 管理 API 需要 service role
-  };
-}
+export async function createAdminApiApp(configOverrides?: Partial<AdminApiConfig>): Promise<Express> {
+  const deps = await createAdminApiDependencies(configOverrides);
 
-export async function createAdminApiApp(config: AdminApiConfig): Promise<express.Application> {
   const app = express();
 
   app.use(createCorsMiddleware('ADMIN_API_ALLOWED_ORIGINS'));
   app.use(express.json({ limit: '10mb' }));
 
-  // 初始化 Supabase 适配器（使用 service role）
-  const supabaseAdapters = createSupabaseAdapters({
-    url: config.supabase.url,
-    anonKey: config.supabase.anonKey,
-    serviceRoleKey: config.supabase.serviceRoleKey,
-  });
-
-  // 创建中间件工厂
-  const middlewareFactory = new ExpressMiddlewareFactory(
-    supabaseAdapters.auth.provider,
-    supabaseAdapters.auth.permissionChecker,
-    supabaseAdapters.auth.tenantResolver,
-    supabaseAdapters.cache.provider,
-    supabaseAdapters.cache.keyBuilder
-  );
-
   // 全局中间件
-  app.use(middlewareFactory.correlationId());
+  app.use(deps.middlewareFactory.correlationId());
 
-  // 健康检查
-  app.get('/health', (req: Request, res: Response) => {
-    res.json({ status: 'ok', service: 'admin-api', timestamp: new Date().toISOString() });
+  // 健康检查（无需认证）
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ success: true, data: { status: 'ok', service: 'admin-api', timestamp: new Date().toISOString() } });
   });
 
-  // 登录（平台管理员）
-  app.post('/auth/login', async (req: Request, res: Response) => {
-    try {
-      const { email, password, captchaToken } = req.body;
-      const result = await supabaseAdapters.auth.provider.signIn(email, password, captchaToken);
-      if (!result) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-      // 验证是否为平台超管
-      const isAdmin = await supabaseAdapters.auth.tenantResolver.isPlatformAdmin(result.user.id);
-      if (!isAdmin) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: 'Login failed' });
-    }
-  });
-
-  // 受保护路由：认证 + 超管权限 + 审计
-  const adminRouter = express.Router();
-  adminRouter.use(middlewareFactory.authenticate());
-  adminRouter.use(async (req: Request, res: Response, next: any) => {
-    // 检查平台超管权限
-    if (!req.context?.user?.isSystemUser) {
-      return res.status(403).json({ error: 'Platform admin required' });
-    }
-    next();
-  });
-
-  // 租户管理
-  adminRouter.get('/tenants', async (req: Request, res: Response) => {
-    try {
-      const tenants = await supabaseAdapters.repositories.tenants.findActive();
-      res.json({ data: tenants });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch tenants' });
-    }
-  });
-
-  adminRouter.post('/tenants', async (req: Request, res: Response) => {
-    try {
-      const tenant = await supabaseAdapters.repositories.tenants.create(req.body as any);
-
-      // 建租户后必须初始化默认 ADMIN 角色 + RBAC 权限（迁移 024），否则该租户
-      // 挂不上任何角色/权限，后续所有用户在这个租户下都会被 RBAC 拒绝。
-      const { error: provisionError } = await supabaseAdapters.client
-        .getAdminClient()
-        .rpc('fn_provision_tenant_defaults', { p_tenant_id: tenant.id });
-      if (provisionError) {
-        console.error(`租户 ${tenant.id} 创建成功但默认角色/权限初始化失败:`, provisionError);
-      }
-
-      res.status(201).json(tenant);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to create tenant' });
-    }
-  });
-
-  adminRouter.get('/tenants/:id', async (req: Request, res: Response) => {
-    try {
-      const tenant = await supabaseAdapters.repositories.tenants.findById(req.params.id);
-      if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-      res.json(tenant);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch tenant' });
-    }
-  });
-
-  adminRouter.patch('/tenants/:id', async (req: Request, res: Response) => {
-    try {
-      const tenant = await supabaseAdapters.repositories.tenants.update(req.params.id, req.body as any);
-      res.json(tenant);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to update tenant' });
-    }
-  });
-
-  // 用户管理（跨租户）
-  adminRouter.get('/users', async (req: Request, res: Response) => {
-    try {
-      // 使用 admin client 查询所有用户
-      const { data, error } = await supabaseAdapters.client.getAdminClient()
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json({ data: data || [] });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch users' });
-    }
-  });
-
-  // 管理员重置成员密码（ROADMAP 5.4）——授权已由 adminRouter 上的 isSystemUser
-  // 门禁覆盖（71-76 行），本路由本身不再额外校验目标用户与操作者的租户归属，
-  // 因为 admin-api 本来就是跨租户的平台管理面。
-  adminRouter.patch('/users/:id/password', async (req: Request, res: Response) => {
-    try {
-      const { newPassword } = req.body ?? {};
-      if (typeof newPassword !== 'string' || newPassword.length < 8) {
-        return res.status(422).json({ error: 'newPassword must be at least 8 characters' });
-      }
-      await supabaseAdapters.auth.provider.changePassword(req.params.id, newPassword);
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to reset password' });
-    }
-  });
-
-  // 计费管理
-  adminRouter.get('/billing/rules', async (req: Request, res: Response) => {
-    try {
-      const { data, error } = await supabaseAdapters.client.getAdminClient()
-        .from('billing_rules')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json({ data: data || [] });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch billing rules' });
-    }
-  });
-
-  // 系统监控
-  adminRouter.get('/monitoring/stats', async (req: Request, res: Response) => {
-    try {
-      // 获取各租户统计
-      const { data: tenants } = await supabaseAdapters.client.getAdminClient()
-        .from('tenants')
-        .select('id, name, is_active');
-
-      res.json({ tenants: tenants?.length || 0, active: tenants?.filter(t => t.is_active).length || 0 });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch stats' });
-    }
-  });
-
-  app.use('/api/admin', adminRouter);
+  // 挂载路由（包含登录 + 受保护的 admin 路由）
+  app.use('/api/admin', createAdminRouter(deps));
 
   // 错误处理
-  app.use(middlewareFactory.errorHandler());
+  app.use(deps.middlewareFactory.errorHandler());
 
   return app;
 }
 
-export async function startAdminApiServer(config: AdminApiConfig, port: number = 3002): Promise<void> {
+export async function startAdminApiServer(config: AdminApiConfig, port?: number): Promise<void> {
   const app = await createAdminApiApp(config);
-  app.listen(port, () => {
-    console.log(`Admin API server running on port ${port}`);
+  const actualPort = port ?? config.server.port;
+  app.listen(actualPort, () => {
+    console.log(`Admin API server running on port ${actualPort} (rbacMode=${config.rbacMode})`);
   });
 }
+
+// 直接运行时启动
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const cfg = loadAdminApiConfig();
+  startAdminApiServer(cfg, cfg.server.port).catch(console.error);
+}
+
+export { loadAdminApiConfig };
