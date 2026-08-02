@@ -92,3 +92,17 @@ jobs:
       - name: Stop local Supabase
         if: always()
         run: supabase stop
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [db-integration]
+    if: always()
+    steps:
+      - name: Check job status
+        run: |
+          if [[ "${{ needs.db-integration.result }}" != "success" ]]; then
+            echo "❌ DB integration tests failed"
+            exit 1
+          fi
+          echo "✅ DB integration tests passed"
