@@ -15,6 +15,7 @@ import { createTenantApiDependencies } from './di';
 import { createTenantApiRouter } from './routes';
 import { loadTenantApiConfig, type TenantApiConfig } from './config';
 import { createCorsMiddleware } from '../../adapters/express/corsConfig';
+import { loginBodySchema, validateBody, type LoginBody } from './validation';
 
 export async function createTenantApiApp(_config: TenantApiConfig): Promise<Express> {
   const deps = await createTenantApiDependencies();
@@ -30,6 +31,30 @@ export async function createTenantApiApp(_config: TenantApiConfig): Promise<Expr
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok', service: 'tenant-api', timestamp: new Date().toISOString() });
   });
+
+  /**
+   * 登录（租户用户）——方案 B：tenant-api 自己代理登录请求，不让前端直连 Supabase
+   * Auth，与 admin-api（POST /auth/login）、device-api（POST /device/auth/login）
+   * 的现有模式保持一致，换来的是限流/审计/CAPTCHA token 透传都能走统一中间件
+   * （ROADMAP 6.2，2026-08-01 与项目负责人确认选此方案）。
+   */
+  app.post(
+    '/auth/login',
+    deps.middlewareFactory.rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 5 }),
+    validateBody(loginBodySchema),
+    async (req: Request, res: Response) => {
+      try {
+        const { email, password, captchaToken } = req.body as LoginBody;
+        const result = await deps.supabaseAdapters.auth.provider.signIn(email, password, captchaToken);
+        if (!result) {
+          return res.status(401).json({ success: false, error: 'Invalid credentials' });
+        }
+        res.json({ success: true, data: result });
+      } catch (error) {
+        res.status(500).json({ success: false, error: 'Login failed' });
+      }
+    }
+  );
 
   // 受保护路由：Supabase 用户 JWT 认证 + 租户解析 + RLS token 注入
   const apiRouter = express.Router();

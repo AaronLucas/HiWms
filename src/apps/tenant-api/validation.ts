@@ -12,6 +12,24 @@ export const isoDateTimeSchema = z.string().datetime({ offset: true, message: 'M
 export const positiveIntSchema = z.number().int().positive();
 export const nonNegativeIntSchema = z.number().int().nonnegative();
 
+// ========== POST /auth/login ==========
+
+export const loginBodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  captchaToken: z.string().optional(),
+});
+
+export type LoginBody = z.infer<typeof loginBodySchema>;
+
+// ========== PATCH /api/users/me/password ==========
+
+export const changePasswordBodySchema = z.object({
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export type ChangePasswordBody = z.infer<typeof changePasswordBodySchema>;
+
 const orderStatusValues = Object.values(ORDER_STATUS) as [string, ...string[]];
 
 // ========== POST /api/orders ==========
