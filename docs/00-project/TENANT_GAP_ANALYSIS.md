@@ -111,7 +111,7 @@ Admin API   ░                                  0 路由         (~0%)
 - ✅ 入库单 CRUD+状态更新+收货+上架触发（14 个新端点，含 ASN 3 个 + 入库单 6 个 + 质检单 5 个）
 - ✅ ASN 创建/列表/详情
 - ✅ 质检单 CRUD+明细项录入+结果录入（完成质检并入结果录入，PASS/REJECT/QUARANTINE/REWORK 均为终态）
-- ⚠️ **入库单明细行（inspection_items）未接入**：`inspection_items` 表只有 `inspection_id` 外键（指向 `quality_inspections`），没有 `receipt_id` 列；`IInboundReceiptRepository.findWithItems/createInspectionItems/updateInspectionItem/getInspectionSummary` 因此结构性不可用（2026-07-27 审计已发现，未修复）。本轮新端点未依赖这些方法，`GET /api/inbound-receipts/:id` 只返回单据本身，不含明细行。需 DBA 决策：给 `inspection_items` 加 `receipt_id` 外键，或改为经 `wave_id` 间接关联。
+- ⚠️ **入库单明细行（inspection_items）未接入**：`inspection_items` 表只有 `inspection_id` 外键（指向 `quality_inspections`），没有 `receipt_id` 列；`IInboundReceiptRepository.findWithItems/createInspectionItems/updateInspectionItem/getInspectionSummary` 因此结构性不可用（2026-07-27 审计已发现，未修复）。本轮新端点未依赖这些方法，`GET /api/inbound-receipts/:id` 只返回单据本身，不含明细行。需 DBA 决策：给 `inspection_items` 加 `receipt_id` 外键，或改为经 `wave_id` 间接关联。**已提 DBA 决策 Issue：[HiWmsSupabase#64](https://github.com/AaronLucas/HiWmsSupabase/issues/64)**（2026-08-03）
 - ⏳ Device API 补充收货/质检端点——未做，留待后续
 - ✅ **新增 UseCase**: `ReceiveInboundReceiptUseCase`, `GeneratePutawayWorkOrderUseCase`, `RecordInspectionResultUseCase`
 
