@@ -300,16 +300,17 @@
 | GET | `/reports/space-utilization` | 空间利用率 | `tenant_admin, warehouse_manager` |
 | GET | `/reports/boss-cockpit` | 老板驾驶舱 | `tenant_admin` |
 
-### 3.16 已实现端点（Sprint 2，2026-07-27，`src/apps/tenant-api/`）
+### 3.16 已实现端点（Sprint 2-4，`src/apps/tenant-api/`）
 
 以上 3.1-3.15 是 Tenant API 的完整规划面，实际落地按 Sprint 逐步推进。下表是
-Sprint 2 第一批真实交付的 7 个端点——路径用的是精简的 `/api/*`，还没有对齐上面
-规划里 `/outbound/`、`/inbound/` 这类前缀分组（tenant-api 是新起的应用，先跑通
-认证链路+最小闭环，前缀分组留到后续 Sprint 按需迁移）。认证复用
-`ExpressMiddlewareFactory` 的 `authenticate()`/`resolveTenant()`/
-`injectRlsContext()`，走标准 Supabase 用户 JWT + ADR-015 per-request RLS，
+当前已交付的 12 个端点——路径用的是精简的 `/api/*`，还没有对齐上面规划里 `/outbound/`、
+`/inbound/` 这类前缀分组（tenant-api 是新起的应用，先跑通认证链路+最小闭环，前缀分组
+留到后续 Sprint 按需迁移）。认证复用 `ExpressMiddlewareFactory` 的 `authenticate()`/
+`resolveTenant()`/`injectRlsContext()`，走标准 Supabase 用户 JWT + ADR-015 per-request RLS，
 不是 `requirePermission()` 的 RBAC 权限模型（RBAC 目前只接在 Device API 的
 `POST /device/provision` 上，见 §4）。
+
+#### 业务端点（Sprint 2，2026-07-27）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -323,6 +324,13 @@ Sprint 2 第一批真实交付的 7 个端点——路径用的是精简的 `/ap
 | GET | `/api/products/{id}` | 商品详情 |
 | GET | `/api/waves` | 波次列表（对应 3.6 `/outbound/waves`） |
 | POST | `/api/waves/generate` | 生成波次 |
+
+#### 认证端点（Sprint 4，2026-08-02，PR #75）
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/auth/login` | 无（限流 5/15min） | 租户用户登录（方案 B：tenant-api 代理，不直连 Supabase）。请求体：`{email, password, captchaToken?}`，成功返回 `{success, data: {accessToken, refreshToken, user}}`，失败 401 |
+| PATCH | `/api/users/me/password` | Bearer JWT | 自助修改密码。请求体：`{newPassword}`（zod 校验 ≥8 字符），成功 200 `{success: true}` |
 
 ---
 
