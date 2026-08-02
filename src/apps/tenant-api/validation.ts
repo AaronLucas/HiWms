@@ -169,3 +169,98 @@ export function validateParams<T extends z.ZodTypeAny>(schema: T) {
     next();
   };
 }
+
+// ========== Sprint 4: 出库闭环 ==========
+
+export const updateOrderStatusBodySchema = z.object({
+  status: z.enum(['PENDING', 'ALLOCATED', 'PICKING', 'PACKING', 'SORTING', 'LOADING', 'SHIPPED', 'CANCELLED']),
+});
+export type UpdateOrderStatusBody = z.infer<typeof updateOrderStatusBodySchema>;
+
+export const createShippingDocBodySchema = z.object({
+  orderIds: z.array(uuidSchema).min(1),
+  carrierId: uuidSchema.optional(),
+  trackingNumber: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type CreateShippingDocBody = z.infer<typeof createShippingDocBodySchema>;
+
+export const handoverShippingBodySchema = z.object({
+  carrierName: z.string().min(1),
+  driverName: z.string().optional(),
+  vehiclePlate: z.string().optional(),
+  signedBy: z.string().optional(),
+});
+export type HandoverShippingBody = z.infer<typeof handoverShippingBodySchema>;
+
+export const createVehicleBodySchema = z.object({
+  plateNumber: z.string().min(1),
+  vehicleType: z.string().optional(),
+  carrierName: z.string().optional(),
+  driverName: z.string().optional(),
+  driverPhone: z.string().optional(),
+});
+export type CreateVehicleBody = z.infer<typeof createVehicleBodySchema>;
+
+export const createWorkOrderBodySchema = z.object({
+  orderId: uuidSchema,
+  type: z.enum(['picking', 'packing', 'sorting', 'loading', 'putaway', 'count']),
+  assignedTo: uuidSchema.optional(),
+  priority: z.number().int().min(0).max(100).optional(),
+  notes: z.string().optional(),
+});
+export type CreateWorkOrderBody = z.infer<typeof createWorkOrderBodySchema>;
+
+export const assignWorkOrderBodySchema = z.object({
+  assigneeId: uuidSchema,
+});
+export type AssignWorkOrderBody = z.infer<typeof assignWorkOrderBodySchema>;
+
+export const updateWorkOrderStatusBodySchema = z.object({
+  status: z.enum(['pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'blocked']),
+  notes: z.string().optional(),
+});
+export type UpdateWorkOrderStatusBody = z.infer<typeof updateWorkOrderStatusBodySchema>;
+
+export const updateWaveStatusBodySchema = z.object({
+  status: z.enum(['PENDING', 'RELEASED', 'ALLOCATING', 'ALLOCATED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']),
+});
+export type UpdateWaveStatusBody = z.infer<typeof updateWaveStatusBodySchema>;
+
+export const addOrdersToWaveBodySchema = z.object({
+  orderIds: z.array(uuidSchema).min(1, 'At least one order id required'),
+});
+export type AddOrdersToWaveBody = z.infer<typeof addOrdersToWaveBodySchema>;
+
+export const waveIdParamsSchema = z.object({ id: uuidSchema });
+export type WaveIdParams = z.infer<typeof waveIdParamsSchema>;
+
+export const workOrderIdParamsSchema = z.object({ id: uuidSchema });
+export type WorkOrderIdParams = z.infer<typeof workOrderIdParamsSchema>;
+
+export const shippingDocIdParamsSchema = z.object({ id: uuidSchema });
+export type ShippingDocIdParams = z.infer<typeof shippingDocIdParamsSchema>;
+
+export const vehicleIdParamsSchema = z.object({ id: uuidSchema });
+export type VehicleIdParams = z.infer<typeof vehicleIdParamsSchema>;
+
+export const listWorkOrdersQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(['pending', 'assigned', 'in_progress', 'completed', 'cancelled', 'blocked']).optional(),
+  type: z.enum(['picking', 'packing', 'sorting', 'loading', 'putaway', 'count']).optional(),
+});
+export type ListWorkOrdersQuery = z.infer<typeof listWorkOrdersQuerySchema>;
+
+export const listVehiclesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+export type ListVehiclesQuery = z.infer<typeof listVehiclesQuerySchema>;
+
+export const listShippingDocsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(['draft', 'issued', 'in_transit', 'delivered', 'cancelled']).optional(),
+});
+export type ListShippingDocsQuery = z.infer<typeof listShippingDocsQuerySchema>;
