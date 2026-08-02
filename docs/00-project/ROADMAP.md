@@ -254,8 +254,9 @@
 
 #### Sprint 5: CI 加固 + 技术债清理（⏳ 待 Sprint 4 推进，2026-07-28 规划；2026-08-01 ECC 架构复核扩充）
 
-- [ ] 5.1 `db-integration.yml` 观察期评估，决定是否升级为 `ci-success` 硬门禁——租户隔离验证
-      目前仍是软门禁（2026-08-01 复核确认现状未变）
+- [~] 5.1 `db-integration.yml` 观察期评估：ci-success 硬门禁已加入（2026-08-03），
+      需 repo admin 在 GitHub Branch Protection 中将 'DB Integration Tests / CI Success'
+      加入 Required Status Checks 即完成升级
 - [x] 5.2 Admin API 绕过 Repository 层技术债清理——2026-08-03 完成重构：
       ✅ admin-api 拆分为 config.ts / di.ts / routes.ts / validation.ts 四层结构（main.ts 从
       184 行降至 50 行）；✅ 全部路由接入 `requirePermission(resource, action, 'platform')`，
@@ -263,7 +264,9 @@
       （替换 req.body as any + 手写 typeof）；✅ 响应 envelope 统一 `{success, data/error}`；
       ⏳ 3 处 getAdminClient().from() 直查暂保留（users/billing_rules/monitoring 是跨租户聚合查询，
       天然无 tenant scope，不适合走 tenant-scoped Repository）；⏳ 真正生效需等 DBA 种子数据
-- [ ] 5.3 Use Case 层剩余 stub 复核（参照 `AllocateInventoryUseCase` 命名误导先例）
+- [x] 5.3 Use Case 层剩余 stub 复核（2026-08-03）：全部 6 个 Use Case 审计完毕——
+      CreateOrder/GenerateWave/AllocateInventory/ResolveBlackbox/CalculateStorageFee/
+      CreateWorkOrder 均为完整实现，零 stub，throw 均为正经错误处理
 - [x] 5.4（2026-08-01 新增，PR #75 已合入）`changePassword()` 无任何 HTTP 路由可达——已补：
       tenant-api `PATCH /api/users/me/password`（自助改密码，zod 校验，需认证）+
       admin-api `PATCH /admin/users/:id/password`（管理员重置密码，需 `isSystemUser`）
