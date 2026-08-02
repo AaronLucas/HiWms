@@ -3,7 +3,8 @@
 > 基于已完成的架构设计、数据库 Schema、API 设计、RBAC 系统生成的完整实施路线图。
 > 
 > **当前活跃 Sprint**: Sprint 0-3 均已完成并合并入 main（PR #56/#57/#58/#59，2026-07-28）。Sprint 4 — 安全闭环（RBAC 覆盖 + ADR-015 数据库侧收尾）为当前活跃 Sprint，部分任务等待 DBA 三个 addendum 落地  
-> **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成，Sprint 0-3 完成后需重新评估）  
+> **最新审计**: `docs/00-project/BACKEND_GAP_ANALYSIS.md`（2026-07-27，后端 ~55% 完成）  
+> **需求 v3.8 批判性评审**: `docs/00-project/REQUIREMENTS_V38_CRITICAL_REVIEW.md`（**2026-08-02 新增**，三方对照：需求文档 vs 现有实现 vs 行业标准，20 用例逐项判决）
 > **执行计划**: `docs/00-project/ECC_EXECUTION_PLAN.md`（2026-07-28，已扩展至 Sprint 0-6）
 
 ---
