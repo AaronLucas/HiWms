@@ -9,7 +9,7 @@ interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
 }
 
-function buildUrl(endpoint: string, params?: Record<string, unknown>): string {
+function buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
   const url = new URL(`${API_BASE_URL}${endpoint}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -89,11 +89,11 @@ async function request<T>(
 }
 
 export const api = {
-  get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
+  get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>(endpoint, { method: "GET", params });
   },
 
-  post<T>(endpoint: string, data?: unknown, params?: Record<string, unknown>): Promise<T> {
+  post<T>(endpoint: string, data?: unknown, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>(endpoint, {
       method: "POST",
       body: data ? JSON.stringify(data) : undefined,
@@ -101,7 +101,7 @@ export const api = {
     });
   },
 
-  put<T>(endpoint: string, data?: unknown, params?: Record<string, unknown>): Promise<T> {
+  put<T>(endpoint: string, data?: unknown, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>(endpoint, {
       method: "PUT",
       body: data ? JSON.stringify(data) : undefined,
@@ -109,7 +109,7 @@ export const api = {
     });
   },
 
-  patch<T>(endpoint: string, data?: unknown, params?: Record<string, unknown>): Promise<T> {
+  patch<T>(endpoint: string, data?: unknown, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>(endpoint, {
       method: "PATCH",
       body: data ? JSON.stringify(data) : undefined,
@@ -117,7 +117,7 @@ export const api = {
     });
   },
 
-  delete<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
+  delete<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     return request<T>(endpoint, { method: "DELETE", params });
   },
 };

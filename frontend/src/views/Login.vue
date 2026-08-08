@@ -2,7 +2,7 @@
   <div class="login-page">
     <el-card class="login-form" shadow="never">
       <div class="login-header">
-        <el-icon class="login-icon"><Warehouse /></el-icon>
+        <el-icon class="login-icon"><Box /></el-icon>
         <h1>HiWMS 登录</h1>
       </div>
       <el-form :model="form" :rules="rules" ref="formRef" label-width="80px" class="login-form-el">
@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Warehouse, User, Lock, OfficeBuilding } from '@element-plus/icons-vue'
+import { Box, User, Lock, OfficeBuilding } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAuth } from '@/composables/useAuth'
 import { useRouter } from 'vue-router'
@@ -58,7 +58,7 @@ const rules = {
 async function handleLogin() {
   if (!formRef.value) return
 
-  await formRef.value.validate(async (valid) => {
+  await formRef.value.validate(async (valid: boolean) => {
     if (!valid) return
 
     loading.value = true

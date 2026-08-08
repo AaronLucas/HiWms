@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, type Component } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useAuth } from "@/composables/useAuth";
@@ -93,7 +93,13 @@ import {
 const router = useRouter();
 const auth = useAuth();
 
-const stats = ref([
+const stats = ref<{
+  key: string
+  label: string
+  value: number
+  icon: Component
+  iconClass: string
+}[]>([
   { key: "inventory", label: "总库存", value: 0, icon: Box, iconClass: "icon-primary" },
   { key: "orders", label: "待处理订单", value: 0, icon: ShoppingCart, iconClass: "icon-success" },
   { key: "waves", label: "活跃波次", value: 0, icon: Connection, iconClass: "icon-info" },
@@ -101,16 +107,16 @@ const stats = ref([
 ]);
 
 const userAvatar = computed(() => {
-  const email = auth.user?.email || "";
+  const email = auth.user.value?.email || "";
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(email)}&background=409EFF&color=fff`;
 });
 
 async function loadDashboardStats() {
   try {
-    stats.value[0].value = 1250;
-    stats.value[1].value = 23;
-    stats.value[2].value = 3;
-    stats.value[3].value = 8;
+    if (stats.value[0]) stats.value[0].value = 1250;
+    if (stats.value[1]) stats.value[1].value = 23;
+    if (stats.value[2]) stats.value[2].value = 3;
+    if (stats.value[3]) stats.value[3].value = 8;
   } catch (error) {
     ElMessage.error("加载统计数据失败");
   }

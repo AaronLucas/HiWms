@@ -1,5 +1,7 @@
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
+import type { User } from "@/types/auth";
+import type { AuthTokens, LoginCredentials } from "@/types/auth";
 
 const TOKEN_KEY = "hiwms_access_token";
 const REFRESH_KEY = "hiwms_refresh_token";
@@ -19,7 +21,11 @@ export function useAuth() {
   const isTokenExpired = computed(() => {
     if (!accessToken.value) return true;
     try {
-      const payload = JSON.parse(atob(accessToken.value.split(".")[1]));
+      const token = accessToken.value;
+      if (!token) return true;
+      const parts = token.split(".");
+      if (parts.length < 2) return true;
+      const payload = JSON.parse(atob(parts[1]));
       return payload.exp * 1000 < Date.now();
     } catch {
       return true;
@@ -193,6 +199,3 @@ export function useAuth() {
     loadFromStorage,
   };
 }
-
-import type { User } from "@/types/auth";
-import type { AuthTokens, LoginCredentials } from "@/types/auth";
