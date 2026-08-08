@@ -274,6 +274,12 @@
       ✅ `src/core/{auth,db,cache,external,queue}/` 5 个零引用死端口目录已整体删除（20 文件）；
       ⏳ `IVasBomRepository`（`src/core/ports/db/`）有端口无实现，`REPOSITORY_ROADMAP.md:119`
       误标 ✅ 已完成，仍需订正
+- [x] 5.6（2026-08-08 新增）DBA 决策问题落地：`inspection_items` 缺 `receipt_id` 外键结构性缺口
+      （HiWmsSupabase#64）——✅ DBA 决策已落地：PR #65 合并（`quality_inspections.receipt_id` 外键 +
+      复合索引）；✅ 应用层同步修复：`src/types/database.ts` 添加 receipt_id 字段及外键关系；
+      ✅ `SupabaseInboundReceiptRepository.ts` 两跳查询重写（`findWithItems()`/`getInspectionSummary()` 
+      由直接查 `inspection_items.receipt_id` 改为先查 `quality_inspections.receipt_id` 再查
+      `inspection_items.inspection_id`），TypeScript 编译通过、单元测试 85 passed
 
 #### Sprint 6: 前端启动准备（⏳ 依赖 Sprint 4 安全闭环，2026-07-28 规划；2026-08-01 ECC 架构复核：**当前判定"未就绪"，非仅剩尾工**）
 

@@ -2180,6 +2180,13 @@ export type Database = {
             referencedRelation: "waves"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "quality_inspections_receipt_id_fkey"
+            columns: ["receipt_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_receipts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       role_permissions: {

@@ -133,6 +133,15 @@ export const QUALITY_INSPECTION_STATUS = {
 } as const;
 export type QualityInspectionStatus = (typeof QUALITY_INSPECTION_STATUS)[keyof typeof QUALITY_INSPECTION_STATUS];
 
+/** quality_inspections.result 列的合法取值——与 status 列是独立的取值域（chk_quality_inspections_result 约束） */
+export const QUALITY_INSPECTION_RESULT = {
+  PASS: 'PASS',
+  REJECT: 'REJECT',
+  QUARANTINE: 'QUARANTINE',
+  REWORK: 'REWORK',
+} as const;
+export type QualityInspectionResult = (typeof QUALITY_INSPECTION_RESULT)[keyof typeof QUALITY_INSPECTION_RESULT];
+
 export const SHIPPING_DOCUMENT_STATUS = {
   DRAFT: 'DRAFT',
   ISSUED: 'ISSUED',

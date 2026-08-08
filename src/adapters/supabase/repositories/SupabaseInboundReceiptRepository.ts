@@ -73,10 +73,26 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
       throw receiptError;
     }
 
+    // Two-hop query: first get quality_inspections linked to this receipt, then their items
+    const { data: inspections, error: inspectionsError } = await (this.getClient() as any)
+      .from('quality_inspections')
+      .select('id')
+      .eq('receipt_id', receiptId);
+
+    if (inspectionsError) throw inspectionsError;
+    const inspectionIds = (inspections as { id: string }[] || []).map(i => i.id);
+
+    if (inspectionIds.length === 0) {
+      return {
+        receipt: receipt as InboundReceiptRow,
+        items: [],
+      };
+    }
+
     const { data: items, error: itemsError } = await (this.getClient() as any)
       .from('inspection_items')
       .select('*')
-      .eq('receipt_id', receiptId)
+      .in('inspection_id', inspectionIds)
       .order('created_at', { ascending: true });
 
     if (itemsError) throw itemsError;
@@ -164,22 +180,41 @@ export class SupabaseInboundReceiptRepository extends SupabaseBaseRepository<
     failedItems: number;
     pendingItems: number;
   }> {
-    // NOTE: inspection_items 表既没有 `status` 列，也没有 `receipt_id` 列（真实 FK 只有 inspection_id -> quality_inspections）。
-    // quality_inspections 本身也没有 receipt_id，只有 wave_id/order_id/sku_id，因此当前 schema 下没有
-    // 从 inbound_receipts 直接查到 inspection_items 的路径。这不是简单的大小写/字面量问题，是结构性缺口
-    // （缺少 receipt_id 外键或需要经 wave_id 间接关联），保留原实现未修复，需产品/DBA 决策后再动。
-    const { data, error } = await (this.getClient() as any)
-      .from('inspection_items')
-      .select('status')
+    // Two-hop query: first get quality_inspections linked to this receipt, then aggregate their items
+    const { data: inspections, error: inspectionsError } = await (this.getClient() as any)
+      .from('quality_inspections')
+      .select('id')
       .eq('receipt_id', receiptId);
 
-    if (error) throw error;
-    const items = data as { status: string }[];
+    if (inspectionsError) throw inspectionsError;
+    const inspectionIds = (inspections as { id: string }[] || []).map(i => i.id);
+
+    if (inspectionIds.length === 0) {
+      return {
+        totalItems: 0,
+        passedItems: 0,
+        failedItems: 0,
+        pendingItems: 0,
+      };
+    }
+
+    const { data: items, error: itemsError } = await (this.getClient() as any)
+      .from('inspection_items')
+      .select('passed')
+      .in('inspection_id', inspectionIds);
+
+    if (itemsError) throw itemsError;
+    const itemsData = items as { passed: boolean | null }[] || [];
+    const totalItems = itemsData.length;
+    const passedItems = itemsData.filter(i => i.passed === true).length;
+    const failedItems = itemsData.filter(i => i.passed === false).length;
+    const pendingItems = itemsData.filter(i => i.passed === null).length;
+
     return {
-      totalItems: items.length,
-      passedItems: items.filter(i => i.status === 'passed').length,
-      failedItems: items.filter(i => i.status === 'failed').length,
-      pendingItems: items.filter(i => i.status === 'pending').length,
+      totalItems,
+      passedItems,
+      failedItems,
+      pendingItems,
     };
   }
 

@@ -35,9 +35,9 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean }
+    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean; isFrozen?: boolean }
   ): Promise<LocationRow[]> {
-    const { limit = 100, offset = 0, zoneType, isActive } = options || {};
+    const { limit = 100, offset = 0, zoneType, isActive, isFrozen } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
@@ -47,6 +47,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
     if (zoneType) query = query.eq('zone_type', zoneType);
     if (isActive !== undefined) query = query.eq('is_active', isActive);
+    if (isFrozen !== undefined) query = query.eq('is_frozen', isFrozen);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -154,5 +155,64 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       maxWeight: row.max_weight_capacity || 0,
       utilizationPct: 0,
     }));
+  }
+
+  // ===== Sprint 6: 库位全量写操作 =====
+
+  async findWithDetails(locationId: string): Promise<{
+    location: LocationRow;
+    utilization: { currentVolume: number; currentWeight: number; maxVolume: number; maxWeight: number; utilizationPct: number };
+    children: LocationRow[];
+  } | null> {
+    const { data: location, error: locError } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('id', locationId)
+      .single();
+
+    if (locError) {
+      if (locError.code === 'PGRST116') return null;
+      throw locError;
+    }
+
+    // Note: locations table doesn't have parent_id field in current schema
+    // children query would need a different approach if hierarchy is supported
+
+    // 实时聚合当前库位的库存体积/重量
+    const { data: inventory, error: invError } = await this.getClient()
+      .from('inventory')
+      .select(`
+        quantity,
+        products!inner(unit_volume, unit_weight)
+      `)
+      .eq('location_id', locationId);
+
+    if (invError) throw invError;
+
+    let currentVolume = 0;
+    let currentWeight = 0;
+    for (const row of inventory || []) {
+      const vol = row.products?.unit_volume ?? 0;
+      const wt = row.products?.unit_weight ?? 0;
+      const qty = row.quantity ?? 0;
+      currentVolume += vol * qty;
+      currentWeight += wt * qty;
+    }
+
+    const maxVolume = location.max_volume_capacity || 0;
+    const maxWeight = location.max_weight_capacity || 0;
+    const utilizationPct = maxVolume > 0 ? Math.round((currentVolume / maxVolume) * 100) : 0;
+
+    return {
+      location: location as LocationRow,
+      utilization: {
+        currentVolume,
+        currentWeight,
+        maxVolume,
+        maxWeight,
+        utilizationPct,
+      },
+      children: [],
+    };
   }
 }

@@ -90,4 +90,134 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   }
+
+  async getConstraints(productId: string): Promise<Tables<'product_constraints'> | null> {
+    const { data, error } = await this.getClient()
+      .from('product_constraints')
+      .select('*')
+      .eq('product_id', productId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data as Tables<'product_constraints'>;
+  }
+
+  // ===== Sprint 6: 商品全量写操作 =====
+
+  async addBarcode(productId: string, barcode: string, targetType: string, targetSubtype?: string, isPrimary?: boolean): Promise<Tables<'barcode_mappings'>> {
+    const product = await this.findById(productId);
+    if (!product) throw new Error('产品不存在');
+
+    const { data, error } = await this.getClient()
+      .from('barcode_mappings')
+      .insert({
+        target_id: productId,
+        target_table: 'products',
+        target_type: targetType,
+        target_subtype: targetSubtype ?? null,
+        barcode,
+        tenant_id: product.tenant_id,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(`添加条码失败: ${error.message}`);
+    return data as Tables<'barcode_mappings'>;
+  }
+
+  async removeBarcode(barcodeId: string): Promise<void> {
+    const { error } = await this.getClient()
+      .from('barcode_mappings')
+      .delete()
+      .eq('id', barcodeId);
+
+    if (error) throw new Error(`删除条码失败: ${error.message}`);
+  }
+
+  async getBarcodes(productId: string): Promise<Tables<'barcode_mappings'>[]> {
+    const { data, error } = await this.getClient()
+      .from('barcode_mappings')
+      .select('*')
+      .eq('target_id', productId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data as Tables<'barcode_mappings'>[]) || [];
+  }
+
+  // Type-safe constraint update builder
+  private buildConstraintUpdate(
+    productId: string,
+    existing: Tables<'product_constraints'> | null,
+    constraintType: string,
+    constraintValue: string
+  ): TablesInsert<'product_constraints'> {
+    const updateData: TablesInsert<'product_constraints'> = {
+      product_id: productId,
+      updated_at: new Date().toISOString(),
+      ...(existing || {}),
+    };
+
+    // Type-safe constraint mapping
+    switch (constraintType) {
+      case 'location_type':
+        updateData.required_zone_type = constraintValue;
+        break;
+      case 'temperature':
+        updateData.storage_temp_range = constraintValue;
+        break;
+      case 'hazardous':
+        updateData.is_dangerous = constraintValue === 'true';
+        break;
+      case 'segregation':
+        updateData.hazmat_incompatibility_tags = constraintValue ? [constraintValue] : [];
+        break;
+      case 'expiry_threshold':
+        updateData.expiry_threshold_days = parseInt(constraintValue, 10);
+        break;
+      case 'max_out_fridge':
+        updateData.max_out_fridge_seconds = parseInt(constraintValue, 10);
+        break;
+      case 'must_scan_sn':
+        updateData.must_scan_sn = constraintValue === 'true';
+        break;
+      case 'requires_unique_tracking':
+        updateData.requires_unique_tracking = constraintValue === 'true';
+        break;
+      case 'hs_code':
+        updateData.hs_code = constraintValue;
+        break;
+      default:
+        throw new Error(`未知的约束类型: ${constraintType}`);
+    }
+
+    return updateData;
+  }
+
+  async upsertConstraint(productId: string, constraintType: string, constraintValue: string, severity?: string): Promise<Tables<'product_constraints'>> {
+    const existing = await this.getConstraints(productId);
+    const updateData = this.buildConstraintUpdate(productId, existing, constraintType, constraintValue);
+
+    const { data, error } = await this.getClient()
+      .from('product_constraints')
+      .upsert(updateData, { onConflict: 'product_id' })
+      .select()
+      .single();
+
+    if (error) throw new Error(`添加/更新约束失败: ${error.message}`);
+    return data as Tables<'product_constraints'>;
+  }
+
+  async removeConstraint(constraintId: string): Promise<void> {
+    // Since it's 1:1, constraintId should be product_id
+    const { error } = await this.getClient()
+      .from('product_constraints')
+      .delete()
+      .eq('product_id', constraintId);
+
+    if (error) throw new Error(`删除约束失败: ${error.message}`);
+  }
 }

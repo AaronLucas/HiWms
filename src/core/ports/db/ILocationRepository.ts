@@ -19,7 +19,7 @@ export interface ILocationRepository extends IRepository<LocationRow, LocationIn
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean }
+    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean; isFrozen?: boolean }
   ): Promise<LocationRow[]>;
 
   /**
@@ -71,4 +71,15 @@ export interface ILocationRepository extends IRepository<LocationRow, LocationIn
     maxWeight: number;
     utilizationPct: number;
   }>>;
+
+  // ===== Sprint 6: 库位全量写操作 =====
+
+  /**
+   * 获取库位详情（含容量/利用率/子库位）
+   */
+  findWithDetails(locationId: string): Promise<{
+    location: LocationRow;
+    utilization: { currentVolume: number; currentWeight: number; maxVolume: number; maxWeight: number; utilizationPct: number };
+    children: LocationRow[];
+  } | null>;
 }
