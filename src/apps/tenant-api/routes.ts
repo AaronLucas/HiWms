@@ -155,9 +155,7 @@ import {
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   const router = express.Router();
-  const { orders, inventory, products, waves } = deps.supabaseAdapters.repositories;
-  const { locations, containers } = deps.supabaseAdapters.repositories;
-  const { asn, inboundReceipts, qualityInspections } = deps.supabaseAdapters.repositories;
+  const { orders, inventory, products, waves, asn, inboundReceipts, qualityInspections, locations, containers, workOrders: wo, shippingDocuments: shipping, vehicles: vehiclesRepo } = deps.supabaseAdapters.repositories;
 
   // GET /api/orders — 列出当前租户订单
   router.get('/orders', deps.middlewareFactory.requirePermission('orders', 'READ'), validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -360,7 +358,6 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
 
 
   // ===== Sprint 4: 出库闭环 =====
-  const { workOrders: wo, shippingDocuments: shipping, vehicles: vehiclesRepo } = deps.supabaseAdapters.repositories;
 
   // --- 订单状态更新 ---
   router.patch('/orders/:id/status', deps.middlewareFactory.requirePermission('orders', 'UPDATE'), validateParams(orderIdParamsSchema), validateBody(updateOrderStatusBodySchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -473,12 +470,12 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const body = req.body as CreateWorkOrderBody;
       const insertData: TablesInsert<'work_orders'> = {
         tenant_id: tenantId,
-        order_id: body.orderId ?? null,
+        related_order_id: body.orderId ?? null,
         wave_id: body.waveId ?? null,
         task_type: body.type,
         assigned_user_id: body.assignedTo ?? null,
-        priority: body.priority ?? 0,
-        notes: body.notes ?? null,
+        expected_duration_seconds: body.priority ?? null,
+        pda_summary: body.notes ?? null,
       };
       const result = await wo.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -555,10 +552,11 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const body = req.body as CreateShippingDocBody;
       const insertData: TablesInsert<'shipping_documents'> = {
         tenant_id: tenantId,
-        order_ids: body.orderIds,
-        carrier_id: body.carrierId ?? null,
-        tracking_number: body.trackingNumber ?? null,
-        notes: body.notes ?? null,
+        doc_number: `SD-${Date.now()}`,
+        doc_type: 'shipping',
+        content: { orderIds: body.orderIds, carrierId: body.carrierId, trackingNumber: body.trackingNumber, notes: body.notes },
+        issued_at: new Date().toISOString(),
+        issued_by: req.context?.user?.id ?? null,
       };
       const result = await shipping.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -600,11 +598,13 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const body = req.body as CreateVehicleBody;
       const insertData: TablesInsert<'vehicles'> = {
         tenant_id: tenantId,
-        plate_number: body.plateNumber,
-        vehicle_type: body.vehicleType ?? null,
-        carrier_name: body.carrierName ?? null,
+        vehicle_no: body.plateNumber,
+        type: body.vehicleType ?? 'truck',
+        license_plate: body.plateNumber,
         driver_name: body.driverName ?? null,
         driver_phone: body.driverPhone ?? null,
+        max_volume: 0,
+        max_weight: 0,
       };
       const result = await vehiclesRepo.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -614,7 +614,6 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // ===== Sprint 5: 入库全链路（ASN→收货→质检→上架） =====
-  const { asn, inboundReceipts, qualityInspections } = deps.supabaseAdapters.repositories;
 
   // --- 创建 ASN ---
   router.post('/asn', deps.middlewareFactory.requirePermission('asn', 'CREATE'), validateBody(createAsnBodySchema), async (req: Request, res: Response, next: NextFunction) => {
