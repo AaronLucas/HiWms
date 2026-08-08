@@ -51,6 +51,34 @@ import {
   qualityInspectionIdParamsSchema,
   addInspectionItemsBodySchema,
   recordInspectionResultBodySchema,
+  // Sprint 6: 库存操作 + 主数据
+  adjustInventoryBodySchema,
+  transferInventoryBodySchema,
+  reserveInventoryBodySchema,
+  lockInventoryBodySchema,
+  inventoryIdParamsSchema,
+  listInventoryHistoryQuerySchema,
+  getAvailableInventoryQuerySchema,
+  createLocationBodySchema,
+  updateLocationBodySchema,
+  listLocationsQuerySchema,
+  locationIdParamsSchema,
+  updateLocationStatusBodySchema,
+  updateLocationCapacityBodySchema,
+  createContainerBodySchema,
+  updateContainerBodySchema,
+  listContainersQuerySchema,
+  containerIdParamsSchema,
+  sealContainerBodySchema,
+  moveContainerBodySchema,
+  containerContentsQuerySchema,
+  lpnQueryParamsSchema,
+  createProductBodySchema,
+  updateProductBodySchema,
+  addProductBarcodeBodySchema,
+  listProductBarcodesQuerySchema,
+  productConstraintBodySchema,
+  updateProductAbcClassBodySchema,
   validateBody,
   validateQuery,
   validateParams,
@@ -92,11 +120,38 @@ import {
   type QualityInspectionIdParams,
   type AddInspectionItemsBody,
   type RecordInspectionResultBody,
+  // Sprint 6 types
+  type AdjustInventoryBody,
+  type TransferInventoryBody,
+  type ReserveInventoryBody,
+  type LockInventoryBody,
+  type ListInventoryHistoryQuery,
+  type GetAvailableInventoryQuery,
+  type CreateLocationBody,
+  type UpdateLocationBody,
+  type ListLocationsQuery,
+  type LocationIdParams,
+  type UpdateLocationStatusBody,
+  type UpdateLocationCapacityBody,
+  type CreateContainerBody,
+  type UpdateContainerBody,
+  type ListContainersQuery,
+  type ContainerIdParams,
+  type SealContainerBody,
+  type MoveContainerBody,
+  type ContainerContentsQuery,
+  type LpnQueryParams,
+  type CreateProductBody,
+  type UpdateProductBody,
+  type AddProductBarcodeBody,
+  type ListProductBarcodesQuery,
+  type ProductConstraintBody,
+  type UpdateProductAbcClassBody,
 } from './validation';
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   const router = express.Router();
-  const { orders, inventory, products, waves } = deps.supabaseAdapters.repositories;
+  const { orders, inventory, products, waves, locations, containers } = deps.supabaseAdapters.repositories;
 
   // GET /api/orders — 列出当前租户订单
   router.get('/orders', deps.middlewareFactory.requirePermission('orders', 'READ'), validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -736,19 +791,5 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   });
 
   // --- 记录质检结果（同时视为完成质检） ---
-  router.patch('/quality-inspections/:id/result', deps.middlewareFactory.requirePermission('quality_inspections', 'UPDATE'), validateParams(qualityInspectionIdParamsSchema), validateBody(recordInspectionResultBodySchema), async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const tenantId = req.context!.tenantId;
-      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
-      const { id } = req.params as unknown as QualityInspectionIdParams;
-      const { result, discrepancyDetails, notes } = req.body as RecordInspectionResultBody;
-      const useCase = new RecordInspectionResultUseCase(deps.supabaseAdapters.client);
-      const data = await useCase.execute({ tenantId, inspectionId: id, result: result as QualityInspectionResult, discrepancyDetails, notes }, req.context?.supabaseToken);
-      res.json({ success: true, data });
-    } catch (error) {
-      next(error);
-    }
-  });
-
   return router;
 }

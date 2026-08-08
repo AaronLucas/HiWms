@@ -150,7 +150,7 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
 
   async upsertConstraint(productId: string, constraintType: string, constraintValue: string, severity?: string): Promise<Tables<'product_constraints'>> {
     // product_constraints is a 1:1 table with products, use product_id as conflict key
-    const updateData: Record<string, unknown> = { product_id: productId, updated_at: new Date().toISOString() };
+    const updateData: TablesInsert<'product_constraints'> = { product_id: productId, updated_at: new Date().toISOString() };
 
     // Map constraintType to actual columns
     switch (constraintType) {
@@ -187,7 +187,7 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
 
     const { data, error } = await this.getClient()
       .from('product_constraints')
-      .upsert(updateData, { onConflict: 'product_id' })
+      .upsert(updateData as any, { onConflict: 'product_id' })
       .select()
       .single();
 

@@ -3,7 +3,7 @@
  */
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
-import { ORDER_STATUS, WAVE_STATUS, INBOUND_RECEIPT_STATUS, QUALITY_INSPECTION_RESULT } from '../../core/constants/status';
+import { ORDER_STATUS, WAVE_STATUS, INBOUND_RECEIPT_STATUS, QUALITY_INSPECTION_RESULT, CONTAINER_STATUS } from '../../core/constants/status';
 
 // ========== 通用类型 ==========
 
