@@ -31,35 +31,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { createClient } from '@supabase/supabase-js'
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 
-const router = useRouter()
-const tenantId = ref(localStorage.getItem('tenant_id') || '-')
-const totalInventory = ref(0)
-const pendingOrders = ref(0)
-const activeWaves = ref(0)
-const activeWorkOrders = ref(0)
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key'
-)
+const router = useRouter();
+const tenantId = ref(localStorage.getItem('tenant_id') || '-');
+const totalInventory = ref(0);
+const pendingOrders = ref(0);
+const activeWaves = ref(0);
+const activeWorkOrders = ref(0);
 
 function logout() {
-  localStorage.removeItem('access_token')
-  localStorage.removeItem('refresh_token')
-  localStorage.removeItem('tenant_id')
-  router.push('/login')
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('tenant_id');
+  router.push('/login');
 }
 
 onMounted(async () => {
-  totalInventory.value = 1250
-  pendingOrders.value = 23
-  activeWaves.value = 3
-  activeWorkOrders.value = 8
-})
+  totalInventory.value = 1250;
+  pendingOrders.value = 23;
+  activeWaves.value = 3;
+  activeWorkOrders.value = 8;
+});
 </script>
 
 <style scoped>
@@ -94,7 +88,7 @@ button {
   background: white;
   padding: 1.5rem;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .stat-card h3 {
   margin: 0 0 0.5rem;

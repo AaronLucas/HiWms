@@ -5,13 +5,7 @@
       <form @submit.prevent="handleLogin">
         <div class="form-group">
           <label for="email">邮箱</label>
-          <input
-            id="email"
-            v-model="form.email"
-            type="email"
-            required
-            placeholder="请输入邮箱"
-          />
+          <input id="email" v-model="form.email" type="email" required placeholder="请输入邮箱" />
         </div>
         <div class="form-group">
           <label for="password">密码</label>
@@ -33,7 +27,7 @@
             placeholder="请输入租户 ID"
           />
         </div>
-        <button type="submit" :disabled="loading">
+        <button :disabled="loading" type="submit">
           {{ loading ? '登录中...' : '登录' }}
         </button>
         <p v-if="error" class="error">{{ error }}</p>
@@ -43,40 +37,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { createClient } from '@supabase/supabase-js'
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { createClient } from '@supabase/supabase-js';
 
-const router = useRouter()
-const form = ref({ email: '', password: '', tenantId: '' })
-const loading = ref(false)
-const error = ref('')
+const router = useRouter();
+const form = ref({ email: '', password: '', tenantId: '' });
+const loading = ref(false);
+const error = ref('');
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
   import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key'
-)
+);
 
 async function handleLogin() {
-  loading.value = true
-  error.value = ''
+  loading.value = true;
+  error.value = '';
   try {
     const { data, error: authError } = await supabase.auth.signInWithPassword({
       email: form.value.email,
       password: form.value.password,
-    })
-    if (authError) throw authError
+    });
+    if (authError) throw authError;
 
     if (data.session) {
-      localStorage.setItem('access_token', data.session.access_token)
-      localStorage.setItem('refresh_token', data.session.refresh_token)
+      localStorage.setItem('access_token', data.session.access_token);
+      localStorage.setItem('refresh_token', data.session.refresh_token);
     }
 
-    router.push('/dashboard')
+    router.push('/dashboard');
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : '登录失败'
+    error.value = e instanceof Error ? e.message : '登录失败';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 </script>
@@ -93,7 +87,7 @@ async function handleLogin() {
   background: white;
   padding: 2rem;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
 }

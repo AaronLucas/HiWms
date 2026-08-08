@@ -3,6 +3,6 @@ packages:
   - "workflow-engine"
   - "frontend"
 allowBuilds:
-  argon2: set this to true or false
-  esbuild: set this to true or false
-  vue-demi: set this to true or false
+  argon2: false
+  esbuild: false
+  vue-demi: false
