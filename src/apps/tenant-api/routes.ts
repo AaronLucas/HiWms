@@ -1245,11 +1245,6 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       next(error);
     }
   });
-      res.json({ success: true, data: result });
-    } catch (error) {
-      next(error);
-    }
-  });
 
   // POST /api/products/:id/barcodes — 添加条码
   router.post('/products/:id/barcodes', deps.middlewareFactory.requirePermission('products', 'UPDATE'), validateParams(productIdParamsSchema), validateBody(addProductBarcodeBodySchema), async (req: Request, res: Response, next: NextFunction) => {
