@@ -171,4 +171,241 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
       fill_rate_pct: number;
     }>;
   }
+
+  // ===== Sprint 6: 库存写操作 =====
+
+  async adjustInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantityDelta: number;
+    reason: string;
+    referenceId?: string;
+    referenceType?: string;
+    authToken?: string;
+  }): Promise<InventoryRow> {
+    const client = this.getClient(false, input.authToken);
+
+    // 先查找现有库存行
+    const { data: existing, error: findError } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('tenant_id', input.tenantId)
+      .eq('product_id', input.productId)
+      .eq('location_id', input.locationId)
+      .single();
+
+    if (findError && findError.code !== 'PGRST116') throw findError;
+
+    let newQuantity: number;
+    let version = 1;
+
+    if (existing) {
+      newQuantity = (existing.quantity || 0) + input.quantityDelta;
+      version = (existing.version || 0) + 1;
+      if (newQuantity < 0) throw new Error('库存不足，无法扣减');
+    } else {
+      if (input.quantityDelta < 0) throw new Error('库存不存在，无法扣减');
+      newQuantity = input.quantityDelta;
+    }
+
+    if (existing) {
+      const { data, error } = await client
+        .from(this.tableName)
+        .update({
+          quantity: newQuantity,
+          version,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('version', existing.version || 0)
+        .select()
+        .single();
+
+      if (error) throw new Error(`库存调整失败: ${error.message}`);
+      return data as InventoryRow;
+    } else {
+      const { data, error } = await client
+        .from(this.tableName)
+        .insert({
+          tenant_id: input.tenantId,
+          product_id: input.productId,
+          location_id: input.locationId,
+          quantity: newQuantity,
+          version: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(`库存创建失败: ${error.message}`);
+      return data as InventoryRow;
+    }
+  }
+
+  async transferInventory(input: {
+    tenantId: string;
+    productId: string;
+    fromLocationId: string;
+    toLocationId: string;
+    quantity: number;
+    reason: string;
+    referenceId?: string;
+    authToken?: string;
+  }): Promise<{ from: InventoryRow; to: InventoryRow }> {
+    const client = this.getClient(false, input.authToken);
+
+    // 扣减源库位
+    const fromResult = await this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.fromLocationId,
+      quantityDelta: -input.quantity,
+      reason: input.reason,
+      referenceId: input.referenceId,
+      referenceType: 'transfer_out',
+      authToken: input.authToken,
+    });
+
+    // 增加目标库位
+    const toResult = await this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.toLocationId,
+      quantityDelta: input.quantity,
+      reason: input.reason,
+      referenceId: input.referenceId,
+      referenceType: 'transfer_in',
+      authToken: input.authToken,
+    });
+
+    return { from: fromResult, to: toResult };
+  }
+
+  async reserveInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    orderId?: string;
+    workOrderId?: string;
+    expiresAt?: string;
+    authToken?: string;
+  }): Promise<InventoryRow> {
+    // 这里简化：通过 adjustInventory 扣减可用库存，实际预留逻辑可能需要单独的预留表
+    // 当前 schema 中 inventory 表没有 reserved_quantity 字段，暂用 quantity 扣减模拟
+    return this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.locationId,
+      quantityDelta: -input.quantity,
+      reason: `reserved:${input.orderId || input.workOrderId || 'manual'}`,
+      referenceId: input.orderId || input.workOrderId,
+      referenceType: 'reservation',
+      authToken: input.authToken,
+    });
+  }
+
+  async lockInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    reason: string;
+    lockedBy?: string;
+    expiresAt?: string;
+    authToken?: string;
+  }): Promise<InventoryRow> {
+    // 简化：通过 adjustInventory 扣减可用库存，实际锁定逻辑可能需要单独的锁表
+    // 当前 schema 中 inventory 表没有 locked_quantity 字段，暂用 quantity 扣减模拟
+    return this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.locationId,
+      quantityDelta: -input.quantity,
+      reason: `locked:${input.reason}`,
+      referenceId: input.lockedBy,
+      referenceType: 'lock',
+      authToken: input.authToken,
+    });
+  }
+
+  async getInventoryHistory(tenantId: string, options?: {
+    limit?: number;
+    offset?: number;
+    productId?: string;
+    locationId?: string;
+    startDate?: string;
+    endDate?: string;
+    authToken?: string;
+  }): Promise<Array<{
+    id: string;
+    productId: string;
+    locationId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+    changeType: string;
+    reason: string;
+    referenceId: string | null;
+    referenceType: string | null;
+    createdAt: string;
+    createdBy: string | null;
+  }>> {
+    const { limit = 50, offset = 0, productId, locationId, startDate, endDate, authToken } = options || {};
+
+    let query = this.getClient(false, authToken)
+      .from('inventory_history')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (productId) query = query.eq('product_id', productId);
+    if (locationId) query = query.eq('location_id', locationId);
+    if (startDate) query = query.gte('created_at', startDate);
+    if (endDate) query = query.lte('created_at', endDate);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data || []).map(row => ({
+      id: row.id,
+      productId: row.product_id,
+      locationId: row.location_id,
+      quantityBefore: row.quantity_before,
+      quantityAfter: row.quantity_after,
+      changeType: row.change_type,
+      reason: row.reason,
+      referenceId: row.reference_id,
+      referenceType: row.reference_type,
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+    }));
+  }
+
+  async getAvailableQuantity(input: {
+    productId: string;
+    locationId?: string;
+    excludeReserved?: boolean;
+    excludeLocked?: boolean;
+    authToken?: string;
+  }): Promise<number> {
+    const { productId, locationId, excludeReserved = true, excludeLocked = true, authToken } = input;
+
+    const filters: Record<string, unknown> = { product_id: productId };
+    if (locationId) filters.location_id = locationId;
+
+    const { data, error } = await this.getClient(false, authToken)
+      .from(this.tableName)
+      .select('quantity')
+      .match(filters)
+      .gt('quantity', 0);
+
+    if (error) throw error;
+
+    // 简化：直接返回可用数量之和（未扣除预留/锁定，因为当前 schema 没有这些字段）
+    // TODO: 当 schema 支持 reserved_quantity/locked_quantity 时，这里需要扣除
+    return (data as { quantity: number }[]).reduce((sum, row) => sum + (row.quantity || 0), 0);
+  }
 }

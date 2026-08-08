@@ -155,4 +155,44 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       utilizationPct: 0,
     }));
   }
+
+  // ===== Sprint 6: 库位全量写操作 =====
+
+  async findWithDetails(locationId: string): Promise<{
+    location: LocationRow;
+    utilization: { currentVolume: number; currentWeight: number; maxVolume: number; maxWeight: number; utilizationPct: number };
+    children: LocationRow[];
+  } | null> {
+    const { data: location, error: locError } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('id', locationId)
+      .single();
+
+    if (locError) {
+      if (locError.code === 'PGRST116') return null;
+      throw locError;
+    }
+
+    // 查找子库位
+    const { data: children, error: childrenError } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('parent_id', locationId)
+      .order('code', { ascending: true });
+
+    if (childrenError) throw childrenError;
+
+    return {
+      location: location as LocationRow,
+      utilization: {
+        currentVolume: 0,
+        currentWeight: 0,
+        maxVolume: location.max_volume_capacity || 0,
+        maxWeight: location.max_weight_capacity || 0,
+        utilizationPct: 0,
+      },
+      children: (children as LocationRow[]) || [],
+    };
+  }
 }
