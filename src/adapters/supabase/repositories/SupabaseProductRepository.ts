@@ -148,17 +148,20 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
     return (data as Tables<'barcode_mappings'>[]) || [];
   }
 
-  async upsertConstraint(productId: string, constraintType: string, constraintValue: string, severity?: string): Promise<Tables<'product_constraints'>> {
-    // product_constraints is a 1:1 table with products, use product_id as conflict key
-    // First read existing constraints to preserve other fields
-    const existing = await this.getConstraints(productId);
+  // Type-safe constraint update builder
+  private buildConstraintUpdate(
+    productId: string,
+    existing: Tables<'product_constraints'> | null,
+    constraintType: string,
+    constraintValue: string
+  ): TablesInsert<'product_constraints'> {
     const updateData: TablesInsert<'product_constraints'> = {
       product_id: productId,
       updated_at: new Date().toISOString(),
-      ...(existing || {}), // preserve existing fields
+      ...(existing || {}),
     };
 
-    // Map constraintType to actual columns
+    // Type-safe constraint mapping
     switch (constraintType) {
       case 'location_type':
         updateData.required_zone_type = constraintValue;
@@ -191,9 +194,16 @@ export class SupabaseProductRepository extends SupabaseBaseRepository<
         throw new Error(`未知的约束类型: ${constraintType}`);
     }
 
+    return updateData;
+  }
+
+  async upsertConstraint(productId: string, constraintType: string, constraintValue: string, severity?: string): Promise<Tables<'product_constraints'>> {
+    const existing = await this.getConstraints(productId);
+    const updateData = this.buildConstraintUpdate(productId, existing, constraintType, constraintValue);
+
     const { data, error } = await this.getClient()
       .from('product_constraints')
-      .upsert(updateData as any, { onConflict: 'product_id' })
+      .upsert(updateData, { onConflict: 'product_id' })
       .select()
       .single();
 

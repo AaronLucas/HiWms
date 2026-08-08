@@ -183,65 +183,89 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     referenceId?: string;
     referenceType?: string;
     authToken?: string;
+    maxRetries?: number;
+    retryDelayMs?: number;
   }): Promise<InventoryRow> {
     const client = this.getClient(false, input.authToken);
+    const maxRetries = input.maxRetries ?? 3;
+    const retryDelayMs = input.retryDelayMs ?? 50;
 
-    // 先查找现有库存行
-    const { data: existing, error: findError } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('tenant_id', input.tenantId)
-      .eq('product_id', input.productId)
-      .eq('location_id', input.locationId)
-      .single();
-
-    if (findError && findError.code !== 'PGRST116') throw findError;
-
-    let newQuantity: number;
-    let version = 1;
-
-    if (existing) {
-      newQuantity = (existing.quantity || 0) + input.quantityDelta;
-      version = (existing.version || 0) + 1;
-      if (newQuantity < 0) throw new Error('库存不足，无法扣减');
-    } else {
-      if (input.quantityDelta < 0) throw new Error('库存不存在，无法扣减');
-      newQuantity = input.quantityDelta;
-    }
-
-    if (existing) {
-      const { data, error } = await client
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 先查找现有库存行
+      const { data: existing, error: findError } = await client
         .from(this.tableName)
-        .update({
-          quantity: newQuantity,
-          version,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id)
-        .eq('version', existing.version || 0)
-        .select()
+        .select('*')
+        .eq('tenant_id', input.tenantId)
+        .eq('product_id', input.productId)
+        .eq('location_id', input.locationId)
         .single();
 
-      if (error) throw new Error(`库存调整失败: ${error.message}`);
-      return data as InventoryRow;
-    } else {
-      const { data, error } = await client
-        .from(this.tableName)
-        .insert({
-          tenant_id: input.tenantId,
-          product_id: input.productId,
-          location_id: input.locationId,
-          quantity: newQuantity,
-          version: 1,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      if (findError && findError.code !== 'PGRST116') throw findError;
 
-      if (error) throw new Error(`库存创建失败: ${error.message}`);
-      return data as InventoryRow;
+      let newQuantity: number;
+      let version = 1;
+
+      if (existing) {
+        newQuantity = (existing.quantity || 0) + input.quantityDelta;
+        version = (existing.version || 0) + 1;
+        if (newQuantity < 0) throw new Error('库存不足，无法扣减');
+      } else {
+        if (input.quantityDelta < 0) throw new Error('库存不存在，无法扣减');
+        newQuantity = input.quantityDelta;
+      }
+
+      if (existing) {
+        const { data, error } = await client
+          .from(this.tableName)
+          .update({
+            quantity: newQuantity,
+            version,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id)
+          .eq('version', existing.version || 0)
+          .select()
+          .single();
+
+        if (!error) {
+          return data as InventoryRow;
+        }
+
+        // 乐观锁冲突：版本号不匹配，重试
+        if (attempt < maxRetries && (error.code === 'PGRST116' || error.message?.includes('version'))) {
+          await new Promise(r => setTimeout(r, retryDelayMs * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`库存调整失败: ${error.message}`);
+      } else {
+        const { data, error } = await client
+          .from(this.tableName)
+          .insert({
+            tenant_id: input.tenantId,
+            product_id: input.productId,
+            location_id: input.locationId,
+            quantity: newQuantity,
+            version: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (!error) {
+          return data as InventoryRow;
+        }
+
+        // 插入冲突（并发创建同一库存行），重试
+        if (attempt < maxRetries && (error.code === '23505' || error.message?.includes('duplicate'))) {
+          await new Promise(r => setTimeout(r, retryDelayMs * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`库存创建失败: ${error.message}`);
+      }
     }
+
+    throw new Error(`库存调整失败: 达到最大重试次数 ${maxRetries}`);
   }
 
   async transferInventory(input: {
@@ -309,12 +333,14 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }): Promise<InventoryRow> {
     // 这里简化：通过 adjustInventory 扣减可用库存，实际预留逻辑可能需要单独的预留表
     // 当前 schema 中 inventory 表没有 reserved_quantity 字段，暂用 quantity 扣减模拟
+    // 将过期时间编码在 reason 中，供后续过期清理任务使用
+    const reason = `reserved:${input.orderId || input.workOrderId || 'manual'}${input.expiresAt ? `|expires:${input.expiresAt}` : ''}`;
     return this.adjustInventory({
       tenantId: input.tenantId,
       productId: input.productId,
       locationId: input.locationId,
       quantityDelta: -input.quantity,
-      reason: `reserved:${input.orderId || input.workOrderId || 'manual'}`,
+      reason,
       referenceId: input.orderId || input.workOrderId,
       referenceType: 'reservation',
       authToken: input.authToken,
@@ -333,12 +359,14 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }): Promise<InventoryRow> {
     // 简化：通过 adjustInventory 扣减可用库存，实际锁定逻辑可能需要单独的锁表
     // 当前 schema 中 inventory 表没有 locked_quantity 字段，暂用 quantity 扣减模拟
+    // 将过期时间编码在 reason 中
+    const fullReason = `locked:${input.reason}${input.expiresAt ? `|expires:${input.expiresAt}` : ''}`;
     return this.adjustInventory({
       tenantId: input.tenantId,
       productId: input.productId,
       locationId: input.locationId,
       quantityDelta: -input.quantity,
-      reason: `locked:${input.reason}`,
+      reason: fullReason,
       referenceId: input.lockedBy,
       referenceType: 'lock',
       authToken: input.authToken,
@@ -411,6 +439,8 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     const { limit = 50, offset = 0, productId, locationId, startDate, endDate, authToken } = options || {};
 
     // Need to join inventory_history with inventory to get tenant_id, product_id, location_id
+    // inventory_history.inv_id -> inventory.id (FK), 通过内连接过滤租户归属
+    // 依赖: inventory_history 表有 inv_id 列指向 inventory.id (FK)
     let query = this.getClient(false, authToken)
       .from('inventory_history')
       .select(`

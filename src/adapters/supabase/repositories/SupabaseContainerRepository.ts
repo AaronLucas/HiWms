@@ -178,31 +178,58 @@ export class SupabaseContainerRepository extends SupabaseBaseRepository<
       throw containerError;
     }
 
-    const buildHierarchy = async (parentId: string): Promise<Array<{
-      container: ContainerRow;
-      children: any[];
-    }>> => {
-      const { data: children, error: childrenError } = await (this.getClient() as any)
-        .from(this.tableName)
-        .select('*')
-        .eq('parent_container_id', parentId)
-        .order('created_at', { ascending: true });
+    // 使用递归 CTE 一次性查询完整层级树（限制最大深度 20 层防止无限递归）
+    const { data: hierarchy, error: hierarchyError } = await (this.getClient() as any)
+      .rpc('get_container_hierarchy', { root_id: containerId, max_depth: 20 });
 
-      if (childrenError) throw childrenError;
+    if (hierarchyError) {
+      // 回退到 N+1 查询（兼容无 RPC 函数的环境）
+      const buildHierarchy = async (parentId: string): Promise<Array<{
+        container: ContainerRow;
+        children: any[];
+      }>> => {
+        const { data: children, error: childrenError } = await (this.getClient() as any)
+          .from(this.tableName)
+          .select('*')
+          .eq('parent_container_id', parentId)
+          .order('created_at', { ascending: true });
 
-      const result = [];
-      for (const child of children || []) {
-        result.push({
-          container: child as ContainerRow,
-          children: await buildHierarchy(child.id),
-        });
+        if (childrenError) throw childrenError;
+
+        const result = [];
+        for (const child of children || []) {
+          result.push({
+            container: child as ContainerRow,
+            children: await buildHierarchy(child.id),
+          });
+        }
+        return result;
+      };
+
+      return {
+        container: container as ContainerRow,
+        children: await buildHierarchy(containerId),
+      };
+    }
+
+    // 将扁平化结果重建为树结构
+    const nodeMap = new Map<string, { container: ContainerRow; children: any[] }>();
+    for (const row of hierarchy || []) {
+      nodeMap.set(row.id, { container: row as ContainerRow, children: [] });
+    }
+
+    const root = nodeMap.get(containerId);
+    if (!root) return null;
+
+    for (const row of hierarchy || []) {
+      if (row.parent_container_id && nodeMap.has(row.parent_container_id)) {
+        nodeMap.get(row.parent_container_id)!.children.push(nodeMap.get(row.id)!);
       }
-      return result;
-    };
+    }
 
     return {
-      container: container as ContainerRow,
-      children: await buildHierarchy(containerId),
+      container: root.container,
+      children: root.children,
     };
   }
 

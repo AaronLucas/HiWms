@@ -178,14 +178,39 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
     // Note: locations table doesn't have parent_id field in current schema
     // children query would need a different approach if hierarchy is supported
 
+    // 实时聚合当前库位的库存体积/重量
+    const { data: inventory, error: invError } = await this.getClient()
+      .from('inventory')
+      .select(`
+        quantity,
+        products!inner(unit_volume, unit_weight)
+      `)
+      .eq('location_id', locationId);
+
+    if (invError) throw invError;
+
+    let currentVolume = 0;
+    let currentWeight = 0;
+    for (const row of inventory || []) {
+      const vol = row.products?.unit_volume ?? 0;
+      const wt = row.products?.unit_weight ?? 0;
+      const qty = row.quantity ?? 0;
+      currentVolume += vol * qty;
+      currentWeight += wt * qty;
+    }
+
+    const maxVolume = location.max_volume_capacity || 0;
+    const maxWeight = location.max_weight_capacity || 0;
+    const utilizationPct = maxVolume > 0 ? Math.round((currentVolume / maxVolume) * 100) : 0;
+
     return {
       location: location as LocationRow,
       utilization: {
-        currentVolume: 0,
-        currentWeight: 0,
-        maxVolume: location.max_volume_capacity || 0,
-        maxWeight: location.max_weight_capacity || 0,
-        utilizationPct: 0,
+        currentVolume,
+        currentWeight,
+        maxVolume,
+        maxWeight,
+        utilizationPct,
       },
       children: [],
     };
