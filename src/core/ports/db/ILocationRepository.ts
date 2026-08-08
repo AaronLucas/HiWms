@@ -19,7 +19,7 @@ export interface ILocationRepository extends IRepository<LocationRow, LocationIn
    */
   findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean }
+    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean; isFrozen?: boolean }
   ): Promise<LocationRow[]>;
 
   /**

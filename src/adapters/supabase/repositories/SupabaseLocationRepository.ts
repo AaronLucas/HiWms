@@ -35,9 +35,9 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean }
+    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean; isFrozen?: boolean }
   ): Promise<LocationRow[]> {
-    const { limit = 100, offset = 0, zoneType, isActive } = options || {};
+    const { limit = 100, offset = 0, zoneType, isActive, isFrozen } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
@@ -47,6 +47,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
     if (zoneType) query = query.eq('zone_type', zoneType);
     if (isActive !== undefined) query = query.eq('is_active', isActive);
+    if (isFrozen !== undefined) query = query.eq('is_frozen', isFrozen);
 
     const { data, error } = await query;
     if (error) throw error;
