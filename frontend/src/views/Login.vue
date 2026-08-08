@@ -1,77 +1,76 @@
 <template>
   <div class="login-page">
-    <div class="login-form">
-      <h1>HiWMS 登录</h1>
-      <form @submit.prevent="handleLogin">
-        <div class="form-group">
-          <label for="email">邮箱</label>
-          <input id="email" v-model="form.email" type="email" required placeholder="请输入邮箱" />
-        </div>
-        <div class="form-group">
-          <label for="password">密码</label>
-          <input
-            id="password"
-            v-model="form.password"
-            type="password"
-            required
-            placeholder="请输入密码"
-          />
-        </div>
-        <div class="form-group">
-          <label for="tenantId">租户 ID</label>
-          <input
-            id="tenantId"
-            v-model="form.tenantId"
-            type="text"
-            required
-            placeholder="请输入租户 ID"
-          />
-        </div>
-        <button :disabled="loading" type="submit">
-          {{ loading ? '登录中...' : '登录' }}
-        </button>
-        <p v-if="error" class="error">{{ error }}</p>
-      </form>
-    </div>
+    <el-card class="login-form" shadow="never">
+      <div class="login-header">
+        <el-icon class="login-icon"><Warehouse /></el-icon>
+        <h1>HiWMS 登录</h1>
+      </div>
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="80px" class="login-form-el">
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="form.email" placeholder="请输入邮箱" prefix-icon="User" clearable />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="form.password" type="password" placeholder="请输入密码" prefix-icon="Lock" show-password />
+        </el-form-item>
+        <el-form-item label="租户 ID" prop="tenantId">
+          <el-input v-model="form.tenantId" placeholder="请输入租户 ID" prefix-icon="OfficeBuilding" clearable />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="loading" block @click="handleLogin">
+            登录
+          </el-button>
+        </el-form-item>
+      </el-form>
+      <el-alert v-if="error" :title="error" type="error" show-icon closable @close="error = ''" />
+    </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { createClient } from '@supabase/supabase-js';
+import { ref } from 'vue'
+import { Warehouse, User, Lock, OfficeBuilding } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { useAuth } from '@/composables/useAuth'
+import { useRouter } from 'vue-router'
 
-const router = useRouter();
-const form = ref({ email: '', password: '', tenantId: '' });
-const loading = ref(false);
-const error = ref('');
+const router = useRouter()
+const formRef = ref()
+const form = ref({ email: '', password: '', tenantId: '' })
+const loading = ref(false)
+const error = ref('')
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key'
-);
+const { login } = useAuth()
+
+const rules = {
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于 6 位', trigger: 'blur' },
+  ],
+  tenantId: [
+    { required: true, message: '请输入租户 ID', trigger: 'blur' },
+  ],
+}
 
 async function handleLogin() {
-  loading.value = true;
-  error.value = '';
-  try {
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: form.value.email,
-      password: form.value.password,
-    });
-    if (authError) throw authError;
+  if (!formRef.value) return
 
-    if (data.session) {
-      localStorage.setItem('access_token', data.session.access_token);
-      localStorage.setItem('refresh_token', data.session.refresh_token);
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    loading.value = true
+    error.value = ''
+
+    const success = await login(form.value)
+    if (success) {
+      ElMessage.success('登录成功')
+      router.push('/dashboard')
     }
-
-    router.push('/dashboard');
-  } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : '登录失败';
-  } finally {
-    loading.value = false;
-  }
+    loading.value = false
+  })
 }
 </script>
 
@@ -81,54 +80,34 @@ async function handleLogin() {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 20px;
 }
 .login-form {
-  background: white;
-  padding: 2rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
-.login-form h1 {
-  margin-bottom: 1.5rem;
+.login-header {
   text-align: center;
-  color: #333;
+  margin-bottom: 24px;
 }
-.form-group {
-  margin-bottom: 1rem;
+.login-icon {
+  font-size: 48px;
+  color: #409eff;
+  margin-bottom: 16px;
 }
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
+.login-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
 }
-.form-group input {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  box-sizing: border-box;
+.login-form-el :deep(.el-form-item) {
+  margin-bottom: 20px;
 }
-button {
-  width: 100%;
-  padding: 0.75rem;
-  background: #1890ff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-button:disabled {
-  background: #99d3ff;
-  cursor: not-allowed;
-}
-.error {
-  color: #ff4d4f;
-  margin-top: 1rem;
-  text-align: center;
+.login-form-el :deep(.el-input__prefix) {
+  color: #909399;
 }
 </style>
