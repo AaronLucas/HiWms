@@ -626,7 +626,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         receipt_no: body.receiptNo,
         supplier_name: body.supplierName ?? null,
         expected_at: body.expectedAt ?? null,
-        metadata: body.metadata ?? null,
+        metadata: body.metadata as any,
         status: 'PENDING',
       };
       const result = await asn.create(insertData, req.context?.supabaseToken);
@@ -948,7 +948,6 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         is_active: body.isActive ?? true,
         is_frozen: body.isFrozen ?? false,
         force_unique_tracking: body.forceUniqueTracking ?? false,
-        metadata: body.metadata ?? null,
       };
       const result = await locations.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -990,19 +989,18 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const { id } = req.params as unknown as LocationIdParams;
       const body = req.body as UpdateLocationBody;
       const updateData: TablesUpdate<'locations'> = {
-        name: body.name ?? null,
-        zone_id: body.zoneId ?? null,
-        zone_type: body.zoneType ?? null,
-        aisle: body.aisle ?? null,
-        bay: body.rack ?? null,
-        level: body.level ?? null,
-        position: body.position ?? null,
-        max_volume_capacity: body.maxVolumeCapacity ?? null,
-        max_weight_capacity: body.maxWeightCapacity ?? null,
-        picking_max_qty: body.pickingMaxQty ?? null,
-        picking_threshold_pct: body.pickingThresholdPct ?? null,
-        force_unique_tracking: body.forceUniqueTracking ?? null,
-        metadata: body.metadata ?? null,
+        name: body.name ?? undefined,
+        zone_id: body.zoneId ?? undefined,
+        zone_type: body.zoneType ?? undefined,
+        aisle: body.aisle ?? undefined,
+        bay: body.rack ?? undefined,
+        level: body.level ?? undefined,
+        position: body.position ?? undefined,
+        max_volume_capacity: body.maxVolumeCapacity ?? undefined,
+        max_weight_capacity: body.maxWeightCapacity ?? undefined,
+        picking_max_qty: body.pickingMaxQty ?? undefined,
+        picking_threshold_pct: body.pickingThresholdPct ?? undefined,
+        force_unique_tracking: body.forceUniqueTracking ?? undefined,
       };
       const result = await locations.update(id, updateData);
       res.json({ success: true, data: result });
@@ -1055,16 +1053,12 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateContainerBody;
       const insertData: TablesInsert<'containers'> = {
-        tenant_id: tenantId,
         lpn_code: body.lpnCode,
-        container_type: body.containerType ?? null,
-        parent_container_id: body.parentContainerId ?? null,
-        max_volume: body.maxVolume ?? null,
-        max_weight: body.maxWeight ?? null,
+        container_type: body.containerType ?? 'box',
+        parent_container_id: body.parentContainerId ?? undefined,
         status: body.status ?? 'IDLE',
         is_sealed: body.isSealed ?? false,
-        lpn_source: body.lpnSource ?? null,
-        metadata: body.metadata ?? null,
+        lpn_source: body.lpnSource ?? 'internal',
       };
       const result = await containers.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -1106,12 +1100,9 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const { id } = req.params as unknown as ContainerIdParams;
       const body = req.body as UpdateContainerBody;
       const updateData: TablesUpdate<'containers'> = {
-        container_type: body.containerType ?? null,
-        parent_container_id: body.parentContainerId ?? null,
-        max_volume: body.maxVolume ?? null,
-        max_weight: body.maxWeight ?? null,
-        lpn_source: body.lpnSource ?? null,
-        metadata: body.metadata ?? null,
+        container_type: body.containerType ?? undefined,
+        parent_container_id: body.parentContainerId ?? undefined,
+        lpn_source: body.lpnSource ?? undefined,
       };
       const result = await containers.update(id, updateData);
       res.json({ success: true, data: result });
@@ -1205,14 +1196,9 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         tenant_id: tenantId,
         sku: body.sku,
         name: body.name,
-        description: body.description ?? null,
-        base_uom: body.baseUom ?? 'PCS',
         abc_class: body.abcClass ?? 'C',
         unit_volume: body.volumePerUnit ?? null,
         unit_weight: body.weightPerUnit ?? null,
-        shelf_life_days: body.shelfLifeDays ?? null,
-        requires_unique_tracking: body.requiresUniqueTracking ?? false,
-        metadata: body.metadata ?? null,
       };
       const result = await products.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
@@ -1229,15 +1215,10 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const { id } = req.params as unknown as ProductIdParams;
       const body = req.body as UpdateProductBody;
       const updateData: TablesUpdate<'products'> = {
-        name: body.name ?? null,
-        description: body.description ?? null,
-        base_uom: body.baseUom ?? null,
-        abc_class: body.abcClass ?? null,
-        unit_volume: body.volumePerUnit ?? null,
-        unit_weight: body.weightPerUnit ?? null,
-        shelf_life_days: body.shelfLifeDays ?? null,
-        requires_unique_tracking: body.requiresUniqueTracking ?? null,
-        metadata: body.metadata ?? null,
+        name: body.name ?? undefined,
+        abc_class: body.abcClass ?? undefined,
+        unit_volume: body.volumePerUnit ?? undefined,
+        unit_weight: body.weightPerUnit ?? undefined,
       };
       const result = await products.update(id, updateData);
       res.json({ success: true, data: result });

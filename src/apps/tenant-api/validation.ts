@@ -203,7 +203,8 @@ export const createVehicleBodySchema = z.object({
 export type CreateVehicleBody = z.infer<typeof createVehicleBodySchema>;
 
 export const createWorkOrderBodySchema = z.object({
-  orderId: uuidSchema,
+  orderId: uuidSchema.optional(),
+  waveId: uuidSchema.optional(),
   type: z.enum(['picking', 'packing', 'sorting', 'loading', 'putaway', 'count']),
   assignedTo: uuidSchema.optional(),
   priority: z.number().int().min(0).max(100).optional(),
