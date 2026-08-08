@@ -1,12 +1,12 @@
-import { ref, computed } from "vue";
-import { useRouter } from "vue-router";
-import type { User } from "@/types/auth";
-import type { AuthTokens, LoginCredentials } from "@/types/auth";
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import type { User } from '@/types/auth';
+import type { AuthTokens, LoginCredentials } from '@/types/auth';
 
-const TOKEN_KEY = "hiwms_access_token";
-const REFRESH_KEY = "hiwms_refresh_token";
-const TENANT_KEY = "hiwms_tenant_id";
-const USER_KEY = "hiwms_user";
+const TOKEN_KEY = 'hiwms_access_token';
+const REFRESH_KEY = 'hiwms_refresh_token';
+const TENANT_KEY = 'hiwms_tenant_id';
+const USER_KEY = 'hiwms_user';
 
 export function useAuth() {
   const router = useRouter();
@@ -23,9 +23,11 @@ export function useAuth() {
     try {
       const token = accessToken.value;
       if (!token) return true;
-      const parts = token.split(".");
-      if (parts.length < 2) return true;
-      const payload = JSON.parse(atob(parts[1]));
+      const parts = token.split('.');
+      if (parts.length < 3) return true;
+      const payloadPart = parts[1];
+      if (!payloadPart) return true;
+      const payload = JSON.parse(atob(payloadPart));
       return payload.exp * 1000 < Date.now();
     } catch {
       return true;
@@ -86,11 +88,11 @@ export function useAuth() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8787"}/api/auth/login`,
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'}/api/auth/login`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify(credentials),
         }
@@ -98,14 +100,14 @@ export function useAuth() {
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.error || "登录失败");
+        throw new Error(errData.error || '登录失败');
       }
 
       const data = await response.json();
       saveToStorage(data.tokens, data.user, credentials.tenantId);
       return true;
     } catch (e: unknown) {
-      error.value = e instanceof Error ? e.message : "登录失败";
+      error.value = e instanceof Error ? e.message : '登录失败';
       return false;
     } finally {
       loading.value = false;
@@ -117,18 +119,18 @@ export function useAuth() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8787"}/api/auth/refresh`,
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'}/api/auth/refresh`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${refreshToken.value}`,
           },
         }
       );
 
       if (!response.ok) {
-        throw new Error("Token 刷新失败");
+        throw new Error('Token 刷新失败');
       }
 
       const data = await response.json();
@@ -145,9 +147,9 @@ export function useAuth() {
     if (accessToken.value) {
       try {
         await fetch(
-          `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8787"}/api/auth/logout`,
+          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'}/api/auth/logout`,
           {
-            method: "POST",
+            method: 'POST',
             headers: {
               Authorization: `Bearer ${accessToken.value}`,
             },
@@ -158,7 +160,7 @@ export function useAuth() {
       }
     }
     clearStorage();
-    router.push("/login");
+    router.push('/login');
   }
 
   async function changePassword(newPassword: string): Promise<boolean> {
@@ -166,11 +168,11 @@ export function useAuth() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8787"}/api/users/me/password`,
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'}/api/users/me/password`,
         {
-          method: "PATCH",
+          method: 'PATCH',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken.value}`,
           },
           body: JSON.stringify({ newPassword }),

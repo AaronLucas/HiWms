@@ -11,7 +11,7 @@
         <el-dropdown trigger="click">
           <span class="user-dropdown">
             <el-avatar :size="30" :src="userAvatar" />
-            <span>{{ auth.user?.email || "用户" }}</span>
+            <span>{{ auth.user.value?.email || '用户' }}</span>
             <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
@@ -20,7 +20,7 @@
                 <el-icon><Lock /></el-icon>
                 <span>修改密码</span>
               </el-dropdown-item>
-              <el-dropdown-item divided @click="logout">
+              <el-dropdown-item @click="logout" divided>
                 <el-icon><SwitchButton /></el-icon>
                 <span>退出登录</span>
               </el-dropdown-item>
@@ -33,8 +33,8 @@
     <el-row :gutter="20" class="stats-row">
       <el-col :xs="24" :sm="12" :md="6" :lg="3" v-for="stat in stats" :key="stat.key">
         <el-card class="stat-card" shadow="hover">
-          <div class="stat-icon" :class="stat.iconClass">
-            <el-icon :size="24"><component :is="stat.icon" /></component></el-icon>
+          <div :class="stat.iconClass" class="stat-icon">
+            <component :is="stat.icon" class="stat-icon-component" />
           </div>
           <div class="stat-content">
             <p class="stat-label">{{ stat.label }}</p>
@@ -53,10 +53,28 @@
             </div>
           </template>
           <div class="quick-actions">
-            <el-button type="primary" @click="$router.push('/materials')" :icon="Plus" plain block>新建物料</el-button>
-            <el-button type="success" @click="$router.push('/orders')" :icon="ShoppingCart" plain block>创建订单</el-button>
-            <el-button type="info" @click="$router.push('/waves')" :icon="Connection" plain block>生成波次</el-button>
-            <el-button type="warning" @click="$router.push('/work-orders')" :icon="Setting" plain block>创建工单</el-button>
+            <el-button @click="$router.push('/materials')" :icon="Plus" type="primary" plain block
+              >新建物料</el-button
+            >
+            <el-button
+              @click="$router.push('/orders')"
+              :icon="ShoppingCart"
+              type="success"
+              plain
+              block
+              >创建订单</el-button
+            >
+            <el-button @click="$router.push('/waves')" :icon="Connection" type="info" plain block
+              >生成波次</el-button
+            >
+            <el-button
+              @click="$router.push('/work-orders')"
+              :icon="Setting"
+              type="warning"
+              plain
+              block
+              >创建工单</el-button
+            >
           </div>
         </el-card>
       </el-col>
@@ -67,7 +85,10 @@
               <span>系统通知</span>
             </div>
           </template>
-          <el-empty description="暂无通知" image="https://fuss10.elemecdn.com/e/empty/3f894115b78f8c86b5f3b1e4b2e8c4f8.svg" />
+          <el-empty
+            description="暂无通知"
+            image="https://fuss10.elemecdn.com/e/empty/3f894115b78f8c86b5f3b1e4b2e8c4f8.svg"
+          />
         </el-card>
       </el-col>
     </el-row>
@@ -75,10 +96,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, type Component } from "vue";
-import { useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
-import { useAuth } from "@/composables/useAuth";
+import { ref, computed, onMounted, type Component } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
+import { useAuth } from '@/composables/useAuth';
 import {
   Plus,
   ShoppingCart,
@@ -88,26 +109,28 @@ import {
   SwitchButton,
   ArrowDown,
   Box,
-} from "@element-plus/icons-vue";
+} from '@element-plus/icons-vue';
 
 const router = useRouter();
 const auth = useAuth();
 
-const stats = ref<{
-  key: string
-  label: string
-  value: number
-  icon: Component
-  iconClass: string
-}[]>([
-  { key: "inventory", label: "总库存", value: 0, icon: Box, iconClass: "icon-primary" },
-  { key: "orders", label: "待处理订单", value: 0, icon: ShoppingCart, iconClass: "icon-success" },
-  { key: "waves", label: "活跃波次", value: 0, icon: Connection, iconClass: "icon-info" },
-  { key: "workOrders", label: "执行中工单", value: 0, icon: Setting, iconClass: "icon-warning" },
+const stats = ref<
+  {
+    key: string;
+    label: string;
+    value: number;
+    icon: Component;
+    iconClass: string;
+  }[]
+>([
+  { key: 'inventory', label: '总库存', value: 0, icon: Box, iconClass: 'icon-primary' },
+  { key: 'orders', label: '待处理订单', value: 0, icon: ShoppingCart, iconClass: 'icon-success' },
+  { key: 'waves', label: '活跃波次', value: 0, icon: Connection, iconClass: 'icon-info' },
+  { key: 'workOrders', label: '执行中工单', value: 0, icon: Setting, iconClass: 'icon-warning' },
 ]);
 
 const userAvatar = computed(() => {
-  const email = auth.user.value?.email || "";
+  const email = auth.user.value?.email || '';
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(email)}&background=409EFF&color=fff`;
 });
 
@@ -118,7 +141,7 @@ async function loadDashboardStats() {
     if (stats.value[2]) stats.value[2].value = 3;
     if (stats.value[3]) stats.value[3].value = 8;
   } catch (error) {
-    ElMessage.error("加载统计数据失败");
+    ElMessage.error('加载统计数据失败');
   }
 }
 
@@ -131,7 +154,7 @@ async function logout() {
 }
 
 function changePassword() {
-  ElMessage.info("修改密码功能开发中...");
+  ElMessage.info('修改密码功能开发中...');
 }
 
 onMounted(() => {
@@ -172,7 +195,9 @@ onMounted(() => {
 }
 .stat-card {
   height: 100%;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
 }
 .stat-card:hover {
   transform: translateY(-2px);
@@ -187,10 +212,25 @@ onMounted(() => {
   justify-content: center;
   margin-bottom: 12px;
 }
-.icon-primary { background: #eef2ff; color: #409eff; }
-.icon-success { background: #f0fdf4; color: #67c23a; }
-.icon-info { background: #ecfeff; color: #409eff; }
-.icon-warning { background: #fdf6ec; color: #e6a23c; }
+.stat-icon-component {
+  font-size: 24px;
+}
+.icon-primary {
+  background: #eef2ff;
+  color: #409eff;
+}
+.icon-success {
+  background: #f0fdf4;
+  color: #67c23a;
+}
+.icon-info {
+  background: #ecfeff;
+  color: #409eff;
+}
+.icon-warning {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
 .stat-content {
   text-align: center;
 }

@@ -18,6 +18,9 @@ module.exports = {
   rules: {
     "prettier/prettier": "error",
     "vue/multi-word-component-names": "off",
+    "vue/no-lone-template": "off",
+    "vue/valid-attribute-name": "off",
+    "vue/require-component-is": "off",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-unused-vars": [
       "error",

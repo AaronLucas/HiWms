@@ -5,41 +5,50 @@
         <el-icon class="login-icon"><Box /></el-icon>
         <h1>HiWMS 登录</h1>
       </div>
-      <el-form :model="form" :rules="rules" ref="formRef" label-width="80px" class="login-form-el">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="80px" class="login-form-el">
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" placeholder="请输入邮箱" prefix-icon="User" clearable />
         </el-form-item>
         <el-form-item label="密码" prop="password">
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" prefix-icon="Lock" show-password />
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="请输入密码"
+            prefix-icon="Lock"
+            show-password
+          />
         </el-form-item>
         <el-form-item label="租户 ID" prop="tenantId">
-          <el-input v-model="form.tenantId" placeholder="请输入租户 ID" prefix-icon="OfficeBuilding" clearable />
+          <el-input
+            v-model="form.tenantId"
+            placeholder="请输入租户 ID"
+            prefix-icon="OfficeBuilding"
+            clearable
+          />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="loading" block @click="handleLogin">
-            登录
-          </el-button>
+          <el-button :loading="loading" @click="handleLogin" type="primary" block> 登录 </el-button>
         </el-form-item>
       </el-form>
-      <el-alert v-if="error" :title="error" type="error" show-icon closable @close="error = ''" />
+      <el-alert v-if="error" :title="error" @close="error = ''" type="error" show-icon closable />
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Box, User, Lock, OfficeBuilding } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { useAuth } from '@/composables/useAuth'
-import { useRouter } from 'vue-router'
+import { ref } from 'vue';
+import { Box, User, Lock, OfficeBuilding } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { useAuth } from '@/composables/useAuth';
+import { useRouter } from 'vue-router';
 
-const router = useRouter()
-const formRef = ref()
-const form = ref({ email: '', password: '', tenantId: '' })
-const loading = ref(false)
-const error = ref('')
+const router = useRouter();
+const formRef = ref();
+const form = ref({ email: '', password: '', tenantId: '' });
+const loading = ref(false);
+const error = ref('');
 
-const { login } = useAuth()
+const { login } = useAuth();
 
 const rules = {
   email: [
@@ -50,27 +59,25 @@ const rules = {
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码长度不能少于 6 位', trigger: 'blur' },
   ],
-  tenantId: [
-    { required: true, message: '请输入租户 ID', trigger: 'blur' },
-  ],
-}
+  tenantId: [{ required: true, message: '请输入租户 ID', trigger: 'blur' }],
+};
 
 async function handleLogin() {
-  if (!formRef.value) return
+  if (!formRef.value) return;
 
   await formRef.value.validate(async (valid: boolean) => {
-    if (!valid) return
+    if (!valid) return;
 
-    loading.value = true
-    error.value = ''
+    loading.value = true;
+    error.value = '';
 
-    const success = await login(form.value)
+    const success = await login(form.value);
     if (success) {
-      ElMessage.success('登录成功')
-      router.push('/dashboard')
+      ElMessage.success('登录成功');
+      router.push('/dashboard');
     }
-    loading.value = false
-  })
+    loading.value = false;
+  });
 }
 </script>
 
