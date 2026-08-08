@@ -280,7 +280,10 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }): Promise<{ from: InventoryRow; to: InventoryRow }> {
     const client = this.getClient(false, input.authToken);
 
-    // 使用 PostgREST 事务语法（通过 RPC 模拟）或直接用两步操作但加补偿逻辑
+    // 注意：此实现使用补偿事务模式，非严格 ACID 事务。
+    // 高并发场景下存在竞态条件：源扣减成功后目标增加失败会触发补偿回滚，
+    // 但并发的 adjustInventory 可能导致版本冲突或数据不一致。
+    // 生产环境强并发场景建议使用数据库级 RPC (fn_transfer_inventory) 保证原子性。
     // 方案：先扣减源，再增加目标；若目标失败则回滚源
     const fromResult = await this.adjustInventory({
       tenantId: input.tenantId,

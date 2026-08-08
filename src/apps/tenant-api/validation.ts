@@ -376,7 +376,7 @@ export type RecordInspectionResultBody = z.infer<typeof recordInspectionResultBo
 export const adjustInventoryBodySchema = z.object({
   productId: uuidSchema,
   locationId: uuidSchema,
-  quantityDelta: z.number().int(),
+  quantityDelta: z.number().int().refine(v => v !== 0, 'quantityDelta 不能为 0'),
   reason: z.string().min(1),
   referenceId: uuidSchema.optional(),
   referenceType: z.enum(['manual', 'return', 'damage', 'found', 'correction']).optional(),
@@ -450,7 +450,7 @@ export type GetAvailableInventoryQuery = z.infer<typeof getAvailableInventoryQue
 
 // --- 库位 CRUD + 状态/容量/利用率 ---
 export const createLocationBodySchema = z.object({
-  code: z.string().min(1).max(50),
+  code: z.string().min(1).max(50).regex(/^[A-Z0-9_-]+$/, 'code 只能包含大写字母、数字、下划线、连字符'),
   name: z.string().max(100).optional(),
   zoneId: uuidSchema.optional(),
   zoneType: z.enum(['picking', 'storage', 'staging', 'receiving', 'shipping', 'cold', 'dangerous', 'value_added']).optional(),
@@ -572,7 +572,7 @@ export type LpnQueryParams = z.infer<typeof lpnQueryParamsSchema>;
 
 // --- 商品写操作 CRUD + 条码/约束/ABC分类 ---
 export const createProductBodySchema = z.object({
-  sku: z.string().min(1).max(100),
+  sku: z.string().min(1).max(100).regex(/^[A-Z0-9_-]+$/, 'SKU 只能包含大写字母、数字、下划线、连字符'),
   name: z.string().min(1).max(200),
   description: z.string().optional(),
   baseUom: z.string().min(1).max(20).default('PCS'),

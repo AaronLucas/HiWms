@@ -154,7 +154,9 @@ import {
 
 export function createTenantApiRouter(deps: TenantApiDependencies): Router {
   const router = express.Router();
-  const { orders, inventory, products, waves, locations, containers } = deps.supabaseAdapters.repositories;
+  const { orders, inventory, products, waves } = deps.supabaseAdapters.repositories;
+  const { locations, containers } = deps.supabaseAdapters.repositories;
+  const { asn, inboundReceipts, qualityInspections } = deps.supabaseAdapters.repositories;
 
   // GET /api/orders — 列出当前租户订单
   router.get('/orders', deps.middlewareFactory.requirePermission('orders', 'READ'), validateQuery(listOrdersQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -467,9 +469,17 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
-      const body = req.body as CreateWorkOrderBody & { tenant_id: string };
-      body.tenant_id = tenantId;
-      const result = await wo.create(body as any, req.context?.supabaseToken);
+      const body = req.body as CreateWorkOrderBody;
+      const insertData: TablesInsert<'work_orders'> = {
+        tenant_id: tenantId,
+        order_id: body.orderId ?? null,
+        wave_id: body.waveId ?? null,
+        task_type: body.type,
+        assigned_user_id: body.assignedTo ?? null,
+        priority: body.priority ?? 0,
+        notes: body.notes ?? null,
+      };
+      const result = await wo.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -541,9 +551,15 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
-      const body = req.body as CreateShippingDocBody & { tenant_id: string };
-      body.tenant_id = tenantId;
-      const result = await shipping.create(body as any, req.context?.supabaseToken);
+      const body = req.body as CreateShippingDocBody;
+      const insertData: TablesInsert<'shipping_documents'> = {
+        tenant_id: tenantId,
+        order_ids: body.orderIds,
+        carrier_id: body.carrierId ?? null,
+        tracking_number: body.trackingNumber ?? null,
+        notes: body.notes ?? null,
+      };
+      const result = await shipping.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -580,9 +596,16 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
     try {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
-      const body = req.body as CreateVehicleBody & { tenant_id: string };
-      body.tenant_id = tenantId;
-      const result = await vehiclesRepo.create(body as any, req.context?.supabaseToken);
+      const body = req.body as CreateVehicleBody;
+      const insertData: TablesInsert<'vehicles'> = {
+        tenant_id: tenantId,
+        plate_number: body.plateNumber,
+        vehicle_type: body.vehicleType ?? null,
+        carrier_name: body.carrierName ?? null,
+        driver_name: body.driverName ?? null,
+        driver_phone: body.driverPhone ?? null,
+      };
+      const result = await vehiclesRepo.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -598,14 +621,15 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateAsnBody;
-      const result = await asn.create({
+      const insertData: TablesInsert<'asn'> = {
         tenant_id: tenantId,
         receipt_no: body.receiptNo,
         supplier_name: body.supplierName ?? null,
         expected_at: body.expectedAt ?? null,
         metadata: body.metadata ?? null,
         status: 'PENDING',
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await asn.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -668,7 +692,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateInboundReceiptBody;
-      const result = await inboundReceipts.create({
+      const insertData: TablesInsert<'inbound_receipts'> = {
         tenant_id: tenantId,
         receipt_no: body.receiptNo,
         supplier_name: body.supplierName ?? null,
@@ -676,7 +700,8 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         wave_id: body.waveId ?? null,
         metadata: body.metadata ?? null,
         status: 'PENDING',
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await inboundReceipts.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -756,7 +781,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateQualityInspectionBody;
-      const result = await qualityInspections.create({
+      const insertData: TablesInsert<'quality_inspections'> = {
         tenant_id: tenantId,
         inspection_no: body.inspectionNo,
         order_id: body.orderId ?? null,
@@ -766,7 +791,8 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         device_id: body.deviceId ?? null,
         metadata: body.metadata ?? null,
         status: 'PENDING',
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await qualityInspections.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -786,7 +812,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         expected_value: item.expectedValue ?? null,
         tolerance_pct: item.tolerancePct ?? null,
         notes: item.notes ?? null,
-      })) as any);
+      })));
       res.status(201).json({ success: true, data: inserted });
     } catch (error) {
       next(error);
@@ -905,7 +931,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateLocationBody;
-      const result = await locations.create({
+      const insertData: TablesInsert<'locations'> = {
         tenant_id: tenantId,
         code: body.code,
         name: body.name ?? null,
@@ -923,7 +949,8 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         is_frozen: body.isFrozen ?? false,
         force_unique_tracking: body.forceUniqueTracking ?? false,
         metadata: body.metadata ?? null,
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await locations.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
