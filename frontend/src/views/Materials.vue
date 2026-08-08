@@ -158,7 +158,22 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, type Component } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Search, Refresh, Box, ShoppingCart, Connection, Setting, Edit, Delete, Barcode, Warning, Check, Close } from "@element-plus/icons-vue";
+import {
+  Plus,
+  Search,
+  Refresh,
+  Box,
+  ShoppingCart,
+  Connection,
+  Setting,
+  Edit,
+  Delete,
+  Ticket,
+  Warning,
+  Check,
+  Close,
+  Document,
+} from "@element-plus/icons-vue";
 import { api, ENDPOINTS } from "@/services/api";
 
 const loading = ref(false);
@@ -166,35 +181,84 @@ const submitLoading = ref(false);
 const dialogVisible = ref(false);
 const dialogTitle = ref("新建物料");
 const formRef = ref();
-const form = reactive({ id: "", sku: "", name: "", baseUom: "PCS", abcClass: "C", unitVolume: null, unitWeight: null, shelfLifeDays: null, requiresUniqueTracking: false, description: "" });
+const form = reactive({
+  id: "",
+  sku: "",
+  name: "",
+  baseUom: "PCS",
+  abcClass: "C",
+  unitVolume: null,
+  unitWeight: null,
+  shelfLifeDays: null,
+  requiresUniqueTracking: false,
+  description: "",
+});
 
 const rules = {
-  sku: [{ required: true, message: "请输入 SKU", trigger: "blur" }, { pattern: /^[A-Z0-9_-]+$/, message: "SKU 只能包含大写字母、数字、下划线、连字符", trigger: "blur" }, { min: 1, max: 100, message: "长度在 1 到 100 字符", trigger: "blur" }],
-  name: [{ required: true, message: "请输入物料名称", trigger: "blur" }, { min: 1, max: 200, message: "长度在 1 到 200 字符", trigger: "blur" }],
-  baseUom: [{ required: true, message: "请输入基础单位", trigger: "blur" }, { max: 20, message: "长度不能超过 20 字符", trigger: "blur" }],
+  sku: [
+    { required: true, message: "请输入 SKU", trigger: "blur" },
+    { pattern: /^[A-Z0-9_-]+$/, message: "SKU 只能包含大写字母、数字、下划线、连字符", trigger: "blur" },
+    { min: 1, max: 100, message: "长度在 1 到 100 字符", trigger: "blur" },
+  ],
+  name: [
+    { required: true, message: "请输入物料名称", trigger: "blur" },
+    { min: 1, max: 200, message: "长度在 1 到 200 字符", trigger: "blur" },
+  ],
+  baseUom: [
+    { required: true, message: "请输入基础单位", trigger: "blur" },
+    { max: 20, message: "长度不能超过 20 字符", trigger: "blur" },
+  ],
   abcClass: [{ required: true, message: "请选择 ABC 分类", trigger: "change" }],
 };
 
-const searchForm = reactive({ keyword: "", abcClass: "", baseUom: "" });
-const pagination = reactive({ page: 1, pageSize: 20, total: 0 });
-const tableData = ref([]);
-const abcTypeMap = { A: "success", B: "warning", C: "info" };
-const severityTypeMap = { ERROR: "danger", WARN: "warning", INFO: "info" };
+const searchForm = reactive({
+  keyword: "",
+  abcClass: "",
+  baseUom: "",
+});
 
-const formatDate = (dateStr: string | undefined) => { if (!dateStr) return "-"; return new Date(dateStr).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+const pagination = reactive({
+  page: 1,
+  pageSize: 20,
+  total: 0,
+});
+
+const tableData = ref<any[]>([]);
+const abcTypeMap: Record<string, string> = { A: "success", B: "warning", C: "info" };
+const severityTypeMap: Record<string, string> = { ERROR: "danger", WARN: "warning", INFO: "info" };
+
+const formatDate = (dateStr: string | undefined) => {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 async function fetchList() {
   loading.value = true;
   try {
-    const params = { limit: pagination.pageSize, offset: (pagination.page - 1) * pagination.pageSize };
+    const params: Record<string, any> = {
+      limit: pagination.pageSize,
+      offset: (pagination.page - 1) * pagination.pageSize,
+    };
     if (searchForm.keyword) params.q = searchForm.keyword;
     if (searchForm.abcClass) params.abcClass = searchForm.abcClass;
     if (searchForm.baseUom) params.baseUom = searchForm.baseUom;
+
     const response = await api.get(ENDPOINTS.MATERIALS_LIST, params);
-    tableData.value = response.data || [];
-    pagination.total = response.meta?.total || response.data?.length || 0;
-  } catch (error) { console.error("Failed to fetch materials:", error); tableData.value = []; pagination.total = 0; }
-  finally { loading.value = false; }
+    tableData.value = (response.data as any[]) || [];
+    pagination.total = response.meta?.total || (response.data as any[])?.length || 0;
+  } catch (error) {
+    console.error("Failed to fetch materials:", error);
+    tableData.value = [];
+    pagination.total = 0;
+  } finally {
+    loading.value = false;
+  }
 }
 
 function handleSearch() { pagination.page = 1; fetchList(); }
