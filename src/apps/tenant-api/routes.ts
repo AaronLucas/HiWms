@@ -989,7 +989,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const { id } = req.params as unknown as LocationIdParams;
       const body = req.body as UpdateLocationBody;
-      const result = await locations.update(id, {
+      const updateData: TablesUpdate<'locations'> = {
         name: body.name ?? null,
         zone_id: body.zoneId ?? null,
         zone_type: body.zoneType ?? null,
@@ -1003,7 +1003,8 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         picking_threshold_pct: body.pickingThresholdPct ?? null,
         force_unique_tracking: body.forceUniqueTracking ?? null,
         metadata: body.metadata ?? null,
-      } as any);
+      };
+      const result = await locations.update(id, updateData);
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -1053,7 +1054,7 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateContainerBody;
-      const result = await containers.create({
+      const insertData: TablesInsert<'containers'> = {
         tenant_id: tenantId,
         lpn_code: body.lpnCode,
         container_type: body.containerType ?? null,
@@ -1064,7 +1065,8 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
         is_sealed: body.isSealed ?? false,
         lpn_source: body.lpnSource ?? null,
         metadata: body.metadata ?? null,
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await containers.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -1103,14 +1105,15 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const { id } = req.params as unknown as ContainerIdParams;
       const body = req.body as UpdateContainerBody;
-      const result = await containers.update(id, {
+      const updateData: TablesUpdate<'containers'> = {
         container_type: body.containerType ?? null,
         parent_container_id: body.parentContainerId ?? null,
         max_volume: body.maxVolume ?? null,
         max_weight: body.maxWeight ?? null,
         lpn_source: body.lpnSource ?? null,
         metadata: body.metadata ?? null,
-      } as any);
+      };
+      const result = await containers.update(id, updateData);
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -1198,19 +1201,20 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       const tenantId = req.context!.tenantId;
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as CreateProductBody;
-      const result = await products.create({
+      const insertData: TablesInsert<'products'> = {
         tenant_id: tenantId,
         sku: body.sku,
         name: body.name,
         description: body.description ?? null,
         base_uom: body.baseUom ?? 'PCS',
         abc_class: body.abcClass ?? 'C',
-        volume_per_unit: body.volumePerUnit ?? null,
-        weight_per_unit: body.weightPerUnit ?? null,
+        unit_volume: body.volumePerUnit ?? null,
+        unit_weight: body.weightPerUnit ?? null,
         shelf_life_days: body.shelfLifeDays ?? null,
         requires_unique_tracking: body.requiresUniqueTracking ?? false,
         metadata: body.metadata ?? null,
-      } as any, req.context?.supabaseToken);
+      };
+      const result = await products.create(insertData, req.context?.supabaseToken);
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);
@@ -1224,17 +1228,23 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const { id } = req.params as unknown as ProductIdParams;
       const body = req.body as UpdateProductBody;
-      const result = await products.update(id, {
+      const updateData: TablesUpdate<'products'> = {
         name: body.name ?? null,
         description: body.description ?? null,
         base_uom: body.baseUom ?? null,
         abc_class: body.abcClass ?? null,
-        volume_per_unit: body.volumePerUnit ?? null,
-        weight_per_unit: body.weightPerUnit ?? null,
+        unit_volume: body.volumePerUnit ?? null,
+        unit_weight: body.weightPerUnit ?? null,
         shelf_life_days: body.shelfLifeDays ?? null,
         requires_unique_tracking: body.requiresUniqueTracking ?? null,
         metadata: body.metadata ?? null,
-      } as any);
+      };
+      const result = await products.update(id, updateData);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
       res.json({ success: true, data: result });
     } catch (error) {
       next(error);
