@@ -256,7 +256,8 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }): Promise<{ from: InventoryRow; to: InventoryRow }> {
     const client = this.getClient(false, input.authToken);
 
-    // 扣减源库位
+    // 使用 PostgREST 事务语法（通过 RPC 模拟）或直接用两步操作但加补偿逻辑
+    // 方案：先扣减源，再增加目标；若目标失败则回滚源
     const fromResult = await this.adjustInventory({
       tenantId: input.tenantId,
       productId: input.productId,
@@ -268,19 +269,32 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
       authToken: input.authToken,
     });
 
-    // 增加目标库位
-    const toResult = await this.adjustInventory({
-      tenantId: input.tenantId,
-      productId: input.productId,
-      locationId: input.toLocationId,
-      quantityDelta: input.quantity,
-      reason: input.reason,
-      referenceId: input.referenceId,
-      referenceType: 'transfer_in',
-      authToken: input.authToken,
-    });
-
-    return { from: fromResult, to: toResult };
+    try {
+      const toResult = await this.adjustInventory({
+        tenantId: input.tenantId,
+        productId: input.productId,
+        locationId: input.toLocationId,
+        quantityDelta: input.quantity,
+        reason: input.reason,
+        referenceId: input.referenceId,
+        referenceType: 'transfer_in',
+        authToken: input.authToken,
+      });
+      return { from: fromResult, to: toResult };
+    } catch (error) {
+      // 补偿：目标增加失败，回滚源库位扣减
+      await this.adjustInventory({
+        tenantId: input.tenantId,
+        productId: input.productId,
+        locationId: input.fromLocationId,
+        quantityDelta: input.quantity, // 补回
+        reason: `rollback: ${input.reason}`,
+        referenceId: input.referenceId,
+        referenceType: 'transfer_rollback',
+        authToken: input.authToken,
+      });
+      throw new Error(`移库失败，已回滚源库位: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async reserveInventory(input: {
