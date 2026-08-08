@@ -35,9 +35,9 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
   async findByTenant(
     tenantId: string,
-    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean }
+    options?: { limit?: number; offset?: number; zoneType?: string; isActive?: boolean; isFrozen?: boolean }
   ): Promise<LocationRow[]> {
-    const { limit = 100, offset = 0, zoneType, isActive } = options || {};
+    const { limit = 100, offset = 0, zoneType, isActive, isFrozen } = options || {};
     let query = this.getClient()
       .from(this.tableName)
       .select('*')
@@ -47,6 +47,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
 
     if (zoneType) query = query.eq('zone_type', zoneType);
     if (isActive !== undefined) query = query.eq('is_active', isActive);
+    if (isFrozen !== undefined) query = query.eq('is_frozen', isFrozen);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -154,5 +155,39 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       maxWeight: row.max_weight_capacity || 0,
       utilizationPct: 0,
     }));
+  }
+
+  // ===== Sprint 6: 库位全量写操作 =====
+
+  async findWithDetails(locationId: string): Promise<{
+    location: LocationRow;
+    utilization: { currentVolume: number; currentWeight: number; maxVolume: number; maxWeight: number; utilizationPct: number };
+    children: LocationRow[];
+  } | null> {
+    const { data: location, error: locError } = await this.getClient()
+      .from(this.tableName)
+      .select('*')
+      .eq('id', locationId)
+      .single();
+
+    if (locError) {
+      if (locError.code === 'PGRST116') return null;
+      throw locError;
+    }
+
+    // Note: locations table doesn't have parent_id field in current schema
+    // children query would need a different approach if hierarchy is supported
+
+    return {
+      location: location as LocationRow,
+      utilization: {
+        currentVolume: 0,
+        currentWeight: 0,
+        maxVolume: location.max_volume_capacity || 0,
+        maxWeight: location.max_weight_capacity || 0,
+        utilizationPct: 0,
+      },
+      children: [],
+    };
   }
 }
