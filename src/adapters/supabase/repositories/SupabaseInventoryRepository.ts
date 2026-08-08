@@ -345,6 +345,48 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
     });
   }
 
+  async releaseReservation(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    orderId?: string;
+    workOrderId?: string;
+    authToken?: string;
+  }): Promise<InventoryRow> {
+    // 释放预留：正向调整库存（补回数量）
+    return this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.locationId,
+      quantityDelta: input.quantity,
+      reason: `release_reservation:${input.orderId || input.workOrderId || 'manual'}`,
+      referenceId: input.orderId || input.workOrderId,
+      referenceType: 'reservation_release',
+      authToken: input.authToken,
+    });
+  }
+
+  async unlockInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    reason: string;
+    authToken?: string;
+  }): Promise<InventoryRow> {
+    // 解除锁定：正向调整库存（补回数量）
+    return this.adjustInventory({
+      tenantId: input.tenantId,
+      productId: input.productId,
+      locationId: input.locationId,
+      quantityDelta: input.quantity,
+      reason: `unlock:${input.reason}`,
+      referenceType: 'lock_release',
+      authToken: input.authToken,
+    });
+  }
+
   async getInventoryHistory(tenantId: string, options?: {
     limit?: number;
     offset?: number;

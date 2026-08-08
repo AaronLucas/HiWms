@@ -56,6 +56,8 @@ import {
   transferInventoryBodySchema,
   reserveInventoryBodySchema,
   lockInventoryBodySchema,
+  releaseReservationBodySchema,
+  unlockInventoryBodySchema,
   listInventoryHistoryQuerySchema,
   getAvailableInventoryQuerySchema,
   createLocationBodySchema,
@@ -124,6 +126,8 @@ import {
   type TransferInventoryBody,
   type ReserveInventoryBody,
   type LockInventoryBody,
+  type ReleaseReservationBody,
+  type UnlockInventoryBody,
   type ListInventoryHistoryQuery,
   type GetAvailableInventoryQuery,
   type CreateLocationBody,
@@ -838,6 +842,32 @@ export function createTenantApiRouter(deps: TenantApiDependencies): Router {
       if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
       const body = req.body as LockInventoryBody;
       const result = await inventory.lockInventory({ ...body, tenantId, authToken: req.context?.supabaseToken });
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/inventory/release-reservation — 释放预留库存
+  router.post('/inventory/release-reservation', deps.middlewareFactory.requirePermission('inventory', 'UPDATE'), validateBody(releaseReservationBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const body = req.body as ReleaseReservationBody;
+      const result = await inventory.releaseReservation({ ...body, tenantId, authToken: req.context?.supabaseToken });
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/inventory/unlock — 解除锁定库存
+  router.post('/inventory/unlock', deps.middlewareFactory.requirePermission('inventory', 'UPDATE'), validateBody(unlockInventoryBodySchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = req.context!.tenantId;
+      if (!tenantId) return res.status(403).json({ success: false, error: 'Tenant context required' });
+      const body = req.body as UnlockInventoryBody;
+      const result = await inventory.unlockInventory({ ...body, tenantId, authToken: req.context?.supabaseToken });
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       next(error);

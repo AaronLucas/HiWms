@@ -413,6 +413,23 @@ export const lockInventoryBodySchema = z.object({
 });
 export type LockInventoryBody = z.infer<typeof lockInventoryBodySchema>;
 
+export const releaseReservationBodySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema,
+  quantity: positiveIntSchema,
+  orderId: uuidSchema.optional(),
+  workOrderId: uuidSchema.optional(),
+});
+export type ReleaseReservationBody = z.infer<typeof releaseReservationBodySchema>;
+
+export const unlockInventoryBodySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema,
+  quantity: positiveIntSchema,
+  reason: z.string().min(1),
+});
+export type UnlockInventoryBody = z.infer<typeof unlockInventoryBodySchema>;
+
 export const listInventoryHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),

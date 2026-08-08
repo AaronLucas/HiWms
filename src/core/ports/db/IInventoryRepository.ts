@@ -129,6 +129,31 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
   }): Promise<InventoryRow>;
 
   /**
+   * 释放预留库存（订单取消/完成时调用）
+   */
+  releaseReservation(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    orderId?: string;
+    workOrderId?: string;
+    authToken?: string;
+  }): Promise<InventoryRow>;
+
+  /**
+   * 解除锁定库存（质检/盘点结束时调用）
+   */
+  unlockInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    reason: string;
+    authToken?: string;
+  }): Promise<InventoryRow>;
+
+  /**
    * 查询库存历史变动
    */
   getInventoryHistory(tenantId: string, options?: {
