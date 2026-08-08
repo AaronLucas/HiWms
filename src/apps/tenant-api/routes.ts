@@ -10,6 +10,7 @@ import { ReceiveInboundReceiptUseCase } from '../../core/usecases/inbound/Receiv
 import { GeneratePutawayWorkOrderUseCase } from '../../core/usecases/inbound/GeneratePutawayWorkOrderUseCase';
 import { RecordInspectionResultUseCase } from '../../core/usecases/inspection/RecordInspectionResultUseCase';
 import type { QualityInspectionResult } from '../../core/constants/status';
+import type { TablesInsert, TablesUpdate } from '../../types/database';
 import {
   createOrderBodySchema,
   listOrdersQuerySchema,
