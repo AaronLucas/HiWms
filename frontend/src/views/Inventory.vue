@@ -10,7 +10,7 @@
         库存调整
       </el-button>
       <el-button type="success" @click="openTransferDialog" :loading="submitLoading">
-        <el-icon><Transfer /></el-icon>
+        <el-icon><ArrowRight /></el-icon>
         移库
       </el-button>
       <el-button type="info" @click="openReserveDialog" :loading="submitLoading">
@@ -127,7 +127,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Search, Refresh, Edit, Transfer, Lock, Delete, History, Box, ArrowRight, ArrowLeft, Time } from "@element-plus/icons-vue";
+import { Edit, ArrowRight, Lock, Delete, History, Search, Refresh, ArrowRight as ArrowRightIcon, ArrowLeft, Time, Box } from "@element-plus/icons-vue";
 import { api, ENDPOINTS } from "@/services/api";
 
 const loading = ref(false);
@@ -296,38 +296,19 @@ const historyDialogVisible = ref(false);
 const historyData = ref<any[]>([]);
 async function openHistoryDialog() { historyDialogVisible.value = true; try { const response: any = await api.get(ENDPOINTS.INVENTORY_HISTORY, { limit: 100 }); historyData.value = (response.data as any[]) || []; } catch (error) { console.error("Failed to fetch history:", error); historyData.value = []; } }
 
+const searchForm = reactive({ productSku: "", locationCode: "", batchNo: "", status: "" });
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 });
 const tableData = ref<any[]>([]);
+const statusTypeMap: Record<string, string> = { normal: "success", reserved: "warning", locked: "info", quarantine: "danger" };
+const statusLabelMap: Record<string, string> = { normal: "正常", reserved: "预留", locked: "锁定", quarantine: "隔离" };
+const productOptions = ref<any[]>([]);
+const locationOptions = ref<any[]>([]);
+const productLoading = ref(false);
+const locationLoading = ref(false);
+const toLocationLoading = ref(false);
 
-function handleSearch() { pagination.page = 1; fetchList(); }
-function handleReset() { searchForm.productSku = ""; searchForm.locationCode = ""; searchForm.batchNo = ""; searchForm.status = ""; pagination.page = 1; fetchList(); }
-function handleSizeChange(size: number) { pagination.pageSize = size; pagination.page = 1; fetchList(); }
-function handleCurrentChange(page: number) { pagination.page = page; fetchList(); }
-
-function openAdjustDialog(row?: any) { resetForm(); dialogType.value = "adjust"; dialogTitle.value = row ? "库存调整" : "新增库存"; if (row) { form.id = row.id; form.productId = row.productId; form.locationId = row.locationId; form.batchNo = row.batchNo || ""; form.serialNo = row.serialNo || ""; form.quantity = row.quantity || 1; form.expiryDate = row.expiryDate || ""; form.adjustType = "increase"; } dialogVisible.value = true; }
-function openTransferDialog(row?: any) { resetForm(); dialogType.value = "transfer"; dialogTitle.value = "库存移库"; if (row) { form.id = row.id; form.productId = row.productId; form.locationId = row.locationId; form.batchNo = row.batchNo || ""; form.serialNo = row.serialNo || ""; form.quantity = row.quantity || 1; } dialogVisible.value = true; }
-function openReserveDialog(row?: any) { reserveDialogType.value = row?.status === "locked" ? "lock" : "reserve"; reserveDialogTitle.value = reserveDialogType.value === "lock" ? "锁定库存" : "预留库存"; resetReserveForm(); if (row) { reserveForm.productId = row.productId; reserveForm.locationId = row.locationId; reserveForm.quantity = row.quantity || 1; } reserveDialogVisible.value = true; }
-
-function resetForm() { form.id = ""; form.productId = ""; form.locationId = ""; form.toLocationId = ""; form.batchNo = ""; form.serialNo = ""; form.quantity = 1; form.expiryDate = ""; form.adjustType = "increase"; form.reason = ""; formRef.value?.clearValidate?.(); }
-function handleDialogClose(done: () => void) { resetForm(); done(); }
-
-async function handleSubmit() {
-  formRef.value?.validate?.(async (valid: boolean) => { if (!valid) return; submitLoading.value = true; try { if (dialogType.value === "adjust") { const payload = { productId: form.productId, locationId: form.locationId, batchNo: form.batchNo || undefined, serialNo: form.serialNo || undefined, quantity: form.quantity, expiryDate: form.expiryDate || undefined, adjustType: form.adjustType, reason: form.reason }; await api.post(ENDPOINTS.INVENTORY_ADJUST, payload); ElMessage.success("库存调整成功"); } else if (dialogType.value === "transfer") { const payload = { productId: form.productId, fromLocationId: form.locationId, toLocationId: form.toLocationId, batchNo: form.batchNo || undefined, serialNo: form.serialNo || undefined, quantity: form.quantity, reason: form.reason }; await api.post(ENDPOINTS.INVENTORY_TRANSFER, payload); ElMessage.success("移库成功"); } dialogVisible.value = false; fetchList(); } catch (error) { console.error("Submit error:", error); } finally { submitLoading.value = false; } }); }
-
-async function handleDelete(id: string) { try { await ElMessageBox.confirm("确定要删除该库存记录吗？", "确认删除", { confirmButtonText: "确定", cancelButtonText: "取消", type: "warning" }); await api.delete(ENDPOINTS.INVENTORY_GET(id)); ElMessage.success("删除成功"); fetchList(); } catch (error) { if (error !== "cancel") console.error("Delete error:", error); } }
-
-const reserveDialogVisible = ref(false);
-const reserveDialogTitle = ref("预留库存");
-const reserveDialogType = ref<"reserve" | "lock">("reserve");
-const reserveFormRef = ref();
-const reserveSubmitLoading = ref(false);
-const reserveForm = reactive({ productId: "", locationId: "", quantity: 1, orderId: "", expiresAt: "" });
-const reserveRules = { productId: [{ required: true, message: "请选择商品", trigger: "change" }], locationId: [{ required: true, message: "请选择库位", trigger: "change" }], quantity: [{ required: true, message: "请输入数量", trigger: "blur" }, { min: 1, message: "数量必须大于 0", trigger: "blur" }] };
-const reserveSubmitLoading = ref(false);
-
-function resetReserveForm() { reserveForm.productId = ""; reserveForm.locationId = ""; reserveForm.quantity = 1; reserveForm.orderId = ""; reserveForm.expiresAt = ""; reserveFormRef.value?.clearValidate?.(); }
-
-async function handleReserveSubmit() { reserveFormRef.value?.validate?.(async (valid: boolean) => { if (!valid) return; reserveSubmitLoading.value = true; try { const payload = { productId: reserveForm.productId, locationId: reserveForm.locationId, quantity: reserveForm.quantity, orderId: reserveForm.orderId || undefined, expiresAt: reserveForm.expiresAt || undefined }; if (reserveDialogType.value === "reserve") { await api.post(ENDPOINTS.INVENTORY_RESERVE, payload); ElMessage.success("预留成功"); } else { await api.post(ENDPOINTS.INVENTORY_LOCK, payload); ElMessage.success("锁定成功"); } reserveDialogVisible.value = false; fetchList(); } catch (error) { console.error("Reserve submit error:", error); } finally { reserveSubmitLoading.value = false; } }); }
+async function remoteProductSearch(query: string) { if (!query) return; productLoading.value = true; try { const response = await api.get(ENDPOINTS.MATERIALS_LIST, { q: query, limit: 20 }); productOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Product search failed:", error); productOptions.value = []; } finally { productLoading.value = false; } }
+async function remoteLocationSearch(query: string) { locationLoading.value = true; try { const response = await api.get(ENDPOINTS.LOCATIONS_LIST, { keyword: query, limit: 20 }); locationOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Location search failed:", error); locationOptions.value = []; } finally { locationLoading.value = false; } }
 
 const historyDialogVisible = ref(false);
 const historyData = ref<any[]>([]);
