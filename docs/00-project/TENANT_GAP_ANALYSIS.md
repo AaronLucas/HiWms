@@ -107,11 +107,11 @@ Admin API   ░                                  0 路由         (~0%)
 - 车辆登记/列表
 - **新增 UseCase**: `AssignWorkOrderUseCase`, `HandoverShippingUseCase`, `UpdateOrderStatusUseCase`, `ReleaseWaveUseCase`（修复）
 
-### Sprint 5：入库全链路（ASN→收货→质检→上架）✅ Tenant API 部分已完成（2026-08-03）
+### Sprint 5：入库全链路（ASN→收货→质检→上架）✅ Tenant API 部分已完成（2026-08-03），DBA 决策问题已落地（2026-08-08）
 - ✅ 入库单 CRUD+状态更新+收货+上架触发（14 个新端点，含 ASN 3 个 + 入库单 6 个 + 质检单 5 个）
 - ✅ ASN 创建/列表/详情
 - ✅ 质检单 CRUD+明细项录入+结果录入（完成质检并入结果录入，PASS/REJECT/QUARANTINE/REWORK 均为终态）
-- ⚠️ **入库单明细行（inspection_items）未接入**：`inspection_items` 表只有 `inspection_id` 外键（指向 `quality_inspections`），没有 `receipt_id` 列；`IInboundReceiptRepository.findWithItems/createInspectionItems/updateInspectionItem/getInspectionSummary` 因此结构性不可用（2026-07-27 审计已发现，未修复）。本轮新端点未依赖这些方法，`GET /api/inbound-receipts/:id` 只返回单据本身，不含明细行。需 DBA 决策：给 `inspection_items` 加 `receipt_id` 外键，或改为经 `wave_id` 间接关联。**已提 DBA 决策 Issue：[HiWmsSupabase#64](https://github.com/AaronLucas/HiWmsSupabase/issues/64)**（2026-08-03）
+- ✅ **入库单明细行（inspection_items）已接入**：DBA 决策 Issue [HiWmsSupabase#64](https://github.com/AaronLucas/HiWmsSupabase/issues/64) 已关闭，方案为在 `quality_inspections` 表加 `receipt_id` 外键 + 复合索引（PR #65 已合并）。应用层同步修复：`src/types/database.ts` 添加字段及外键关系；`SupabaseInboundReceiptRepository.ts` 两跳查询重写（`findWithItems()`/`getInspectionSummary()` 改为先查 `quality_inspections.receipt_id` 再查 `inspection_items.inspection_id`），TypeScript 编译通过、单元测试 85 passed。
 - ⏳ Device API 补充收货/质检端点——未做，留待后续
 - ✅ **新增 UseCase**: `ReceiveInboundReceiptUseCase`, `GeneratePutawayWorkOrderUseCase`, `RecordInspectionResultUseCase`
 
@@ -148,8 +148,8 @@ Admin API   ░                                  0 路由         (~0%)
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|---------|
-| ADR-015 auth bridge DB 侧触发器仍未落地 | 新 Tenant API 端点 RLS 可能不生效 | Sprint 4 启动前确认 `fn_current_tenant_id()` 返回正确值 |
-| `authToken` 未贯通到 Repository 业务方法 | 可能绕过 RLS | Sprint 4 新端点从第一天就接入 per-request client |
+| ~~ADR-015 auth bridge DB 侧触发器仍未落地~~ | ~~新 Tenant API 端点 RLS 可能不生效~~ | ✅ 已落地（2026-08-01 复核确认） |
+| ~~`authToken` 未贯通到 Repository 业务方法~~ | ~~可能绕过 RLS~~ | ✅ 已贯通（Sprint 4.10，2026-08-02，所有业务方法补齐 `authToken` 参数） |
 | Repository Phase 2 仓库无测试 | 8 个 P0 仓库行为未验证 | Sprint 3 测试补齐（已有 PR #58 基础） |
 | 退货域需全新设计 | 不能直接写代码 | 先出 ADR + DB Schema，再开工 |
 
