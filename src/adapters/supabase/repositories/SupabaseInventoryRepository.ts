@@ -354,33 +354,37 @@ export class SupabaseInventoryRepository extends SupabaseBaseRepository<
   }>> {
     const { limit = 50, offset = 0, productId, locationId, startDate, endDate, authToken } = options || {};
 
+    // Need to join inventory_history with inventory to get tenant_id, product_id, location_id
     let query = this.getClient(false, authToken)
       .from('inventory_history')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
+      .select(`
+        *,
+        inventory!inv_id(tenant_id, product_id, location_id)
+      `)
+      .eq('inventory.tenant_id', tenantId)
+      .order('changed_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (productId) query = query.eq('product_id', productId);
-    if (locationId) query = query.eq('location_id', locationId);
-    if (startDate) query = query.gte('created_at', startDate);
-    if (endDate) query = query.lte('created_at', endDate);
+    if (productId) query = query.eq('inventory.product_id', productId);
+    if (locationId) query = query.eq('inventory.location_id', locationId);
+    if (startDate) query = query.gte('changed_at', startDate);
+    if (endDate) query = query.lte('changed_at', endDate);
 
     const { data, error } = await query;
     if (error) throw error;
 
-    return (data || []).map(row => ({
-      id: row.id,
-      productId: row.product_id,
-      locationId: row.location_id,
-      quantityBefore: row.quantity_before,
-      quantityAfter: row.quantity_after,
+    return (data || []).map((row: any) => ({
+      id: row.hist_id?.toString() || row.inv_id,
+      productId: row.inventory?.product_id,
+      locationId: row.inventory?.location_id,
+      quantityBefore: row.before_qty,
+      quantityAfter: row.after_qty,
       changeType: row.change_type,
-      reason: row.reason,
-      referenceId: row.reference_id,
-      referenceType: row.reference_type,
-      createdAt: row.created_at,
-      createdBy: row.created_by,
+      reason: row.change_reason,
+      referenceId: null, // not in schema
+      referenceType: null, // not in schema
+      createdAt: row.changed_at,
+      createdBy: null, // not in schema
     }));
   }
 

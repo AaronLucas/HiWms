@@ -174,14 +174,8 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
       throw locError;
     }
 
-    // 查找子库位
-    const { data: children, error: childrenError } = await this.getClient()
-      .from(this.tableName)
-      .select('*')
-      .eq('parent_id', locationId)
-      .order('code', { ascending: true });
-
-    if (childrenError) throw childrenError;
+    // Note: locations table doesn't have parent_id field in current schema
+    // children query would need a different approach if hierarchy is supported
 
     return {
       location: location as LocationRow,
@@ -192,7 +186,7 @@ export class SupabaseLocationRepository extends SupabaseBaseRepository<
         maxWeight: location.max_weight_capacity || 0,
         utilizationPct: 0,
       },
-      children: (children as LocationRow[]) || [],
+      children: [],
     };
   }
 }
