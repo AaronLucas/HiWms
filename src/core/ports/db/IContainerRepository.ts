@@ -60,4 +60,39 @@ export interface IContainerRepository extends IRepository<ContainerRow, Containe
     maxWeight: number;
     utilizationPct: number;
   }>>;
+
+  // ===== Sprint 6: 容器全量写操作 =====
+
+  /**
+   * 获取容器内容物（含嵌套）
+   */
+  getContents(containerId: string, includeNested?: boolean): Promise<Array<{
+    productId: string;
+    productSku: string;
+    productName: string;
+    quantity: number;
+    batchNo?: string;
+    serialNo?: string;
+  }>>;
+
+  /**
+   * 移动容器（更改父容器/位置）
+   */
+  moveContainer(containerId: string, newParentId: string | null): Promise<ContainerRow>;
+
+  /**
+   * 获取容器层级树（递归子容器）
+   */
+  getHierarchy(containerId: string): Promise<{
+    container: ContainerRow;
+    children: Array<{
+      container: ContainerRow;
+      children: any[];
+    }>;
+  } | null>;
+
+  /**
+   * 按 LPN 查询容器
+   */
+  findByLpn(lpnCode: string, tenantId: string): Promise<ContainerRow | null>;
 }

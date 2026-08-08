@@ -369,3 +369,243 @@ export const recordInspectionResultBodySchema = z.object({
   notes: z.string().optional(),
 });
 export type RecordInspectionResultBody = z.infer<typeof recordInspectionResultBodySchema>;
+
+// ===== Sprint 6: 库存操作 + 主数据（库位/容器/商品写） =====
+
+// --- 库存写操作 ---
+export const adjustInventoryBodySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema,
+  quantityDelta: z.number().int(),
+  reason: z.string().min(1),
+  referenceId: uuidSchema.optional(),
+  referenceType: z.enum(['manual', 'return', 'damage', 'found', 'correction']).optional(),
+});
+export type AdjustInventoryBody = z.infer<typeof adjustInventoryBodySchema>;
+
+export const transferInventoryBodySchema = z.object({
+  productId: uuidSchema,
+  fromLocationId: uuidSchema,
+  toLocationId: uuidSchema,
+  quantity: positiveIntSchema,
+  reason: z.string().min(1),
+  referenceId: uuidSchema.optional(),
+});
+export type TransferInventoryBody = z.infer<typeof transferInventoryBodySchema>;
+
+export const reserveInventoryBodySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema,
+  quantity: positiveIntSchema,
+  orderId: uuidSchema.optional(),
+  workOrderId: uuidSchema.optional(),
+  expiresAt: isoDateTimeSchema.optional(),
+});
+export type ReserveInventoryBody = z.infer<typeof reserveInventoryBodySchema>;
+
+export const lockInventoryBodySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema,
+  quantity: positiveIntSchema,
+  reason: z.string().min(1),
+  lockedBy: uuidSchema.optional(),
+  expiresAt: isoDateTimeSchema.optional(),
+});
+export type LockInventoryBody = z.infer<typeof lockInventoryBodySchema>;
+
+export const inventoryIdParamsSchema = z.object({ id: uuidSchema });
+export type InventoryIdParams = z.infer<typeof inventoryIdParamsSchema>;
+
+export const listInventoryHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  productId: uuidSchema.optional(),
+  locationId: uuidSchema.optional(),
+  startDate: isoDateTimeSchema.optional(),
+  endDate: isoDateTimeSchema.optional(),
+});
+export type ListInventoryHistoryQuery = z.infer<typeof listInventoryHistoryQuerySchema>;
+
+export const getAvailableInventoryQuerySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema.optional(),
+  excludeReserved: z.coerce.boolean().default(true),
+  excludeLocked: z.coerce.boolean().default(true),
+});
+export type GetAvailableInventoryQuery = z.infer<typeof getAvailableInventoryQuerySchema>;
+
+// --- 库位 CRUD + 状态/容量/利用率 ---
+export const createLocationBodySchema = z.object({
+  code: z.string().min(1).max(50),
+  name: z.string().max(100).optional(),
+  zoneId: uuidSchema.optional(),
+  zoneType: z.enum(['picking', 'storage', 'staging', 'receiving', 'shipping', 'cold', 'dangerous', 'value_added']).optional(),
+  aisle: z.string().max(20).optional(),
+  rack: z.string().max(20).optional(),
+  level: z.string().max(20).optional(),
+  position: z.string().max(20).optional(),
+  maxVolumeCapacity: z.number().nonnegative().optional(),
+  maxWeightCapacity: z.number().nonnegative().optional(),
+  pickingMaxQty: z.number().int().positive().optional(),
+  pickingThresholdPct: z.number().int().min(0).max(100).optional(),
+  isActive: z.boolean().default(true),
+  isFrozen: z.boolean().default(false),
+  forceUniqueTracking: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateLocationBody = z.infer<typeof createLocationBodySchema>;
+
+export const updateLocationBodySchema = z.object({
+  name: z.string().max(100).optional(),
+  zoneId: uuidSchema.optional(),
+  zoneType: z.enum(['picking', 'storage', 'staging', 'receiving', 'shipping', 'cold', 'dangerous', 'value_added']).optional(),
+  aisle: z.string().max(20).optional(),
+  rack: z.string().max(20).optional(),
+  level: z.string().max(20).optional(),
+  position: z.string().max(20).optional(),
+  maxVolumeCapacity: z.number().nonnegative().optional(),
+  maxWeightCapacity: z.number().nonnegative().optional(),
+  pickingMaxQty: z.number().int().positive().optional(),
+  pickingThresholdPct: z.number().int().min(0).max(100).optional(),
+  forceUniqueTracking: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type UpdateLocationBody = z.infer<typeof updateLocationBodySchema>;
+
+export const listLocationsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  zoneId: uuidSchema.optional(),
+  zoneType: z.enum(['picking', 'storage', 'staging', 'receiving', 'shipping', 'cold', 'dangerous', 'value_added']).optional(),
+  isActive: z.coerce.boolean().optional(),
+  isFrozen: z.coerce.boolean().optional(),
+});
+export type ListLocationsQuery = z.infer<typeof listLocationsQuerySchema>;
+
+export const locationIdParamsSchema = z.object({ id: uuidSchema });
+export type LocationIdParams = z.infer<typeof locationIdParamsSchema>;
+
+export const updateLocationStatusBodySchema = z.object({
+  isActive: z.boolean(),
+  isFrozen: z.boolean().optional(),
+});
+export type UpdateLocationStatusBody = z.infer<typeof updateLocationStatusBodySchema>;
+
+export const updateLocationCapacityBodySchema = z.object({
+  maxVolume: z.number().nonnegative().optional(),
+  maxWeight: z.number().nonnegative().optional(),
+  pickingMaxQty: z.number().int().positive().optional(),
+  pickingThresholdPct: z.number().int().min(0).max(100).optional(),
+});
+export type UpdateLocationCapacityBody = z.infer<typeof updateLocationCapacityBodySchema>;
+
+// --- 容器 CRUD + 封箱/移动/内容物/层级树/LPN ---
+export const createContainerBodySchema = z.object({
+  lpnCode: z.string().min(1).max(50),
+  containerType: z.enum(['pallet', 'box', 'tote', 'carton', 'bin', 'case']).optional(),
+  parentContainerId: uuidSchema.optional(),
+  maxVolume: z.number().nonnegative().optional(),
+  maxWeight: z.number().nonnegative().optional(),
+  status: z.enum(['IDLE', 'IN_USE', 'SEALED', 'SHIPPED', 'RECEIVED', 'DISPOSED']).default('IDLE'),
+  isSealed: z.boolean().default(false),
+  lpnSource: z.enum(['client', 'internal', 'generated']).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateContainerBody = z.infer<typeof createContainerBodySchema>;
+
+export const updateContainerBodySchema = z.object({
+  containerType: z.enum(['pallet', 'box', 'tote', 'carton', 'bin', 'case']).optional(),
+  parentContainerId: uuidSchema.optional(),
+  maxVolume: z.number().nonnegative().optional(),
+  maxWeight: z.number().nonnegative().optional(),
+  lpnSource: z.enum(['client', 'internal', 'generated']).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type UpdateContainerBody = z.infer<typeof updateContainerBodySchema>;
+
+export const listContainersQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  status: z.enum(['IDLE', 'IN_USE', 'SEALED', 'SHIPPED', 'RECEIVED', 'DISPOSED']).optional(),
+  containerType: z.enum(['pallet', 'box', 'tote', 'carton', 'bin', 'case']).optional(),
+});
+export type ListContainersQuery = z.infer<typeof listContainersQuerySchema>;
+
+export const containerIdParamsSchema = z.object({ id: uuidSchema });
+export type ContainerIdParams = z.infer<typeof containerIdParamsSchema>;
+
+export const sealContainerBodySchema = z.object({
+  isSealed: z.boolean(),
+});
+export type SealContainerBody = z.infer<typeof sealContainerBodySchema>;
+
+export const moveContainerBodySchema = z.object({
+  parentContainerId: uuidSchema.nullable(),
+});
+export type MoveContainerBody = z.infer<typeof moveContainerBodySchema>;
+
+export const containerContentsQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  includeNested: z.coerce.boolean().default(false),
+});
+export type ContainerContentsQuery = z.infer<typeof containerContentsQuerySchema>;
+
+export const lpnQueryParamsSchema = z.object({
+  lpnCode: z.string().min(1),
+});
+export type LpnQueryParams = z.infer<typeof lpnQueryParamsSchema>;
+
+// --- 商品写操作 CRUD + 条码/约束/ABC分类 ---
+export const createProductBodySchema = z.object({
+  sku: z.string().min(1).max(100),
+  name: z.string().min(1).max(200),
+  description: z.string().optional(),
+  baseUom: z.string().min(1).max(20).default('PCS'),
+  abcClass: z.enum(['A', 'B', 'C']).default('C'),
+  volumePerUnit: z.number().nonnegative().optional(),
+  weightPerUnit: z.number().nonnegative().optional(),
+  shelfLifeDays: z.number().int().positive().optional(),
+  requiresUniqueTracking: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type CreateProductBody = z.infer<typeof createProductBodySchema>;
+
+export const updateProductBodySchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().optional(),
+  baseUom: z.string().min(1).max(20).optional(),
+  abcClass: z.enum(['A', 'B', 'C']).optional(),
+  volumePerUnit: z.number().nonnegative().optional(),
+  weightPerUnit: z.number().nonnegative().optional(),
+  shelfLifeDays: z.number().int().positive().optional(),
+  requiresUniqueTracking: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type UpdateProductBody = z.infer<typeof updateProductBodySchema>;
+
+export const addProductBarcodeBodySchema = z.object({
+  barcode: z.string().min(1).max(100),
+  targetType: z.enum(['product', 'sku', 'batch', 'serial']),
+  targetSubtype: z.string().optional(),
+  isPrimary: z.boolean().default(false),
+});
+export type AddProductBarcodeBody = z.infer<typeof addProductBarcodeBodySchema>;
+
+export const listProductBarcodesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+export type ListProductBarcodesQuery = z.infer<typeof listProductBarcodesQuerySchema>;
+
+export const productConstraintBodySchema = z.object({
+  constraintType: z.enum(['location_type', 'temperature', 'hazardous', 'segregation']),
+  constraintValue: z.string().min(1),
+  severity: z.enum(['error', 'warning']).default('error'),
+});
+export type ProductConstraintBody = z.infer<typeof productConstraintBodySchema>;
+
+export const updateProductAbcClassBodySchema = z.object({
+  abcClass: z.enum(['A', 'B', 'C']),
+});
+export type UpdateProductAbcClassBody = z.infer<typeof updateProductAbcClassBodySchema>;

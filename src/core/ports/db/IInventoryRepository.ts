@@ -69,4 +69,98 @@ export interface IInventoryRepository extends IRepository<InventoryRow, Inventor
     picking_max_qty: number;
     fill_rate_pct: number;
   }>>;
+
+  // ===== Sprint 6: 库存写操作 =====
+
+  /**
+   * 库存调整（增/减，含原因与单据关联）
+   */
+  adjustInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantityDelta: number;
+    reason: string;
+    referenceId?: string;
+    referenceType?: string;
+    authToken?: string;
+  }): Promise<InventoryRow>;
+
+  /**
+   * 库存移库（同产品跨库位转移）
+   */
+  transferInventory(input: {
+    tenantId: string;
+    productId: string;
+    fromLocationId: string;
+    toLocationId: string;
+    quantity: number;
+    reason: string;
+    referenceId?: string;
+    authToken?: string;
+  }): Promise<{ from: InventoryRow; to: InventoryRow }>;
+
+  /**
+   * 预留库存（用于订单/工单锁定）
+   */
+  reserveInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    orderId?: string;
+    workOrderId?: string;
+    expiresAt?: string;
+    authToken?: string;
+  }): Promise<InventoryRow>;
+
+  /**
+   * 锁定库存（临时冻结，如质检/盘点）
+   */
+  lockInventory(input: {
+    tenantId: string;
+    productId: string;
+    locationId: string;
+    quantity: number;
+    reason: string;
+    lockedBy?: string;
+    expiresAt?: string;
+    authToken?: string;
+  }): Promise<InventoryRow>;
+
+  /**
+   * 查询库存历史变动
+   */
+  getInventoryHistory(tenantId: string, options?: {
+    limit?: number;
+    offset?: number;
+    productId?: string;
+    locationId?: string;
+    startDate?: string;
+    endDate?: string;
+    authToken?: string;
+  }): Promise<Array<{
+    id: string;
+    productId: string;
+    locationId: string;
+    quantityBefore: number;
+    quantityAfter: number;
+    changeType: string;
+    reason: string;
+    referenceId: string | null;
+    referenceType: string | null;
+    createdAt: string;
+    createdBy: string | null;
+  }>>;
+
+  /**
+   * 查询可用库存量（扣除预留/锁定）
+   */
+  getAvailableQuantity(input: {
+    productId: string;
+    locationId?: string;
+    excludeReserved?: boolean;
+    excludeLocked?: boolean;
+    authToken?: string;
+  }): Promise<number>;
 }
