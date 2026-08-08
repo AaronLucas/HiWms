@@ -413,6 +413,24 @@ export const lockInventoryBodySchema = z.object({
 });
 export type LockInventoryBody = z.infer<typeof lockInventoryBodySchema>;
 
+export const listInventoryHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+  productId: uuidSchema.optional(),
+  locationId: uuidSchema.optional(),
+  startDate: isoDateTimeSchema.optional(),
+  endDate: isoDateTimeSchema.optional(),
+});
+export type ListInventoryHistoryQuery = z.infer<typeof listInventoryHistoryQuerySchema>;
+
+export const getAvailableInventoryQuerySchema = z.object({
+  productId: uuidSchema,
+  locationId: uuidSchema.optional(),
+  excludeReserved: z.coerce.boolean().default(true),
+  excludeLocked: z.coerce.boolean().default(true),
+});
+export type GetAvailableInventoryQuery = z.infer<typeof getAvailableInventoryQuerySchema>;
+
 // --- 库位 CRUD + 状态/容量/利用率 ---
 export const createLocationBodySchema = z.object({
   code: z.string().min(1).max(50),
