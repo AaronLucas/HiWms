@@ -4,7 +4,7 @@
       <h1>系统设置</h1>
     </div>
 
-    <el-tabs v-model="activeTab" type="card" @tab-click="handleTabChange">
+    <el-tabs v-model="activeTab" @tab-click="handleTabChange" type="card">
       <el-tab-pane label="用户管理" name="users">
         <UserManagementTab />
       </el-tab-pane>
@@ -28,18 +28,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import UserManagementTab from "./settings/UserManagementTab.vue";
-import RoleManagementTab from "./settings/RoleManagementTab.vue";
-import PermissionManagementTab from "./settings/PermissionManagementTab.vue";
-import TenantManagementTab from "./settings/TenantManagementTab.vue";
-import AuditLogTab from "./settings/AuditLogTab.vue";
-import SystemParamsTab from "./settings/SystemParamsTab.vue";
+import { ref } from 'vue';
+import UserManagementTab from './settings/UserManagementTab.vue';
+import RoleManagementTab from './settings/RoleManagementTab.vue';
+import PermissionManagementTab from './settings/PermissionManagementTab.vue';
+import TenantManagementTab from './settings/TenantManagementTab.vue';
+import AuditLogTab from './settings/AuditLogTab.vue';
+import SystemParamsTab from './settings/SystemParamsTab.vue';
 
-const activeTab = ref("users");
+const activeTab = ref('users');
 
 function handleTabChange(tab: any) {
-  console.log("Tab changed:", tab.name);
+  console.log('Tab changed:', tab.name);
 }
 </script>
 
