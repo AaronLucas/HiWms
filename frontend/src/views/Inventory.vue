@@ -218,30 +218,5 @@ const historyDialogVisible = ref(false);
 const historyData = ref<any[]>([]);
 async function openHistoryDialog() { historyDialogVisible.value = true; try { const response: any = await api.get(ENDPOINTS.INVENTORY_HISTORY, { limit: 100 }); historyData.value = (response.data as any[]) || []; } catch (error) { console.error("Failed to fetch history:", error); historyData.value = []; } }
 
-const historyVisible = ref(false);
-const historyDataRef = ref<any[]>([]);
-
-const productOptions = ref<any[]>([]);
-const locationOptions = ref<any[]>([]);
-const productLoading = ref(false);
-const locationLoading = ref(false);
-const toLocationLoading = ref(false);
-
-async function remoteProductSearch(query: string) { if (!query) return; productLoading.value = true; try { const response = await api.get(ENDPOINTS.MATERIALS_LIST, { q: query, limit: 20 }); productOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Product search failed:", error); productOptions.value = []; } finally { productLoading.value = false; } }
-async function remoteLocationSearch(query: string) { locationLoading.value = true; try { const response = await api.get(ENDPOINTS.LOCATIONS_LIST, { keyword: query, limit: 20 }); locationOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Location search failed:", error); locationOptions.value = []; } finally { locationLoading.value = false; } }
-
-const statusTypeMap: Record<string, string> = { normal: "success", reserved: "warning", locked: "info", quarantine: "danger" };
-const statusLabelMap: Record<string, string> = { normal: "正常", reserved: "预留", locked: "锁定", quarantine: "隔离" };
-const formatDate = (dateStr: string | undefined) => { if (!dateStr) return "-"; return new Date(dateStr).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }); };
-
-const productOptions = ref<any[]>([]);
-const locationOptions = ref<any[]>([]);
-const productLoading = ref(false);
-const locationLoading = ref(false);
-const toLocationLoading = ref(false);
-
-async function remoteProductSearch(query: string) { if (!query) return; productLoading.value = true; try { const response = await api.get(ENDPOINTS.MATERIALS_LIST, { q: query, limit: 20 }); productOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Product search failed:", error); productOptions.value = []; } finally { productLoading.value = false; } }
-async function remoteLocationSearch(query: string) { locationLoading.value = true; try { const response = await api.get(ENDPOINTS.LOCATIONS_LIST, { keyword: query, limit: 20 }); locationOptions.value = (response.data as any[]) || []; } catch (error) { console.error("Location search failed:", error); locationOptions.value = []; } finally { locationLoading.value = false; } }
-
 onMounted(() => { fetchList(); });
 </script>
