@@ -193,7 +193,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Search, Refresh, Delete, Box, Truck, User } from "@element-plus/icons-vue";
+import { Plus, Search, Refresh, Delete, Box, User } from "@element-plus/icons-vue";
 import { api, ENDPOINTS } from "@/services/api";
 
 const loading = ref(false);
