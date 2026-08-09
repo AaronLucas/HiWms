@@ -245,16 +245,3 @@ async function remoteLocationSearch(query: string) { locationLoading.value = tru
 
 onMounted(() => { fetchList(); });
 </script>
-
-<style scoped>
-.inventory-page { padding: 20px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-.header-left { display: flex; align-items: center; gap: 12px; }
-.search-card { margin-bottom: 20px; }
-.search-form :deep(.el-form-item) { margin-bottom: 0; }
-.pagination-wrapper { margin-top: 16px; display: flex; justify-content: flex-end; }
-.text-danger { color: #f56c6c; }
-.text-success { color: #67c23a; }
-.text-muted { color: #909399; }
-.dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
-</style>
