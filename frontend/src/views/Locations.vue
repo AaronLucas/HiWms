@@ -154,7 +154,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Plus, Search, Refresh, Box, Warehouse, Setting, Edit, Delete } from "@element-plus/icons-vue";
+import { Plus, Search, Refresh, Box, Setting, Edit, Delete } from "@element-plus/icons-vue";
 import { api, ENDPOINTS } from "@/services/api";
 
 const loading = ref(false);
