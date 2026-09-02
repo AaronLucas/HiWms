@@ -61,7 +61,6 @@ export async function getAuthenticatedClient(
   }
 
   const accessToken = signIn.session.access_token;
-  const refreshToken = signIn.session.refresh_token;
 
   // 检查 JWT 中的 app_metadata
   const decoded = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64').toString());
@@ -70,16 +69,17 @@ export async function getAuthenticatedClient(
     sub: decoded.sub,
   });
 
-  // 4. 创建认证客户端（使用 setSession 方式更可靠）
+  // 4. 创建认证客户端（使用 global.headers 方式）
+  // 注：setSession() 在本地 Docker 环境中可能不能正确传递 Authorization header，
+  // 所以改用 global.headers 直接传入 Bearer token。这确保每个请求都包含认证信息。
   const authenticatedClient = createClient<Database>(supabaseUrl, anonKey, {
     auth: { persistSession: false },
     db: { schema: 'public' },
-  });
-
-  // 设置会话（这样所有请求都会自动包含 Authorization header）
-  await authenticatedClient.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
   });
 
   return {
