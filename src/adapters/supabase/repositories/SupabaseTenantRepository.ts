@@ -15,8 +15,8 @@ export class SupabaseTenantRepository extends SupabaseBaseRepository<
   protected tableName = 'tenants' as const;
   protected idColumn = 'id';
 
-  async findByName(name: string): Promise<Tables<'tenants'> | null> {
-    const { data, error } = await this.from()
+  async findByName(name: string, authToken?: string): Promise<Tables<'tenants'> | null> {
+    const { data, error } = await this.from(authToken)
       .select('*')
       .eq('name', name)
       .single();
@@ -28,11 +28,11 @@ export class SupabaseTenantRepository extends SupabaseBaseRepository<
     return data as Tables<'tenants'>;
   }
 
-  async findActive(): Promise<Tables<'tenants'>[]> {
-    return this.findAll({ filters: { is_active: true }, orderBy: 'name', ascending: true });
+  async findActive(authToken?: string): Promise<Tables<'tenants'>[]> {
+    return this.findAll({ filters: { is_active: true }, orderBy: 'name', ascending: true, authToken });
   }
 
-  async updateBillingStrategy(tenantId: string, strategy: Record<string, unknown>): Promise<Tables<'tenants'>> {
-    return this.update(tenantId, { billing_strategy: strategy } as TablesUpdate<'tenants'>);
+  async updateBillingStrategy(tenantId: string, strategy: Record<string, unknown>, authToken?: string): Promise<Tables<'tenants'>> {
+    return this.update(tenantId, { billing_strategy: strategy } as TablesUpdate<'tenants'>, authToken);
   }
 }
