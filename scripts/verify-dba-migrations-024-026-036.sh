@@ -69,6 +69,25 @@ fi
 log_success "Supabase 已启动"
 
 ##############################################################################
+# 步骤 1.5: 应用权限脚本 — 迁移之前
+##############################################################################
+
+log_info "步骤 1.5/5: 应用迁移前权限配置（模拟 Supabase 默认授权）..."
+
+if [ ! -f "supabase/tests/harness/bootstrap-default-privileges.sql" ]; then
+  log_error "找不到 supabase/tests/harness/bootstrap-default-privileges.sql"
+  exit 1
+fi
+
+POSTGRES_PASSWORD="postgres"
+if psql "postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres" \
+  -f supabase/tests/harness/bootstrap-default-privileges.sql > /dev/null 2>&1; then
+  log_success "迁移前权限配置已应用"
+else
+  log_warn "迁移前权限配置应用失败（可能已存在，继续）"
+fi
+
+##############################################################################
 # 步骤 2: 基线检查 — 现有迁移状态
 ##############################################################################
 
