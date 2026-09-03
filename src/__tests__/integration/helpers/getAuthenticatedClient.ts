@@ -38,12 +38,6 @@ export async function getAuthenticatedClient(
     password,
   });
 
-  console.log('✓ 测试用户创建:', {
-    userId: user.id,
-    email: user.email,
-    tenantId: user.tenant_id,
-  });
-
   // 2. 用 anonKey 创建专门用于登录的客户端（不污染 adminClient 的会话）
   const anonClient = createClient<Database>(supabaseUrl, anonKey, {
     auth: { persistSession: false },
@@ -61,13 +55,6 @@ export async function getAuthenticatedClient(
   }
 
   const accessToken = signIn.session.access_token;
-
-  // 检查 JWT 中的 app_metadata
-  const decoded = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64').toString());
-  console.log('✓ JWT app_metadata:', {
-    tenant_id: decoded.app_metadata?.tenant_id,
-    sub: decoded.sub,
-  });
 
   // 4. 创建认证客户端（使用 global.headers 方式）
   // 注：setSession() 在本地 Docker 环境中可能不能正确传递 Authorization header，
