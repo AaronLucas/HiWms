@@ -159,10 +159,32 @@ council 裁决"无先例"的否决前提确实站不住。但"具体怎么落地
   叠加干扰扫描。"运输途中脱落"（原有标签，可能仍可溯源单据）与"从未贴标发货"
   （供应商/货主责任）应区分处理路径。
   已同步提交给 DBA 团队：[HiWmsSupabase#92](https://github.com/AaronLucas/HiWmsSupabase/issues/92)。
-- **3PL-H018（AGENT_PROPOSAL，未定案）**：RLS 双轴过滤方案——operator 角色按
-  facility 过滤（仓内跨 owner 可见），client 角色按 owner_id 过滤（跨仓只看
-  自己）——具体走"同表叠两条 USING 分支"还是"独立聚合函数"，仍待 G4/G5 阶段
-  确认。
+- **3PL-H018（AGENT_PROPOSAL，未定案）——已用真实来源验证（2026-09-07）**：
+  RLS 双轴过滤方案——operator 角色按 facility 过滤，client 角色按 owner_id
+  过滤——机制上在 PostgreSQL（官方文档：同表可挂多条 PERMISSIVE 策略，按
+  `TO role` 分别定义，多条并集合并）、BigQuery（Row Access Policy，`GRANT TO`
+  不同 group）、Salesforce（Sharing Rules + Role Hierarchy，官方标准双轴机制）
+  均有正式支持，不是实验性方案。**发现 DBA 文档一处表述需要修正**：文档说
+  "客户轴（owner_id）在 Odoo/OFBiz 均未找到先例"——实测 Odoo 17.0 源码，
+  `sale/security/ir_rules.xml` 的 `sale_order_rule_portal` 就是 portal 客户角色
+  按 `partner_id` 过滤自己订单的官方先例，与内部销售角色规则（OR 合并）共存于
+  同一张 `sale.order` 表。真正的缺口在于：**这个模式只用在订单/发票这类天然带
+  partner_id 的商业单据上，从未延伸到 `stock.quant`（库存明细）**——`stock.quant`
+  虽有 `owner_id` 字段，但只给内部员工追踪代管货主库存用，从未通过 ACL 开放给
+  portal/外部角色。**两个候选方案的关系是分层组合，不是二选一**：RLS 双策略
+  作为默认层（三大平台官方支持，default-deny 语义强），独立聚合接口不是替代品，
+  是给更高风险场景（如财务汇总）加的纵深防御层。
+  已同步提交给 DBA 团队：[HiWmsSupabase#93](https://github.com/AaronLucas/HiWmsSupabase/issues/93)。
+- **3PL-H022——已用真实来源验证（2026-09-07）**：三个独立真实系统互相印证
+  "owner≠物理位置，必须是独立字段"——OFBiz `InventoryItem.ownerPartyId` 与
+  `facilityId` 分离（官方 wiki）、Odoo `stock.quant.owner_id`（官方文档，专门
+  用于寄售库存）、Extensiv API 把 `customerId` 作为任何 API 连接的必需顶层作用域
+  参数（官方开发者文档）——与 DBA 文档"账实分离"的结论完全吻合。但**OFBiz 的
+  隔离机制不能直接照搬**：实测确认 OFBiz 的多租户是"每租户一个独立数据库"
+  （delegator 架构，官方 wiki 明确），不是同库 RLS——本项目要的"同一个数据库
+  内用 RLS 做双轴过滤"在这三个系统里都没有完整的照抄先例，H018 的分层组合方案
+  是目前能给出的最合理判断，不是回避问题。
+  已同步提交给 DBA 团队：[HiWmsSupabase#93](https://github.com/AaronLucas/HiWmsSupabase/issues/93)。
 - **G2 审计本身未完成**：DBA 侧已经可以从直接核实（E4）得出"现状确实不符合，
   需要设计迁移路径"这个结论，但完整的引用/RLS/计费审计仍未跑完。
 
